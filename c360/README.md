@@ -13,10 +13,10 @@ and a USB 3.0 port. Details in [HARDWARE.md](HARDWARE.md); installing in
   radio and serves no clients (below).
 - **Ethernet: two 10 GbE ports** (Aquantia AQR113C: 10G, 5G, 2.5G, 1G and
   100M): eth0, the PoE uplink (Ethernet 1), and eth1 (Ethernet 2). MACs and
-  radio calibration are read from the unit's own ART partition. **In
-  testing:** so far eth0 has run in SGMII mode, capped at 2.5 Gb/s, and eth1
-  has not passed traffic. The fix, USXGMII on both (as Arista's own device
-  tree has it), is being tested.
+  radio calibration are read from the unit's own ART partition. Both ports
+  pass traffic. **In testing:** both have so far run in SGMII mode, which
+  caps them at 2.5 Gb/s. The change to USXGMII on both (as Arista's own
+  device tree has it), for 10G, is being tested.
 - **Front-panel LEDs:** power, the three Wi-Fi bands, and both Ethernet ports
   in steady link-speed colours.
 - **Bluetooth LE:** the nRF52833 runs Arista's own firmware unchanged (a Zephyr

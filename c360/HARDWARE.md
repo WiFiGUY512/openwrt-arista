@@ -79,15 +79,15 @@ Two 10 GbE ports. Each has its own Aquantia AQR113C PHY (10GBASE-T, down to
 | Port | Panel | PoE | Switch port | Uniphy | MDIO | MAC (ART) |
 |---|---|---|---|---|---|---|
 | eth0 | Ethernet 1 | in | 5 (`dp5_syn`) | 1 | 0x08 | 0x0 |
-| eth1 | Ethernet 2 | | 6 (`dp6_syn`) | 2 | 0x00 | 0x6 |
+| eth1 | Ethernet 2 | in (seen once; to be confirmed) | 6 (`dp6_syn`) | 2 | 0x00 | 0x6 |
 
 - **The PHY firmware:** Arista's U-Boot loads it into both PHYs at boot,
   from `0:ETHPHYFW` (`v5.5.6 Marvell Standard USX-All`). Each PHY then
   reports its temperature, which only the firmware provides.
-- **The switch's MAC modes** must be USXGMII on Uniphy 1 and 2
-  (`switch_mac_mode1`/`2` = `MAC_MODE_USXGMII`), as in Arista's own device
-  tree. Unset, port 5 falls back to SGMII on Uniphy 0, which caps eth0 at
-  2.5G, and Uniphy 2 is never started.
+- **10G needs USXGMII** on Uniphy 1 and 2 (`switch_mac_mode1`/`2` =
+  `MAC_MODE_USXGMII`, and `phy-mode = "usxgmii"` on both datapaths), as in
+  Arista's own device tree. Unset, both ports run SGMII: they pass traffic,
+  but only up to 2.5 Gb/s.
 
 ## Bluetooth LE: Nordic nRF52833
 
