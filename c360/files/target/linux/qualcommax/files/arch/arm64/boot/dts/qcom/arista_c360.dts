@@ -642,13 +642,19 @@
  * switch_cpu_bmp = 0x1 (port 0) and switch_inner_bmp = 0x80 (port 7) are
  * inherited unchanged from ipq8074-ess.dtsi.
  *
- * STILL OPEN, and why this is not a fix: hsl_port_to_uniphy() routes port 5 to
- * instance 1 only when switch_mac_mode1 != PORT_WRAPPER_MAX. Those properties
- * are left at 0xff (PORT_WRAPPER_MAX) in this candidate deliberately, to
- * isolate one variable per boot. With 0xff, port 5 still routes to instance 0,
- * so the Uniphy topology may still be wrong even once the port-1 warning is
- * gone. Correcting the PHY association may remove the warning WITHOUT fixing
- * packet communication, which remains unproven.
+ * The MAC modes (2026-10-07): both ports are 10 GbE, each an Aquantia AQR113C
+ * on its own Uniphy: port 5 on instance 1, port 6 on instance 2. Arista's DT
+ * sets switch_mac_mode1 = switch_mac_mode2 = 0x0d, MAC_MODE_USXGMII, as does
+ * OpenWrt's ipq8072-301w (the same two PHYs at the same MDIO addresses). Left
+ * at 0xff (PORT_WRAPPER_MAX), with the datapaths in sgmii, the ports still
+ * work: qca-ssdk sets each Uniphy to USXGMII when its PHY reports it at
+ * link-up. On 2026-10-07 eth0 linked at 10000 with a DHCP exchange both ways,
+ * and eth1 at 10000 too, each with a lease. So the modes stay unset here.
+ * Setting USXGMII from boot, as Arista does, is kept as an experiment in
+ * arista_c360.dts.usxgmii (W17): the first link after boot once flapped ("uniphy
+ * autoneg time out"). Both PHYs run the firmware Arista's U-Boot
+ * loads into them (0:ETHPHYFW, "v5.5.6 Marvell Standard USX-All"): each
+ * reports its temperature, which only the firmware provides.
  */
 &switch {
 	status = "okay";
@@ -708,9 +714,7 @@
 };
 
 /*
- * Port datapath 6 -- second PHY. Enabled in the same revision so both PHYs are
- * probed and both report their link state, even though only port 5 gets an
- * address for now.
+ * Port datapath 6: eth1, the second 10 GbE port (Ethernet 2 on the panel).
  */
 &dp6_syn {
 	status = "okay";

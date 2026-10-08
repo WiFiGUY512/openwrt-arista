@@ -1,9 +1,9 @@
 Subject: qualcommax: ipq807x: Arista C-360 front-panel LEDs
 
-Steady link-speed colours on the two Ethernet ports, no activity blinking.
+Steady link-speed colours on the two 10 GbE ports, green for a multi-gig link (2.5, 5 or 10G), orange for 1G or slower, no activity blinking.
 
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-index ae94165..cd43047 100644
+index ae94165..621a0f5 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 @@ -6,6 +6,12 @@ board_config_update
@@ -11,9 +11,9 @@ index ae94165..cd43047 100644
  
  case "$board" in
 +arista,c360)
-+	ucidef_set_led_netdev "lan1-2500" "LAN1-2.5G" "green:lan-1" "eth0" "link_2500"
++	ucidef_set_led_netdev "lan1-mgig" "LAN1-MGIG" "green:lan-1" "eth0" "link_2500 link_5000 link_10000"
 +	ucidef_set_led_netdev "lan1" "LAN1" "orange:lan-1" "eth0" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan2-2500" "LAN2-2.5G" "green:lan-2" "eth1" "link_2500"
++	ucidef_set_led_netdev "lan2-mgig" "LAN2-MGIG" "green:lan-2" "eth1" "link_2500 link_5000 link_10000"
 +	ucidef_set_led_netdev "lan2" "LAN2" "orange:lan-2" "eth1" "link_10 link_100 link_1000"
 +	;;
  arcadyan,aw1000)

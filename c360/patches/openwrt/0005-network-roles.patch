@@ -1,0 +1,29 @@
+Subject: qualcommax: ipq807x: Arista C-360 network roles
+
+Both 10 GbE ports are LAN, with no WAN; the LAN is a DHCP client, as for this target's other APs. The MAC is the unit's own, from 0:ART. uci-defaults/99-arista-c360-bond then makes the two ports an LACP bond on a fresh config.
+
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
+index 7a5f280..2a2adb3 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
+@@ -18,6 +18,9 @@ ipq807x_setup_interfaces()
+ 	zte,mf269)
+ 		ucidef_set_interfaces_lan_wan "lan" "wan"
+ 		;;
++	arista,c360)
++		ucidef_set_interface_lan "eth0 eth1" "dhcp"
++		;;
+ 	asus,rt-ax89x)
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 lan7 lan8 10g-sfp 10g-copper" "wan"
+ 		;;
+@@ -88,6 +91,10 @@ ipq807x_setup_macs()
+ 	local label_mac=""
+ 
+ 	case "$board" in
++	arista,c360)
++		label_mac=$(mtd_get_mac_binary "0:ART" 0x0)
++		lan_mac=$label_mac
++		;;
+ 	aliyun,ap8220)
+ 		wan_mac=$(mtd_get_mac_text product_info 0x4b)
+ 		lan_mac=$(macaddr_add "$wan_mac" 1)

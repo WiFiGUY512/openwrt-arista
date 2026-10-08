@@ -1,6 +1,6 @@
 Subject: kernel: kmod-tpm-tis: allow qualcommax
 
-The C-360 has a TPM 2.0 on SPI (tpm_tis_spi), which needs tpm_tis_core.
+The C-360 has a TPM 2.0 (Infineon SLB 9670) on SPI (tpm_tis_spi), which needs tpm_tis_core.
 
 diff --git a/package/kernel/linux/modules/other.mk b/package/kernel/linux/modules/other.mk
 index 1b9a287..1798234 100644

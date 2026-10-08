@@ -193,10 +193,21 @@ zone that accepts input (`lan`), or SSH will be refused.
 
 ## First boot
 
-OpenWrt's usual defaults: LAN on the uplink port (eth0) at 192.168.1.1, Wi-Fi
-off, no root password (set one). The first boot copies the Wi-Fi firmware from
-the Arista slot and restarts the radios; `logread | grep arista-c360-wifi`
-shows what happened. Later updates are ordinary `sysupgrade`s.
+The C-360's defaults: both Ethernet ports are LAN, with no WAN. On the first
+boot they become one LACP bond (`bond0`), and `br-lan` on it **takes its
+address by DHCP**, so look for the AP in your DHCP server's leases. It uses the
+unit's own MAC, the one on its label.
+- **Either port works.** With two cables, the switch ports belong in one LACP
+  port-channel. A switch without LACP is fine too: the bond then uses one link.
+- **Before setting a root password,** Wi-Fi is off and SSH and LuCI have no
+  password: set one first.
+- **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device. Enter it
+  from the serial console: press `f` and Enter when the boot offers it. The
+  reset button isn't mapped yet.
+
+The first boot copies the Wi-Fi firmware from the Arista slot and restarts
+the radios; `logread | grep arista-c360-wifi` shows what happened. Later
+updates are ordinary `sysupgrade`s, which keep the settings.
 
 ## Known limitations
 

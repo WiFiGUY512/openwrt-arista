@@ -273,7 +273,8 @@ def main():
                   "power-cycle it to leave.")
         else:
             first_boot(c)
-            print("Done. OpenWrt's defaults: LAN on eth0 at 192.168.1.1, Wi-Fi off, no root password.")
+            print("Done. Both ports are LAN (an LACP bond) and take an address by DHCP; "
+                  "Wi-Fi is off and there is no root password yet: set one.")
     except Stop as e:
         print("STOPPED: %s" % e)
         print("Nothing further was sent. The console log is %s." % log)

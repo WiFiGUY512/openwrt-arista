@@ -31,6 +31,8 @@ import * as socket from 'socket';
 const BOARDS = { "arista,c360": "0001:01:00.0" };
 const OUT = "/tmp/airscan";
 const MON = "as-mon0", STA = "as-sta0";
+const PIDFILE = "/var/run/airscan.pid";
+const MYPID = +fs.readlink("/proc/self");
 const FFT = "/usr/libexec/airscan-fft";
 const BLE = "/usr/libexec/airscan-ble";
 
@@ -257,7 +259,7 @@ function run_spectral(done, only_band) {
 			uloop.timer(int(cfg.spectral_samples * 0.23) + 250, () => {
 				spectral_write("spectral_scan_ctl", "disable");
 				let tmp = `${OUT}/.win.json`;
-				uloop.process("/bin/sh", [ "-c", `${FFT} ${radio.debugfs}/spectral_scan0 > ${tmp}` ], {}, (code) => {
+				uloop.process("/bin/sh", [ "-c", `exec ${FFT} ${radio.debugfs}/spectral_scan0 > ${tmp}` ], {}, (code) => {
 					let got = code == 0 ? json(fs.readfile(tmp) || "[]") : [];
 					fs.unlink(tmp);
 					for (let wdw in got) { wdw.band = w.band; push(windows, wdw); total += wdw.samples; }
@@ -378,6 +380,7 @@ function l2_domains() {
 		let mac = lc(trim(fs.readfile(`${p}/address`) || ""));
 		if (mac) macs[mac] = true;
 		if (fs.access(`${p}/brport`)) continue;            // its bridge carries it
+		if (fs.access(`${p}/bonding_slave`)) continue;     // its bond carries it
 		let st = trim(fs.readfile(`${p}/operstate`) || "");
 		if (st != "up" && st != "unknown") continue;
 		let v = vid[d] ?? 0;
@@ -385,12 +388,17 @@ function l2_domains() {
 			for (let m in fs.lsdir(`${p}/brif`) || []) if (vid[m] != null) { v = vid[m]; break; }
 		push(out, { dev: d, mac, vlan: v });
 	}
-	wp.domains = sort(out, (a, b) => (a.dev < b.dev) ? -1 : (a.dev > b.dev));
+	out = sort(out, (a, b) => (a.dev < b.dev) ? -1 : (a.dev > b.dev));
+	// The network can change under us (a bond, a VLAN, a bridge's MAC): look
+	// again every round, and say so when the domains change.
+	if (sprintf("%J", out) != sprintf("%J", wp.domains))
+		log("wired probe domains: " + join(", ", map(out, (x) => `${x.dev} (vlan ${x.vlan}, ${x.mac})`)));
+	wp.domains = out;
 	wp.macs = macs;
 }
 
 function send_probes() {
-	if (!length(wp.domains)) l2_domains();
+	l2_domains();
 	if (!wp.sock) wp.sock = socket.create(socket.AF_PACKET, socket.SOCK_RAW, 0);
 	if (!wp.sock) return;
 	for (let k = 0; k < length(wp.domains); k++) {
@@ -478,7 +486,7 @@ function run_bss(done) {
 	iface_del(MON);
 	if (!iface_up(STA, "managed")) { note_error("bss: station interface failed"); done(); return; }
 	let tmp = `${OUT}/.scan.txt`;
-	uloop.process("/bin/sh", [ "-c", `iw dev ${STA} scan passive > ${tmp} 2>&1` ], {}, (code) => {
+	uloop.process("/bin/sh", [ "-c", `exec iw dev ${STA} scan passive > ${tmp} 2>&1` ], {}, (code) => {
 		let text = fs.readfile(tmp) || "";
 		fs.unlink(tmp);
 		iface_del(STA);
@@ -737,7 +745,7 @@ run_ble = function() {
 	}
 	ble.running = true;
 	let tmp = `${OUT}/.ble.json`;
-	uloop.process("/bin/sh", [ "-c", `${BLE} -i 0 -d ${cfg.ble_duration} > ${tmp} 2>/dev/null` ], {}, (code) => {
+	uloop.process("/bin/sh", [ "-c", `exec ${BLE} -i 0 -d ${cfg.ble_duration} > ${tmp} 2>/dev/null` ], {}, (code) => {
 		ble.running = false;
 		let r = code == 0 ? json(fs.readfile(tmp) || "null") : null;
 		fs.unlink(tmp);
@@ -794,13 +802,29 @@ function run_next() {
 	}
 }
 
+// kill_children stops our helpers still running (a scan, a sweep, a BLE
+// round): they must not outlive us. The image has no pkill, so read the
+// parent of each process from /proc/<pid>/stat ("pid (comm) state ppid ...").
+function kill_children() {
+	let kids = [];
+	for (let d in fs.lsdir("/proc") || []) {
+		if (!match(d, /^[0-9]+$/)) continue;
+		let st = fs.readfile(`/proc/${d}/stat`) || "";
+		let f = split(substr(st, rindex(st, ")") + 2), " ");
+		if (+f[1] == MYPID) push(kids, d);
+	}
+	if (length(kids)) system(`kill -TERM ${join(" ", kids)} 2>/dev/null`);
+}
+
 function cleanup() {
+	kill_children();
 	capture_close();
 	if (wp.sock) { wp.sock.close(); wp.sock = null; }
 	if (ble.timer) ble.timer.cancel();
 	if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
 	iface_del(MON);
 	iface_del(STA);
+	if (+trim(fs.readfile(PIDFILE) || "") == MYPID) fs.unlink(PIDFILE);
 }
 
 // ---------------------------------------------------------------- ubus
@@ -866,6 +890,16 @@ if (!cfg.enabled) { log("disabled in /etc/config/airscan"); exit(0); }
 let pci = BOARDS[board_name()];
 if (!pci) { log(`no dedicated scan radio on board "${board_name()}"; not starting`); exit(0); }
 radio.pci = pci;
+// One airscan at a time. On a restart procd can start us while the previous
+// instance is still cleaning up, and its cleanup deletes the scan interfaces;
+// wait for it to exit (up to 15 s) before touching the radio.
+for (let i = 0; i < 60; i++) {
+	let old = +trim(fs.readfile(PIDFILE) || "");
+	if (!old || old == MYPID || !fs.access(`/proc/${old}`)) break;
+	if (i == 0) log(`waiting for the previous airscan (pid ${old}) to exit`);
+	sleep(250);
+}
+fs.writefile(PIDFILE, `${MYPID}\n`);
 fs.mkdir(OUT);
 release_from_netifd(pci);
 

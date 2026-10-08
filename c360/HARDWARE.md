@@ -122,6 +122,11 @@ Uniphy, connected over USXGMII:
 - **Front-panel LEDs:** two 74LV164 shift registers on bit-banged SPI, 16
   outputs, active high. The mapping is in the device tree; the radio LEDs
   follow their radios' phys (`/etc/hotplug.d/ieee80211/12-arista-c360-leds`).
-- **TPM 2.0:** TIS over SPI (`spi@78b8000`, `tpm_tis_spi`).
+- **TPM 2.0:** an Infineon SLB 9670, firmware 7.85 (`TPM2_GetCapability`:
+  manufacturer `IFX`, vendor `SLB9670`). TIS over SPI (`spi@78b8000`,
+  `tpm_tis_spi`), as `/dev/tpm0` and `/dev/tpmrm0`; it is the kernel's
+  hardware random source.
+  - Arista's U-Boot doesn't send it `TPM2_Startup`, so the kernel does, after
+    "A TPM error (256)… starting up the TPM manually": harmless.
 - **USB 3.0, Type-A:** `usb_0`, with one port and no hub. `usb_1` is unused,
   as in Arista's own device tree.

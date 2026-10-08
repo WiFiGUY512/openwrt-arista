@@ -1,12 +1,12 @@
 Subject: qualcommax: ipq807x: add Arista C-360
 
-The device recipe: a FIT kernel in UBI (kernel, rootfs, rootfs_data) in NAND slot 0, and the initramfs as the installer, which reads factory.ubi from a FAT32 USB stick.
+The device recipe: a FIT kernel in UBI (kernel, rootfs, rootfs_data) in NAND slot 0, and the initramfs as the installer, which reads factory.ubi from a FAT32 USB stick. In the image: the TPM, Bluetooth LE, airscan, USB storage, bonding (LACP) and VXLAN.
 
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index f356bbb..a3ceb24 100644
+index f356bbb..0bb69ff 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
-@@ -564,3 +564,30 @@ define Device/zyxel_nwa210ax
+@@ -564,3 +564,37 @@ define Device/zyxel_nwa210ax
  	IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE) | zyxel-nwa210ax-fit
  endef
  TARGET_DEVICES += zyxel_nwa210ax
@@ -20,6 +20,12 @@ index f356bbb..a3ceb24 100644
 +# path authenticates images, so installation sets a bootcmd (see INSTALL).
 +# The initramfs is the installer (arista-c360-install), which reads factory.ubi
 +# from a FAT32 USB stick: hence usb-storage, vfat and its two codepages.
++# Two 10 GbE ports, both PoE in: bonding (LACP, 802.3ad) is in the image, so
++# the pair can be one uplink. kmod-tls is there because kmod-bonding depends on
++# it optionally ("!kmod-tls || kmod-tls"): with every module built as m
++# (ALL_KMODS), that caps bonding at m, out of the image, unless tls is y too.
++# vxlan (netifd's proto handler, with kmod-vxlan) is in the image too: VXLAN
++# tunnels are part of what the AP does.
 +define Device/arista_c360
 +	$(call Device/FitImage)
 +	$(call Device/UbiFit)
@@ -34,6 +40,7 @@ index f356bbb..a3ceb24 100644
 +		squashfs-tools-unsquashfs kmod-spi-gpio kmod-spi-bitbang \
 +		kmod-gpio-nxp-74hc164 kmod-leds-gpio kmod-tpm-tis-spi airscan \
 +		kmod-bluetooth kmod-hci-uart bluez-utils bluez-utils-extra \
-+		kmod-usb-storage kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1
++		kmod-usb-storage kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1 \
++		kmod-bonding proto-bonding kmod-tls vxlan
 +endef
 +TARGET_DEVICES += arista_c360

@@ -4,7 +4,7 @@ MODEL_NAME="Arista C-360"
 DEVICE=arista_c360
 TARGET=qualcommax/ipq807x
 # the feed packages the image needs beyond OpenWrt's core
-FEEDS_INSTALL="squashfs-tools luci bluez"
+FEEDS_INSTALL="squashfs-tools luci bluez proto-bonding"
 
 # fix_modes: modes for files/ that git on some hosts does not keep
 fix_modes() {

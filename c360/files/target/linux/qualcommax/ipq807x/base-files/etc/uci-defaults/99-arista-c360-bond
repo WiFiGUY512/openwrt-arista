@@ -1,0 +1,34 @@
+#!/bin/sh
+# Arista C-360: both 10 GbE ports are LAN, with no WAN; board.d puts br-lan
+# on eth0 and eth1. Bridged as they are, two cables to one switch would make
+# a loop. So on the board's own fresh config the pair becomes one LACP bond
+# (802.3ad), bond0, and br-lan carries that instead. With one cable, or a
+# switch without LACP, the bond runs on a single link. A config that is not
+# the board's default, one kept over a sysupgrade say, is left alone.
+
+. /lib/functions.sh
+[ "$(board_name)" = arista,c360 ] || exit 0
+uci -q get network.bond0 >/dev/null && exit 0
+
+sec=
+for s in $(uci -X -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+	[ "$(uci -q get network.$s.name)" = br-lan ] && sec=$s
+done
+[ -n "$sec" ] || exit 0
+[ "$(uci -q get network.$sec.ports)" = "eth0 eth1" ] || exit 0
+
+uci batch <<EOF
+set network.bond0=interface
+set network.bond0.proto=bonding
+add_list network.bond0.slaves=eth0
+add_list network.bond0.slaves=eth1
+set network.bond0.bonding_policy=802.3ad
+set network.bond0.lacp_rate=fast
+set network.bond0.xmit_hash_policy=layer3+4
+set network.bond0.link_monitoring=mii
+set network.bond0.miimon=100
+delete network.$sec.ports
+add_list network.$sec.ports=bond-bond0
+EOF
+uci commit network
+exit 0
