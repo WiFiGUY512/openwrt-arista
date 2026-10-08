@@ -11,7 +11,7 @@ first boot.
 
 | Model | SoC | OpenWrt | Status |
 |---|---|---|---|
-| [C-360](c360/README.md) | Qualcomm IPQ8074A + 2 × QCN9074 | 25.12 | Fully working, including BLE and the scan radio |
+| [C-360](c360/README.md) | Qualcomm IPQ8074A + 2 × QCN9074 | 25.12 | Working, including BLE and the scan radio; 10G on both Ethernet ports in testing |
 | C-260 | | | Next |
 
 ## Build
