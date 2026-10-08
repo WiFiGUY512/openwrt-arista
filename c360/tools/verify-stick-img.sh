@@ -48,8 +48,8 @@ sudo -n umount $T.mnt
 
 echo "== writable: what the installer does (a backup directory, a gzip, fsck again)"
 sudo -n mount -t vfat -o rw $LOOP $T.mnt
-sudo -n mkdir $T.mnt/c360/backup-30862d0317ff-20261007-200000
-head -c 33554432 /dev/urandom | sudo -n tee $T.mnt/c360/backup-30862d0317ff-20261007-200000/mtd0-test.bin.gz > /dev/null
+sudo -n mkdir $T.mnt/c360/backup-001122334455-20261007-200000
+head -c 33554432 /dev/urandom | sudo -n tee $T.mnt/c360/backup-001122334455-20261007-200000/mtd0-test.bin.gz > /dev/null
 sudo -n umount $T.mnt
 sudo -n fsck.fat -n $LOOP > $T.fsck2 2>&1; rc=$?
 ck "after writing 32 MiB through the kernel, fsck.fat still clean" "[ $rc = 0 ]"

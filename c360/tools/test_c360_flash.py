@@ -146,12 +146,12 @@ class FakeC360:
             self.emit("/dev/sda\r\n/dev/sda1\r\n" if self.stick else "")
         elif cmd.startswith("arista-c360-install"):
             self.emit("c360-install: C-360, running from RAM; Arista runs from slot 1\r\n", 0.1)
-            self.emit("c360-install: backup complete and verified: backup-30862d0317ff-x\r\n", 0.3)
+            self.emit("c360-install: backup complete and verified: backup-001122334455-x\r\n", 0.3)
             if "--dry-run" in cmd:
-                self.emit("C360-INSTALL-RESULT: OK dry-run backup=backup-30862d0317ff-x\r\n", 0.1)
+                self.emit("C360-INSTALL-RESULT: OK dry-run backup=backup-001122334455-x\r\n", 0.1)
             elif self.install_result == "OK":
                 self.emit("c360-install:   volume kernel: reads back identical\r\n", 0.2)
-                self.emit("C360-INSTALL-RESULT: OK installed backup=backup-30862d0317ff-x\r\n", 0.1)
+                self.emit("C360-INSTALL-RESULT: OK installed backup=backup-001122334455-x\r\n", 0.1)
             else:
                 self.emit("C360-INSTALL-RESULT: FAILED: slot 0 volume kernel reads back wrong\r\n", 0.2)
         elif cmd == "reboot":

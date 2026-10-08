@@ -24,8 +24,8 @@ On Linux, with [OpenWrt's build prerequisites](https://openwrt.org/docs/guide-de
 
 It clones OpenWrt at the commit the model is pinned to, applies the model's
 patches and files, and builds. The images, a USB stick image for the
-installer, and a package feed with every kernel module end up in
-`out/<model>/<version>/`. A first build takes hours.
+installer, and a package feed with every kernel module and every package the
+build made end up in `out/<model>/<version>/`. A first build takes hours.
 
 **Kernel modules come from this build's feed, not OpenWrt's.** A kernel
 module installs only on the exact kernel it was built for, and these images'
@@ -50,8 +50,9 @@ build.sh            builds one model: ./build.sh <model>
   openwrt.lock      the OpenWrt and feed commits it builds against
   config/           the build configuration
   patches/openwrt/  patches to OpenWrt's own files
+  patches/feeds/    patches to OpenWrt's feeds, one directory per feed
   files/            the model's own files, at their places in the OpenWrt tree
-  feeds/            patches to packages in OpenWrt's feeds
+  feeds/            files added to packages in OpenWrt's feeds
   tools/            installer tools
 ```
 

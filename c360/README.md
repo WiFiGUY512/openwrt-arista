@@ -27,7 +27,9 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
     and distributing), on a config set by hand. The fresh-install default
     *(built, not yet on a unit)* was tested on scratch configs.
 - **VXLAN:** netifd's `vxlan` protocol and `kmod-vxlan` are in the image
-  *(built, not yet on a unit)*.
+  *(built, not yet on a unit)*. The kernel's VXLAN, from this build's
+  module, was tested on a unit: VNI 42 between two network namespaces, with
+  a ping across the overlay.
 - **Front-panel LEDs:** power, the three Wi-Fi bands, and both Ethernet
   ports in steady link-speed colours: green for a multi-gig link (2.5, 5 or
   10G), orange for 1G or slower. Green at 5 and 10G is *(built, not yet on a
@@ -63,15 +65,25 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 - **TPM 2.0:** an Infineon SLB 9670 (firmware 7.85) on SPI (`tpm_tis_spi`).
   `/dev/tpm0` and the resource manager `/dev/tpmrm0` work, and the TPM is the
   kernel's hardware random source (`tpm-rng`).
+  - `tpm2-tools` 5.8, on `tpm2-tss` 4.2, is in the image (OpenWrt 25.12
+    packages neither): random numbers, keys, signing and verifying, sealing.
+    Tested on a unit as packages from the same recipes; the image that
+    carries them is *(built, not yet on a unit)*.
+  - Each unit's factory identity, Arista's certificates in the TPM with their
+    keys, reads out with `tpm2_nvread` (HARDWARE.md).
+- **IPsec with the unit's TPM identity:** strongSwan with its TPM plugin
+  (`strongswan-mod-tpm`, in the build's feed) authenticates IKEv2 with a
+  factory certificate and its key, which never leaves the TPM. Tested on a
+  unit: an IKEv2 exchange and an ESP tunnel, with the RSA identity and with
+  the ECC one. Setup below.
 - **USB storage** on the Type-A port.
 - **sysupgrade**, and **Arista's system kept as a fallback:** OpenWrt lives in
   NAND slot 0, and Arista's slot 1 is never written.
 
 ## What doesn't (yet)
 
-- **Using the TPM from userspace.** That needs the TPM software stack,
-  `tpm2-tss` and `tpm2-tools`, for keys, sealing, attestation, or strongSwan's
-  TPM plugin for IPsec. OpenWrt 25.12 doesn't package either.
+- **Measured boot.** Arista's U-Boot doesn't extend the TPM's PCRs (all read
+  zero after boot), so the TPM can't attest to what booted.
 - **Zigbee and Thread.** The nRF52833's radio can do 802.15.4, but Arista's
   firmware is Bluetooth LE only, and signed.
 - **The USB stick installer has not been run on a unit yet** (INSTALL.md,
@@ -95,7 +107,81 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 The kernel is OpenWrt 25.12's, configured with `KERNEL_RELAY`, which the
 spectrum survey needs. So OpenWrt's own kernel-module packages do not fit it,
 and modules come from the feed each build makes (`out/c360/<version>/feed/`).
-Other packages install from OpenWrt's 25.12 feeds as usual.
+Other packages install from OpenWrt's 25.12 feeds as usual, except
+strongSwan's TPM plugin, which is in the build's feed too.
+
+## IPsec with the TPM identity
+
+Arista gives every unit an identity in its TPM: certificates from Arista's
+own CA, each with a key that the TPM holds and never releases (HARDWARE.md).
+strongSwan can authenticate IKEv2 with one.
+
+1. Add the build's feed to `/etc/apk/repositories.d/customfeeds.list` (its
+   `packages/` and `aarch64_cortex-a53/packages/` indexes, served over HTTP),
+   then:
+
+   ```
+   apk add strongswan-swanctl strongswan-mod-tpm strongswan-mod-openssl \
+   	strongswan-mod-x509 strongswan-mod-pem strongswan-mod-pkcs1 \
+   	strongswan-mod-pubkey strongswan-mod-constraints strongswan-mod-nonce \
+   	strongswan-mod-random strongswan-mod-kernel-netlink \
+   	strongswan-mod-socket-default
+   ```
+
+2. Point the plugin at the TPM, in `/etc/strongswan.d/charon/tpm.conf`:
+
+   ```
+   tpm {
+   	load = yes
+   	tcti {
+   		name = device
+   		opts = /dev/tpmrm0
+   	}
+   }
+   ```
+
+3. Use the identity in a connection, such as `/etc/swanctl/conf.d/office.conf`
+   (the packaged `swanctl.conf` includes `conf.d/`), then
+   `/etc/init.d/swanctl restart`. This one is the ECC P-256 identity; for the
+   RSA 2048 one, the certificate is `0x01c90000` and the key `0x81020000`.
+
+   ```
+   connections {
+   	office {
+   		remote_addrs = vpn.example.net
+   		local {
+   			auth = pubkey
+   			cert-tpm {
+   				handle = 0x01c90001
+   			}
+   		}
+   		remote {
+   			auth = pubkey
+   			id = vpn.example.net
+   		}
+   		children {
+   			office {
+   				remote_ts = 10.0.0.0/8
+   				start_action = start
+   			}
+   		}
+   	}
+   }
+   secrets {
+   	token-identity {
+   		handle = 0x81020001
+   	}
+   }
+   ```
+
+- The AP's IKE identity is its certificate's subject, which carries the
+  unit's MAC.
+- The head end must trust that certificate. Without the certificate of
+  Arista's issuing CA ("WiFi-TPM-Authority"), give the head end the AP's own
+  certificate, read with `tpm2_nvread 0x01c90001 -o ap.der`; strongSwan
+  trusts a peer certificate it was given (`remote.certs`), as in the test.
+- Leave Arista's keys and NV indices in the TPM as they are. Nothing can make
+  them again.
 
 ## In this directory
 
@@ -113,7 +199,11 @@ Other packages install from OpenWrt's 25.12 feeds as usual.
     on a fresh config, the installer, the BLE start-up, and the LED and link
     watchers;
   - the airscan package;
+  - the TPM 2.0 software stack, `tpm2-tss` and `tpm2-tools`;
   - the two ath11k fixes.
+- `patches/feeds/packages/`: strongSwan's TPM plugin, with a fix that lets
+  it sign with TPM keys that have no fixed signature scheme (as the factory
+  identity keys).
 - `feeds/`: a BlueZ 5.83 fix without which `btmgmt` can send no command.
 - `tools/`: the USB stick maker, the console-driving installer, their tests,
   and a check of the RAM installer's contents.

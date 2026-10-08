@@ -5,20 +5,26 @@
 #
 # The model's directory holds what its build needs:
 #   openwrt.lock      the OpenWrt and feed commits it is built against
-#   patches/openwrt/  patches to OpenWrt's own files, applied once each
+#   patches/openwrt/  patches to OpenWrt's own files
+#   patches/feeds/<feed>/  patches to a feed's packages
 #   files/            the model's own files, at their places in the tree
 #   feeds/            files added to the feeds (patches to feed packages)
 #   config/<device>.seed  the build configuration, before make defconfig
 #   model.sh          its device name and target, and its checks
+#
+# Each patch is applied to the committed state of the files it touches, so a
+# tree from an earlier build takes the current version of every patch.
 #
 # Every kernel module is built (CONFIG_ALL_KMODS, as OpenWrt's own build
 # servers do), so the kernel's version does not depend on which modules an
 # image carries, and the modules form a package feed for exactly this kernel.
 # OpenWrt's own module feeds do not fit it; this feed does.
 #
-# Out, in out/<model>/<this repo's version>/: the images, feed/ (the target's
-# packages and every kernel module, signed with this build's key), the
-# model's extras (such as a USB stick image), and SHA256SUMS.
+# Out, in out/<model>/<this repo's version>/: the images; feed/, signed with
+# this build's key, with the target's packages and every kernel module in
+# feed/packages/ and every other package the build made in
+# feed/<arch>/<feed>/; the model's extras (such as a USB stick image); and
+# SHA256SUMS.
 #
 # Needs a Linux host with OpenWrt's build prerequisites
 # (https://openwrt.org/docs/guide-developer/toolchain/install-buildsystem).
@@ -43,6 +49,36 @@ OUT=$HERE/out/$MODEL/$VERSION
 
 say() { echo ">> $*"; }
 
+# unpatch DIR PATCH...: the files the patches touch, back to their committed
+# state in the git checkout DIR (undoing these patches from an earlier build)
+unpatch() {
+	local dir=$1 p f
+	shift
+	for p in "$@"; do
+		[ -e "$p" ] || continue
+		for f in $(git -C "$dir" apply --numstat "$p" | cut -f3); do
+			if git -C "$dir" cat-file -e "HEAD:$f" 2>/dev/null; then
+				git -C "$dir" checkout -q HEAD -- "$f"
+			else
+				rm -f "$dir/$f"
+			fi
+		done
+	done
+}
+
+# apply_patches DIR PATCH...: the patches, onto the committed state of the
+# files they touch in the git checkout DIR
+apply_patches() {
+	local dir=$1 p
+	shift
+	unpatch "$dir" "$@"
+	for p in "$@"; do
+		[ -e "$p" ] || continue
+		git -C "$dir" apply --whitespace=nowarn "$p" || { echo "$(basename "$p") does not apply to $dir" >&2; exit 1; }
+		say "applied $(basename "$p")"
+	done
+}
+
 # modules_fit OUT PACKAGE...: each module in the feed is built for the image's kernel
 modules_fit() {
 	local out=$1 k f dep
@@ -64,25 +100,15 @@ if [ ! -d "$W/.git" ]; then
 fi
 cd "$W"
 if [ "$(git rev-parse HEAD)" != "$OPENWRT_COMMIT" ]; then
+	unpatch . "$MODEL_DIR"/patches/openwrt/*.patch
 	git diff --quiet || { echo "$W has changes of its own and is not at $OPENWRT_COMMIT; build in a fresh directory" >&2; exit 1; }
 	git fetch -q origin
 	git checkout -q "$OPENWRT_COMMIT"
 fi
 say "$MODEL_NAME on OpenWrt $(git log -1 --format='%h %cd %s' --date=short)"
 
-# 2. patches to OpenWrt's own files, each applied once
-for p in "$MODEL_DIR"/patches/openwrt/*.patch; do
-	[ -e "$p" ] || continue
-	if git apply --check "$p" 2>/dev/null; then
-		git apply "$p"
-		say "applied $(basename "$p")"
-	elif git apply -R --check "$p" 2>/dev/null; then
-		say "already applied $(basename "$p")"
-	else
-		echo "$(basename "$p") does not apply to this tree" >&2
-		exit 1
-	fi
-done
+# 2. patches to OpenWrt's own files
+apply_patches . "$MODEL_DIR"/patches/openwrt/*.patch
 
 # 3. the model's own files, with their modes
 cp -r "$MODEL_DIR/files/." .
@@ -95,6 +121,10 @@ for f in packages luci routing telephony video; do
 	[ -n "${!v:-}" ] && echo "src-git $f ${!v}" >>feeds.conf
 done
 ./scripts/feeds update -a >/dev/null
+for d in "$MODEL_DIR"/patches/feeds/*/; do
+	[ -d "$d" ] && apply_patches "feeds/$(basename "$d")" "$d"*.patch
+done
+./scripts/feeds update -i >/dev/null
 ./scripts/feeds install $FEEDS_INSTALL >/dev/null
 [ -d "$MODEL_DIR/feeds" ] && cp -r "$MODEL_DIR/feeds/." feeds/
 say "feeds: $(sed 's/^src-git \([a-z]*\) .*\^\(.\{8\}\).*/\1 \2/' feeds.conf | tr '\n' ' ')"
@@ -104,19 +134,24 @@ cp "$MODEL_DIR/config/$DEVICE.seed" .config
 make defconfig >/dev/null
 grep -q "^CONFIG_TARGET_${TARGET%%/*}_${TARGET#*/}_DEVICE_$DEVICE=y" .config || { echo "$DEVICE is not selected after defconfig" >&2; exit 1; }
 O=bin/targets/$TARGET
-# the module feed must hold only modules built for this kernel
-rm -rf $O/packages $O/kmods $O/*$DEVICE*
+# the feed must hold only what this build made, and its modules only ones
+# built for this kernel (make packs again any package it finds missing)
+rm -rf $O/packages $O/kmods $O/*$DEVICE* bin/packages
 say "building (log: $W/build.log)"
 # a module that fails to build does not stop the image, as on OpenWrt's servers
 make -j"$(nproc)" IGNORE_ERRORS=m >build.log 2>&1 || { tail -40 build.log; echo "the build failed; see $W/build.log" >&2; exit 1; }
 
-# 6. collect: the images, and the target's feed with every module
+# 6. collect: the images, the target's feed with every module, and the
+# other packages' feeds
 rm -rf "$OUT"
 mkdir -p "$OUT"
 cp $O/*$DEVICE* "$OUT/"
-for idx in $(find $O -name packages.adb); do
+for idx in $(find $O bin/packages -name packages.adb); do
 	d=$(dirname "$idx")
-	rel=${d#$O/}
+	case $d in
+	$O/*) rel=${d#$O/} ;;
+	*) rel=${d#bin/packages/} ;;
+	esac
 	mkdir -p "$OUT/feed/$rel"
 	cp "$d"/*.apk "$d/packages.adb" "$OUT/feed/$rel/"
 done

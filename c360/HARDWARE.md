@@ -127,6 +127,29 @@ Uniphy, connected over USXGMII:
   `tpm_tis_spi`), as `/dev/tpm0` and `/dev/tpmrm0`; it is the kernel's
   hardware random source.
   - Arista's U-Boot doesn't send it `TPM2_Startup`, so the kernel does, after
-    "A TPM error (256)… starting up the TPM manually": harmless.
+    "A TPM error (256)… starting up the TPM manually": harmless. Nor does it
+    measure anything: the PCRs all read zero after boot.
+  - **The factory identity**, which Arista provisions in every unit, in the
+    TCG IDevID layout:
+
+    | NV index | certificate | its key (persistent handle) |
+    |---|---|---|
+    | `0x01C90000` | RSA 2048 | `0x81020000`: signing and decryption, no fixed scheme |
+    | `0x01C90001` | ECC P-256 | `0x81020001`: signing, no fixed scheme |
+    | `0x01C90011` | ECC P-256 | `0x81020011`: restricted signing (attestation) |
+    | | | `0x81030000`: restricted decryption (a storage parent) |
+
+    - Subject `O=ARISTA, CN=<MAC>, description=C-360 access point,
+      serialNumber=<MAC>`, issued by Arista's "WiFi-TPM-Authority" CA and
+      valid for about ten years.
+    - Infineon's endorsement-key certificates are at `0x01C00002` (RSA) and
+      `0x01C0000A` (ECC).
+    - The keys need no password, and the owner hierarchy has none.
+  - **strongSwan's TPM plugin** offered no signature scheme for a key without
+    a fixed one, as the identity keys are, so IKEv2 couldn't sign with them
+    ("no common hash algorithm found to create signature").
+    `patches/feeds/packages/0001-strongswan-tpm-plugin.patch` fixes that.
+    - The SLB 9670 reports FIPS 140-2 mode (`TPM2_PT_MODES`), so its RSA-PSS
+      salt is the hash's length; strongSwan reads the mode from the TPM.
 - **USB 3.0, Type-A:** `usb_0`, with one port and no hub. `usb_1` is unused,
   as in Arista's own device tree.
