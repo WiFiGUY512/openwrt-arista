@@ -11,8 +11,12 @@ and a USB 3.0 port. Details in [HARDWARE.md](HARDWARE.md); installing in
 - **All four radios.** radio0 (5 GHz) and radio1 (2.4 GHz) on the IPQ8074,
   radio3 (6 GHz) on the first QCN9074. radio2, the second QCN9074, is the scan
   radio and serves no clients (below).
-- **Ethernet:** eth0, the 2.5 GbE PoE uplink, and eth1, with MACs and radio
-  calibration read from the unit's own ART partition.
+- **Ethernet: two 10 GbE ports** (Aquantia AQR113C: 10G, 5G, 2.5G, 1G and
+  100M): eth0, the PoE uplink (Ethernet 1), and eth1 (Ethernet 2). MACs and
+  radio calibration are read from the unit's own ART partition. **In
+  testing:** so far eth0 has run in SGMII mode, capped at 2.5 Gb/s, and eth1
+  has not passed traffic. The fix, USXGMII on both (as Arista's own device
+  tree has it), is being tested.
 - **Front-panel LEDs:** power, the three Wi-Fi bands, and both Ethernet ports
   in steady link-speed colours.
 - **Bluetooth LE:** the nRF52833 runs Arista's own firmware unchanged (a Zephyr

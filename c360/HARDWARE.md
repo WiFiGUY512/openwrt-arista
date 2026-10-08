@@ -73,10 +73,21 @@ The IPQ8074's two radios share one calibration area. Each area is 0x20000 bytes.
 
 ## Ethernet
 
-- **eth0:** the 2.5 GbE port with PoE in (the uplink). Datapath `dp5`, with an
-  Aquantia PHY whose firmware is in `0:ETHPHYFW`.
-- **eth1:** the second port (`dp6`).
-- **MACs** come from `0:ART`. eth0's is at offset 0x0, the one U-Boot uses.
+Two 10 GbE ports. Each has its own Aquantia AQR113C PHY (10GBASE-T, down to
+5G, 2.5G, 1G and 100M) and its own Uniphy, connected over USXGMII:
+
+| Port | Panel | PoE | Switch port | Uniphy | MDIO | MAC (ART) |
+|---|---|---|---|---|---|---|
+| eth0 | Ethernet 1 | in | 5 (`dp5_syn`) | 1 | 0x08 | 0x0 |
+| eth1 | Ethernet 2 | | 6 (`dp6_syn`) | 2 | 0x00 | 0x6 |
+
+- **The PHY firmware:** Arista's U-Boot loads it into both PHYs at boot,
+  from `0:ETHPHYFW` (`v5.5.6 Marvell Standard USX-All`). Each PHY then
+  reports its temperature, which only the firmware provides.
+- **The switch's MAC modes** must be USXGMII on Uniphy 1 and 2
+  (`switch_mac_mode1`/`2` = `MAC_MODE_USXGMII`), as in Arista's own device
+  tree. Unset, port 5 falls back to SGMII on Uniphy 0, which caps eth0 at
+  2.5G, and Uniphy 2 is never started.
 
 ## Bluetooth LE: Nordic nRF52833
 
