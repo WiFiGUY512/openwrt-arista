@@ -55,7 +55,9 @@ return view.extend({
 			].map(function(v) { return E('td', { 'class': 'td' }, v); })));
 		});
 
-		var bySsid = this.count(list, function(c) { return c.ssid || _('(not associated)'); });
+		var bySsid = this.count(list, function(c) {
+			return c.bssid ? (c.ssid || _('(a network not surveyed)')) : _('(not connected)');
+		});
 		var byChan = this.count(list, function(c) {
 			return c.freq ? common.bands[common.bandOf(c.freq)] + ' ' + common.channel(c.freq) : '-';
 		});
