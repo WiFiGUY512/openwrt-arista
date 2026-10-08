@@ -159,3 +159,22 @@ Uniphy, connected over USXGMII:
   leaves no cpufreq and the cores at 800 MHz.
 - **USB 3.0, Type-A:** `usb_0`, with one port and no hub. `usb_1` is unused,
   as in Arista's own device tree.
+  - **gpio29 switches the port's VBUS:** high on, low off. Arista's device
+    tree has no VBUS control; its `/sbin/ap_power.sh` drives the pin
+    (`USB_CTRL_GPIO_PIN=29` in `/etc/poe_prof.cfg`). With the pin left alone
+    the port has no power and no device appears; driven high, a stick
+    enumerated at once (SuperSpeed). The device tree makes it a fixed
+    regulator, the USB PHY's supply.
+- **PoE class, as Arista's system reads it** (`is_at`, `is_bt`, `is_af` in
+  `/etc/poe_prof.cfg`):
+
+  | input | pins | 802.3af | 802.3at | 802.3bt |
+  |---|---|---|---|---|
+  | PoE 1 (Ethernet 1) | gpio54, gpio55, gpio56 | 1 1 1 | 1 0 1 | 0 1 0 |
+  | PoE 2 (Ethernet 2) | gpio2, gpio66, gpio27 | 1 1 1 | 1 0 1 | 0 1 0 |
+
+  - gpio64 is the DC jack: 0 when a DC supply is present.
+  - On 802.3at, Arista turns the USB port off and lowers the radios' chains
+    and transmit power. OpenWrt does neither yet.
+  - A unit on 802.3bt on both inputs read 0 1 0 on both groups, and gpio64 1
+    (no DC supply).

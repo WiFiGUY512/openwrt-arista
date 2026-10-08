@@ -253,6 +253,7 @@
  */
 &qusb_phy_0 {
 	status = "okay";
+	vdd-supply = <&reg_usb_vbus>;
 };
 
 &ssphy_0 {
@@ -898,6 +899,21 @@
 };
 
 / {
+	/*
+	 * The USB port's VBUS. Arista's system switches it with gpio29
+	 * (USB_CTRL_GPIO_PIN in its /etc/poe_prof.cfg): high on, low off, and off
+	 * on 802.3at power. Nothing here sets it otherwise, so the port had no
+	 * power and saw no device.
+	 */
+	reg_usb_vbus: regulator-usb-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	keys {
 		compatible = "gpio-keys";
 		pinctrl-0 = <&button_pins>;
