@@ -12,7 +12,7 @@ and a USB 3.0 port. Details in [HARDWARE.md](HARDWARE.md); installing in
   radio3 (6 GHz) on the first QCN9074. radio2, the second QCN9074, is the scan
   radio and serves no clients (below).
 - **Ethernet: two 10 GbE ports** (Aquantia AQR113C: 10G, 5G, 2.5G, 1G and
-  100M): eth0, the PoE uplink (Ethernet 1), and eth1 (Ethernet 2). MACs and
+  100M), both with PoE in: eth0 (Ethernet 1) and eth1 (Ethernet 2). MACs and
   radio calibration are read from the unit's own ART partition. Seen
   working:
   - eth0 at 10 Gb/s, with traffic both ways;

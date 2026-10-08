@@ -73,13 +73,14 @@ The IPQ8074's two radios share one calibration area. Each area is 0x20000 bytes.
 
 ## Ethernet
 
-Two 10 GbE ports. Each has its own Aquantia AQR113C PHY (10GBASE-T, down to
-5G, 2.5G, 1G and 100M) and its own Uniphy, connected over USXGMII:
+Two 10 GbE ports, both of which can power the unit (PoE in). Each has its own
+Aquantia AQR113C PHY (10GBASE-T, down to 5G, 2.5G, 1G and 100M) and its own
+Uniphy, connected over USXGMII:
 
 | Port | Panel | PoE | Switch port | Uniphy | MDIO | MAC (ART) |
 |---|---|---|---|---|---|---|
 | eth0 | Ethernet 1 | in | 5 (`dp5_syn`) | 1 | 0x08 | 0x0 |
-| eth1 | Ethernet 2 | in (seen once; to be confirmed) | 6 (`dp6_syn`) | 2 | 0x00 | 0x6 |
+| eth1 | Ethernet 2 | in | 6 (`dp6_syn`) | 2 | 0x00 | 0x6 |
 
 - **The PHY firmware:** Arista's U-Boot loads it into both PHYs at boot,
   from `0:ETHPHYFW` (`v5.5.6 Marvell Standard USX-All`). Each PHY then
