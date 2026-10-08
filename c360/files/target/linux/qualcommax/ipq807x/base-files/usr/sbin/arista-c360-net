@@ -35,8 +35,19 @@ else
 	P1=eth0 P2=eth1
 fi
 
-bonded() { [ "$(u -q get network.bond0.proto)" = bonding ]; }
-uplink() { if bonded; then echo bond-bond0; else echo $P1; fi; }
+# The bond is netifd's own bonding device, bond0 (section c360bond): netifd
+# sets its mode as it creates it. The older proto-bonding interface (device
+# bond-bond0) could come up in balance-rr: a VLAN of it in a bridge raised the
+# bond before the protocol script set 802.3ad (seen on a unit at boot).
+native_bonded() { [ "$(u -q get network.c360bond.type)" = bonding ]; }
+legacy_bonded() { [ "$(u -q get network.bond0.proto)" = bonding ]; }
+bonded() { native_bonded || legacy_bonded; }
+uplink() {
+	if native_bonded; then echo bond0
+	elif legacy_bonded; then echo bond-bond0
+	else echo $P1
+	fi
+}
 
 # the bridge device section with the given name, if any
 bridge_sec() {
@@ -116,6 +127,9 @@ mgmt_iface() { # the interface the AP is managed through: the one with a gateway
 # holds, and bounce once any that still has no link after 15 s.
 relink() {
 	local p n
+	# a bond's ports must stay down until the bond takes them: the kernel will
+	# not enslave a port that is up
+	bonded && return 0
 	for p in $P1 $P2; do
 		[ -e /sys/class/net/$p ] || continue
 		[ "$(ubus call network.device status "{\"name\":\"$p\"}" 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null)" = true ] || continue
@@ -171,7 +185,7 @@ apply() {
 status() {
 	echo "Ethernet 1: $P1, Ethernet 2: $P2"
 	if bonded; then
-		echo "uplink: bond-bond0 (LACP: $P1 + $P2)"
+		echo "uplink: $(uplink) (LACP: $P1 + $P2)"
 	else
 		echo "uplink: $P1"
 	fi
@@ -256,23 +270,37 @@ port2)
 bond)
 	case "$2" in
 	on)
-		bonded && { echo "already bonded"; exit 0; }
-		detach_port2
-		u set network.bond0=interface
-		u set network.bond0.proto=bonding
-		u add_list network.bond0.slaves=$P1
-		u add_list network.bond0.slaves=$P2
-		u set network.bond0.bonding_policy=802.3ad
-		u set network.bond0.lacp_rate=fast
-		u set network.bond0.xmit_hash_policy=layer3+4
-		u set network.bond0.link_monitoring=mii
-		u set network.bond0.miimon=100
-		from=$P1 to=bond-bond0
+		native_bonded && { echo "already bonded"; exit 0; }
+		if legacy_bonded; then
+			# the older proto-bonding interface: replace it with the device
+			u delete network.bond0
+			from=bond-bond0
+		else
+			detach_port2
+			from=$P1
+		fi
+		u set network.c360bond=device
+		u set network.c360bond.type=bonding
+		u set network.c360bond.name=bond0
+		u add_list network.c360bond.ports=$P1
+		u add_list network.c360bond.ports=$P2
+		u set network.c360bond.policy=802.3ad
+		u set network.c360bond.lacp_rate=fast
+		u set network.c360bond.xmit_hash_policy=layer3+4
+		u set network.c360bond.monitor_mode=mii
+		u set network.c360bond.monitor_interval=100
+		to=bond0
 		;;
 	off)
 		bonded || { echo "not bonded"; exit 0; }
-		u delete network.bond0
-		from=bond-bond0 to=$P1
+		if native_bonded; then
+			u delete network.c360bond
+			from=bond0
+		else
+			u delete network.bond0
+			from=bond-bond0
+		fi
+		to=$P1
 		;;
 	*)
 		die "bond on|off"

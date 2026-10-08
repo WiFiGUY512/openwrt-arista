@@ -1,0 +1,5 @@
+# Wi-Fi restarts set each radio's transmit power again: apply the C-360's PoE
+# power caps once more when a wireless interface appears.
+[ "$ACTION" = add ] && [ "$DEVTYPE" = wlan ] || exit 0
+[ -x /usr/sbin/arista-c360-power ] || exit 0
+/usr/sbin/arista-c360-power radios

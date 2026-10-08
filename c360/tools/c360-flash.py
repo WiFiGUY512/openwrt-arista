@@ -12,7 +12,9 @@ off or about to be power-cycled. Then, per unit:
      stops: Arista's boot script saves the U-Boot environment, which is
      harmless but means the AP must be power-cycled and the run repeated.
   2. At IPQ807x# it sends only these, each after the prompt is back, and
-     checks each result: usb start, fatls, fatload of the RAM installer,
+     checks each result: two register writes that power the USB port (gpio29,
+     which Arista's U-Boot leaves off), usb start, usb storage, fatls, fatload
+     of the RAM installer,
      setenv fdt_high and bootargs (RAM only, with panic=0), bootm. It never
      sends saveenv; send() refuses anything containing it.
   3. In the RAM installer it checks it is a C-360 running from RAM, then runs
@@ -58,7 +60,13 @@ SHELL = re.compile(r"root@[\w.-]+:[^\n#]*#\s*$")
 CMDLINE = re.compile(r"Kernel command line: ([^\r\n]*)")
 RESULT = re.compile(r"C360-INSTALL-RESULT: (OK|FAILED)([^\r\n]*)")
 
-UBOOT_ALLOWED = ("usb start", "fatls usb 0:1 c360", "fatload usb 0:1 0xA0000000 c360/initramfs.itb",
+# Arista's U-Boot leaves the USB port unpowered: its VBUS is gpio29, which
+# Arista's system switches. Drive it high first: GPIO_IN_OUT(29) out = 1, then
+# GPIO_CFG(29) output enable (TLMM at 0x01000000, 0x1000 per pin).
+USB_POWER = ("mw.l 0x0101D004 0x2", "mw.l 0x0101D000 0x201")
+
+UBOOT_ALLOWED = USB_POWER + ("usb start", "usb storage", "fatls usb 0:1 c360",
+                 "fatload usb 0:1 0xA0000000 c360/initramfs.itb",
                  "setenv fdt_high 0x4A3E0000",
                  "setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat",
                  "bootm 0xA0000000#config@1", "\x03")
@@ -174,9 +182,11 @@ def stop_uboot(c):
 
 
 def boot_installer(c):
-    out = uboot(c, "usb start", 60)
-    m = re.search(r"(\d+) Storage Device\(s\) found", out)
-    if not m or int(m.group(1)) < 1:
+    for cmd in USB_POWER:
+        uboot(c, cmd, 10)
+    uboot(c, "usb start", 60)
+    out = uboot(c, "usb storage", 30)
+    if not re.search(r"Device 0:", out):
         raise Stop("U-Boot found no USB storage; is the stick in the AP's USB port?")
     out = uboot(c, "fatls usb 0:1 c360", 30)
     sizes = dict((n, int(s)) for s, n in re.findall(r"^\s*(\d+)\s+(\S+)\s*$", out, re.M))

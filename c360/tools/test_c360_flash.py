@@ -31,6 +31,8 @@ class FakeC360:
 
     def __init__(self, board="arista,c360", install_result="OK", stick=True, key_window=2.0):
         self.board, self.install_result, self.stick, self.key_window = board, install_result, stick, key_window
+        # as on a unit: the port has no power until gpio29 is driven high
+        self.vbus = {"out": False, "oe": False}
         self.q = []                 # [due, bytes]
         self.sent = []              # everything written to the device
         self.line = ""
@@ -117,9 +119,16 @@ class FakeC360:
         return len(data)
 
     def uboot_cmd(self, cmd):
+        if cmd == "mw.l 0x0101D004 0x2":
+            self.vbus["out"] = True
+        elif cmd == "mw.l 0x0101D000 0x201":
+            self.vbus["oe"] = True
+        seen = self.stick and self.vbus["out"] and self.vbus["oe"]
         out = {
-            "usb start": "starting USB...\r\nUSB0:   scanning bus 0 for devices... 2 USB Device(s) found\r\n"
-                         "       scanning usb for storage devices... %d Storage Device(s) found\r\n" % (1 if self.stick else 0),
+            "usb start": "starting USB...\r\nUSB0:   scanning bus 0 for devices... %d USB Device(s) found\r\n"
+                         % (2 if seen else 1),
+            "usb storage": ("  Device 0: Vendor:          Rev: PMAP Prod: USB DISK 3.0\r\n"
+                            "            Type: Removable Hard Disk\r\n") if seen else "No storage devices, perhaps not 'usb start'ed..?\r\n",
             "fatls usb 0:1 c360": "   21455528   initramfs.itb\r\n   19660800   factory.ubi\r\n"
                                   "        333   sha256sums\r\n\r\n3 file(s), 0 dir(s)\r\n",
             "fatload usb 0:1 0xA0000000 c360/initramfs.itb": "reading c360/initramfs.itb\r\n"

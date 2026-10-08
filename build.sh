@@ -110,8 +110,10 @@ say "$MODEL_NAME on OpenWrt $(git log -1 --format='%h %cd %s' --date=short)"
 # 2. patches to OpenWrt's own files
 apply_patches . "$MODEL_DIR"/patches/openwrt/*.patch
 
-# 3. the model's own files, with their modes
-cp -r "$MODEL_DIR/files/." .
+# 3. the model's own files, with their modes, and their times: OpenWrt's
+# kernel stamp hashes the times of target/linux files, so a fresh time on an
+# unchanged file would rebuild the kernel and every module
+cp -rp "$MODEL_DIR/files/." .
 fix_modes
 
 # 4. the feeds, at their pinned commits, and the model's additions to them

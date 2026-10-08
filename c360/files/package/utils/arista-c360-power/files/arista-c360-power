@@ -1,0 +1,148 @@
+#!/bin/sh
+# arista-c360-power: the Arista C-360's PoE power policy, as Arista's own
+# system applies it (/sbin/ap_power.sh, /etc/poe_prof.cfg).
+#
+# The PoE controller reports the class each input negotiated on GPIOs: PoE 1
+# (Ethernet 1) on gpio54/55/56, PoE 2 (Ethernet 2) on gpio2/66/27, reading
+# 1 1 1 for 802.3af, 1 0 1 for 802.3at, 0 1 0 for 802.3bt. gpio64 is 0 when a
+# DC supply is plugged in. A DC supply or 802.3bt on either input is full
+# power. On 802.3at (or af) alone the USB port is turned off and the serving
+# radios' transmit power is capped (Arista's values: 15 dBm at 2.4 GHz, 18 dBm
+# at 5 and 6 GHz). The scan radio is left alone.
+#
+#	arista-c360-power status	what the inputs read, and what is applied
+#	arista-c360-power apply		read the inputs, apply the policy
+#	arista-c360-power radios	apply the radio caps again (after Wi-Fi restarts)
+
+STATE=/var/run/arista-c360-power
+USB=8af8800.usb
+USBDRV=/sys/bus/platform/drivers/dwc3-qcom
+
+log() { logger -t arista-c360-power "$*"; }
+
+opt() { uci -q get arista-c360-power.main.$1 || echo "$2"; }
+
+tlmm_base() {
+	local c
+	for c in /sys/class/gpio/gpiochip*; do
+		[ "$(cat $c/label 2>/dev/null)" = 1000000.pinctrl ] && { cat $c/base; return; }
+	done
+}
+
+pin() { # pin <tlmm gpio>: its level, as an input
+	local n=$(( $(tlmm_base) + $1 ))
+	if [ ! -e /sys/class/gpio/gpio$n ]; then
+		echo $n > /sys/class/gpio/export 2>/dev/null
+		echo in > /sys/class/gpio/gpio$n/direction 2>/dev/null
+	fi
+	cat /sys/class/gpio/gpio$n/value 2>/dev/null
+}
+
+class() {
+	case "$1$2$3" in
+	111) echo 802.3af ;;
+	101) echo 802.3at ;;
+	010) echo 802.3bt ;;
+	*) echo none ;;
+	esac
+}
+
+read_inputs() {
+	POE1=$(class $(pin 54) $(pin 55) $(pin 56))
+	POE2=$(class $(pin 2) $(pin 66) $(pin 27))
+	DC=0
+	[ "$(pin 64)" = 0 ] && DC=1
+	if [ $DC = 1 ] || [ $POE1 = 802.3bt ] || [ $POE2 = 802.3bt ]; then
+		LEVEL=full
+	elif [ $POE1 != none ] || [ $POE2 != none ]; then
+		LEVEL=limited
+	else
+		LEVEL=full    # nothing readable: never degrade on a guess
+	fi
+	# test hook: act as on another supply (C360_POWER_LEVEL=limited|full)
+	[ -n "$C360_POWER_LEVEL" ] && LEVEL=$C360_POWER_LEVEL
+}
+
+usb_set() { # on|off
+	local bound=0
+	[ -e $USBDRV/$USB ] && bound=1
+	if [ $1 = off ] && [ $bound = 1 ]; then
+		echo $USB > $USBDRV/unbind && log "USB port off"
+	elif [ $1 = on ] && [ $bound = 0 ]; then
+		echo $USB > $USBDRV/bind && log "USB port on"
+	fi
+}
+
+band_cap() { # band_cap <phy>: the cap in dBm for the phy's band
+	local info=$(iw phy $1 info 2>/dev/null)
+	if echo "$info" | grep -q "Band 4:"; then opt txpower_6g 18
+	elif echo "$info" | grep -q "Band 2:"; then opt txpower_5g 18
+	else opt txpower_2g 15
+	fi
+}
+
+# The caps, on every serving radio; a lower txpower set in uci is kept.
+# mac80211.sh sets each radio's power again when Wi-Fi restarts, so this runs
+# again then (hotplug).
+radios_apply() {
+	local level=$(cat $STATE.level 2>/dev/null || echo full)
+	local scan=$(ubus call airscan status 2>/dev/null | jsonfilter -e '@.section' 2>/dev/null)
+	local sec phy cap user
+	rm -f $STATE.caps.new
+	for sec in $(uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"); do
+		[ "$sec" = "$scan" ] && continue
+		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
+		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
+		user=$(uci -q get wireless.$sec.txpower)
+		if [ $level = limited ] && [ "$(opt radios 1)" = 1 ]; then
+			cap=$(band_cap $phy)
+			[ -n "$user" ] && [ "$user" -le "$cap" ] 2>/dev/null && continue
+			iw phy $phy set txpower limit $((cap * 100)) && echo "$sec $phy $cap" >> $STATE.caps.new
+		elif grep -q "^$sec " $STATE.caps 2>/dev/null; then
+			# was capped: back to what the config says
+			if [ -n "$user" ]; then iw phy $phy set txpower fixed $((user * 100))
+			else iw phy $phy set txpower auto
+			fi
+		fi
+	done
+	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
+}
+
+apply() {
+	read_inputs
+	echo $LEVEL > $STATE.level
+	if [ "$(opt enabled 1)" != 1 ]; then
+		usb_set on
+		echo full > $STATE.level
+		radios_apply
+		log "disabled: full power regardless (PoE 1 $POE1, PoE 2 $POE2, DC $DC)"
+		return
+	fi
+	log "power: $LEVEL (PoE 1 $POE1, PoE 2 $POE2, DC $DC)"
+	if [ $LEVEL = limited ] && [ "$(opt usb 1)" = 1 ]; then usb_set off; else usb_set on; fi
+	radios_apply
+	{
+		echo "level=$LEVEL"
+		echo "poe1=$POE1"
+		echo "poe2=$POE2"
+		echo "dc=$DC"
+	} > $STATE
+}
+
+status() {
+	read_inputs
+	echo "PoE 1 (Ethernet 1): $POE1"
+	echo "PoE 2 (Ethernet 2): $POE2"
+	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
+	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
+	echo "USB port: $([ -e $USBDRV/$USB ] && echo on || echo off)"
+	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
+	return 0
+}
+
+case "$1" in
+apply) apply ;;
+radios) radios_apply ;;
+status|"") status ;;
+*) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

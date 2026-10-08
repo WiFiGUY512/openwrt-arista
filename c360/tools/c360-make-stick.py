@@ -39,7 +39,10 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ubi_extract  # noqa: E402  (bundled beside this script)
 
-UBOOT_LINE = ("usb start; fatload usb 0:1 0xA0000000 c360/initramfs.itb && "
+# Arista's U-Boot leaves the USB port unpowered: the two writes drive its VBUS
+# pin, gpio29, high (output value, then output enable), as Arista's system does
+UBOOT_LINE = ("mw.l 0x0101D004 0x2; mw.l 0x0101D000 0x201; "
+              "usb start; fatload usb 0:1 0xA0000000 c360/initramfs.itb && "
               "setenv fdt_high 0x4A3E0000 && "
               "setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat && "
               "bootm 0xA0000000#config@1")

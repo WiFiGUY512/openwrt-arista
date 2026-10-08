@@ -42,12 +42,17 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
     `port2 vxlan`, and, with Ethernet 2 unplugged so nothing could loop,
     `port2 vlan` and `port2 trunk`. A change left unconfirmed was undone by
     itself.
+  - The bond is netifd's own bonding device (`bond0`), which sets 802.3ad as
+    it creates the bond. The older proto-bonding interface could come up in
+    balance-rr at boot, a VLAN of it in a bridge having raised the bond first
+    (seen on a unit); `bond on` replaces such a config. Tested across a
+    sysupgrade: 802.3ad, in one aggregator with the switch, at boot.
   - A port the bond releases stays down on OpenWrt 25.12 (the bonding driver
     closes it after netifd has raised it); the tool raises it again.
-- **VXLAN:** netifd's `vxlan` protocol and `kmod-vxlan` are in the image
-  *(built, not yet on a unit)*. The kernel's VXLAN, from this build's
-  module, was tested on a unit: VNI 42 between two network namespaces, with
-  a ping across the overlay.
+- **VXLAN:** netifd's `vxlan` protocol and `kmod-vxlan` are in the image.
+  Tested on a unit: a netifd VXLAN tunnel bridged to Ethernet 2
+  (`arista-c360-net port2 vxlan`), and the kernel's VXLAN between two network
+  namespaces with a ping across the overlay.
 - **Front-panel LEDs:** power, the three Wi-Fi bands, and both Ethernet
   ports in steady link-speed colours: green for a multi-gig link (2.5, 5 or
   10G), orange for 1G or slower. Green at 5 and 10G is *(built, not yet on a
@@ -63,8 +68,12 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - a spectrum survey (ath11k spectral scan; per 20 MHz, the share of samples
     above -82 dBm);
   - a survey of every network on every 2.4, 5 and 6 GHz channel;
-  - a survey of the clients on the channels that have networks;
+  - a survey of the clients on the channels that have networks, with those
+    that connect to none (probing) counted apart, with their probe requests;
   - a Bluetooth LE survey, on the nRF52833.
+
+  It never idles: between the periodic network surveys and spectrum sweeps
+  it surveys clients.
 
   It detects:
   - wired rogues: a network relaying the AP's own wired ARP probes that isn't
@@ -76,17 +85,30 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   The wired probes go out on each of the AP's L2 domains (bridges, VLANs, a
   bond, never the bond's member ports), read again every round, so the probes
   follow network changes.
-  - Results: `ubus call airscan status|spectrum|bss|clients|ble`, and JSON in
-    `/tmp/airscan`.
-  - Settings: `/etc/config/airscan`. List your own SSIDs in `trusted_ssid`,
-    or your other APs show up as wired rogues.
+  - **In LuCI, Status > Air Scan** (`luci-app-airscan`): the spectrum (each
+    channel's occupancy, the power density as a spectrum analyser shows it,
+    and one channel's FFT), the channels and networks with the alerts, the
+    clients (the probing ones apart), Bluetooth LE devices, and the settings.
+    Seen on a unit.
+  - Results also from `ubus call airscan status|spectrum|bss|clients|ble|events`,
+    and JSON in `/tmp/airscan`.
+  - Settings: `/etc/config/airscan`, or the LuCI page. List your own SSIDs in
+    `trusted_ssid`, or your other APs show up as wired rogues.
+- **Arista's PoE power policy** (`arista-c360-power`): on 802.3at (or af)
+  power alone, with no DC supply or 802.3bt on the other input, the USB port
+  is turned off and the serving radios' transmit power capped (15 dBm at
+  2.4 GHz, 18 dBm at 5 and 6 GHz), as Arista's own system does. The PoE class
+  comes from the PoE controller's pins (HARDWARE.md). `arista-c360-power
+  status` shows the inputs and what is applied; `/etc/config/arista-c360-power`
+  turns it off or changes the caps. Tested on a unit on 802.3bt (full power),
+  and the 802.3at path with a test override. Not done: Arista also drops the
+  2.4 GHz radio from 4 chains to 2.
 - **TPM 2.0:** an Infineon SLB 9670 (firmware 7.85) on SPI (`tpm_tis_spi`).
   `/dev/tpm0` and the resource manager `/dev/tpmrm0` work, and the TPM is the
   kernel's hardware random source (`tpm-rng`).
   - `tpm2-tools` 5.8, on `tpm2-tss` 4.2, is in the image (OpenWrt 25.12
     packages neither): random numbers, keys, signing and verifying, sealing.
-    Tested on a unit as packages from the same recipes; the image that
-    carries them is *(built, not yet on a unit)*.
+    Tested on a unit.
   - Each unit's factory identity, Arista's certificates in the TPM with their
     keys, reads out with `tpm2_nvread` (HARDWARE.md).
 - **IPsec with the unit's TPM identity:** strongSwan with its TPM plugin
@@ -97,6 +119,10 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 - **CPU frequency scaling,** 1.0 to 2.2 GHz (`cpufreq-dt`, `schedutil`).
   Before, with the device tree's QSDK compatibles, the cores stayed at
   800 MHz.
+- **The USB 3.0 port,** powered by gpio29 (a regulator in the device tree;
+  Arista's system switches the same pin). Seen on a unit: a stick enumerates
+  at boot (SuperSpeed). Arista's U-Boot leaves the port off, so the stick
+  installer powers it first (INSTALL.md).
 - **The reset button** (the pinhole): a short press reboots, as on any
   OpenWrt device, and a press of 5 s or more resets the configuration. The
   reboot was tested on a unit.
@@ -109,11 +135,6 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   zero after boot), so the TPM can't attest to what booted.
 - **Zigbee and Thread.** The nRF52833's radio can do 802.15.4, but Arista's
   firmware is Bluetooth LE only, and signed.
-- **The USB port sees no device yet.** The controller and its root hubs come
-  up, but a stick plugged in raises no event at all: the port appears to get
-  no power under OpenWrt. Arista's device tree has no VBUS control, so its
-  bootloader or system must switch it. Under investigation. (U-Boot's own
-  `usb start` reads the stick, which is how the installer boots.)
 - **The USB stick installer has not been run on a unit yet** (INSTALL.md,
   section A). The manual install (section B) has.
 

@@ -70,6 +70,13 @@ Power the AP on (or power-cycle it) when it says so. It stops U-Boot, boots the
 RAM installer from the stick (nothing in the U-Boot environment is saved),
 and runs `arista-c360-install`, which:
 
+> Arista's U-Boot leaves the USB port unpowered: its VBUS is gpio29, which
+> Arista's system switches. So the first two U-Boot commands, here and in the
+> stick's README line, drive that pin high (`mw.l 0x0101D004 0x2`,
+> `mw.l 0x0101D000 0x201`), before `usb start`. Seen on a unit: with them,
+> U-Boot finds the stick and loads an image from it; without them, it finds
+> no storage.
+
 1. **checks**: a C-360; running from RAM; the expected flash layout;
    `factory.ubi` against its checksum; slot 1 holds Arista's root filesystem
    with the five Wi-Fi firmware and board files the first boot copies, and

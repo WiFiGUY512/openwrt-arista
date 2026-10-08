@@ -551,7 +551,7 @@ function on_frame(pkt) {
 	if (length(pkt) < rlen + 24) return;
 	let fc = struct.unpack("<H", pkt, rlen)[0];
 	let ftype = (fc >> 2) & 3, sub = (fc >> 4) & 15, to_ds = !!(fc & 0x100), from_ds = !!(fc & 0x200);
-	let sta = null, bssid = null, probe = null, tx_is_sta = false;
+	let sta = null, bssid = null, probe = null, tx_is_sta = false, probe_req = false;
 	if (cap.freq && ftype == 0 && sub == 8)                // beacon: this BSS was audible
 		cap.heard[mac_at(pkt, rlen + 16)] = true;
 	if (cap.freq && ftype == 2 && from_ds && (!to_ds || length(pkt) >= rlen + 30)) {
@@ -578,7 +578,7 @@ function on_frame(pkt) {
 	}
 	if (ftype == 0) {
 		if (sub == 4) {                                   // probe request
-			sta = mac_at(pkt, rlen + 10); tx_is_sta = true;
+			sta = mac_at(pkt, rlen + 10); tx_is_sta = true; probe_req = true;
 			let ie = rlen + 24;
 			if (length(pkt) >= ie + 2 && ord(pkt, ie) == 0) {
 				let l = ord(pkt, ie + 1);
@@ -607,6 +607,9 @@ function on_frame(pkt) {
 		// ath11k fills radiotap signal with its default noise floor (-95) on this radio: not a measurement
 		if (s != null && s < 0 && s != -95) c.signal = c.signal == null ? s : int(0.7 * c.signal + 0.3 * s - 0.5);
 	}
+	// every probe request counts, wildcard ones too (most phones name no SSID):
+	// a client that only probes is looking for a network, connected to none
+	if (probe_req) { c.probe_reqs = (c.probe_reqs || 0) + 1; c.last_probe = time(); }
 	if (probe && index(c.probes, probe) < 0 && length(c.probes) < 10) push(c.probes, probe);
 }
 
@@ -652,7 +655,9 @@ function clients_report() {
 	let bssids = {};
 	for (let b in (results.bss?.list || [])) bssids[b.bssid] = b.ssid;
 	for (let c in list) if (c.bssid && bssids[c.bssid] != null) c.ssid = bssids[c.bssid];
-	return { time: time(), phy: radio.phy, count: length(list), list: sort(list, (a, b) => b.last_seen - a.last_seen) };
+	return { time: time(), phy: radio.phy, count: length(list),
+		probing: length(filter(list, (c) => !c.bssid)),
+		list: sort(list, (a, b) => b.last_seen - a.last_seen) };
 }
 
 // One dwell on the next channel; the round ends after every channel was visited.
@@ -834,8 +839,13 @@ function by_band(sp, band) {
 	return { ...sp, windows: filter(sp.windows, (w) => band_of(w.center) == band) };
 }
 
+// rpcd adds ubus_rpc_session to the arguments of every call it forwards (from
+// LuCI), and a ucode ubus method rejects an argument it does not declare
+const SESSION = { ubus_rpc_session: "" };
+
 const methods = {
 	status: {
+		args: SESSION,
 		call: () => ({
 			board: board_name(), radio: radio.pci, phy: radio.phy, section: radio.section,
 			spectral_supported: radio.spectral, state,
@@ -847,20 +857,23 @@ const methods = {
 		}),
 	},
 	spectrum: {
-		args: { band: "" },
+		args: { ...SESSION, band: "" },
 		call: (req) => by_band(results.spectrum, req.args.band) || { pending: true },
 	},
 	bss: {
+		args: SESSION,
 		call: () => results.bss || { pending: true },
 	},
 	clients: {
+		args: SESSION,
 		call: () => clients_report(),
 	},
 	events: {
+		args: SESSION,
 		call: () => ({ time: time(), list: events }),
 	},
 	sweep: {
-		args: { band: "" },
+		args: { ...SESSION, band: "" },
 		call: (req) => {
 			let b = req.args.band || "";
 			if (b && !(b in [ "2g", "5g", "6g" ])) return { error: "band must be 2g, 5g or 6g" };
@@ -869,12 +882,15 @@ const methods = {
 		},
 	},
 	scan: {
+		args: SESSION,
 		call: () => { pending.bss = true; return { queued: "bss" }; },
 	},
 	ble: {
+		args: SESSION,
 		call: () => ble_report(),
 	},
 	ble_scan: {
+		args: SESSION,
 		call: () => {
 			if (ble.running) return { queued: false, running: true };
 			ble_schedule(10);

@@ -159,6 +159,10 @@ Uniphy, connected over USXGMII:
   leaves no cpufreq and the cores at 800 MHz.
 - **USB 3.0, Type-A:** `usb_0`, with one port and no hub. `usb_1` is unused,
   as in Arista's own device tree.
+  - Enabled on a unit (`usb_1`, `qusb_phy_1`, `ssphy_1`, OpenWrt main), it
+    does not start: "QUSB2PHY pll lock failed", then the DWC3 core fails
+    (-EBUSY). Its PHY seems unpowered or unclocked on this board, so nothing
+    there can be reached; the nRF52833's own USB is not on it either.
   - **gpio29 switches the port's VBUS:** high on, low off. Arista's device
     tree has no VBUS control; its `/sbin/ap_power.sh` drives the pin
     (`USB_CTRL_GPIO_PIN=29` in `/etc/poe_prof.cfg`). With the pin left alone
