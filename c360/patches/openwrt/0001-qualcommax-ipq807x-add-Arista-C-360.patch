@@ -1,0 +1,39 @@
+Subject: qualcommax: ipq807x: add Arista C-360
+
+The device recipe: a FIT kernel in UBI (kernel, rootfs, rootfs_data) in NAND slot 0, and the initramfs as the installer, which reads factory.ubi from a FAT32 USB stick.
+
+diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
+index f356bbb..a3ceb24 100644
+--- a/target/linux/qualcommax/image/ipq807x.mk
++++ b/target/linux/qualcommax/image/ipq807x.mk
+@@ -564,3 +564,30 @@ define Device/zyxel_nwa210ax
+ 	IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE) | zyxel-nwa210ax-fit
+ endef
+ TARGET_DEVICES += zyxel_nwa210ax
++
++# Arista C-360 (MODEL_STRING=C-360, VENDOR_NAME=ARISTA, PLATFORM_SUB_ID=1).
++# Qualcomm IPQ8074A, 2 GiB, 32 MiB SPI NOR + 1 GiB NAND, IPQ8074 2.4/5 GHz plus
++# two QCN9074 cards (6 GHz serving radio, 2.4/5/6 GHz multifunction radio).
++# OpenWrt lives in NAND slot 0 ("ubi"); Arista's slot 1 stays as fallback and
++# as the source of the QCN9074 firmware (see arista-c360-wifi-fw). U-Boot
++# loads the "kernel" UBI volume with its own ubi commands; the vendor bootipq
++# path authenticates images, so installation sets a bootcmd (see INSTALL).
++# The initramfs is the installer (arista-c360-install), which reads factory.ubi
++# from a FAT32 USB stick: hence usb-storage, vfat and its two codepages.
++define Device/arista_c360
++	$(call Device/FitImage)
++	$(call Device/UbiFit)
++	DEVICE_VENDOR := Arista
++	DEVICE_MODEL := C-360
++	BLOCKSIZE := 256k
++	PAGESIZE := 4096
++	SOC := ipq8074
++	DEVICE_DTS := arista_c360
++	DEVICE_DTS_CONFIG := config@1
++	DEVICE_PACKAGES := ath11k-firmware-qcn9074 kmod-ath11k-pci kmod-phy-aquantia ubi-utils \
++		squashfs-tools-unsquashfs kmod-spi-gpio kmod-spi-bitbang \
++		kmod-gpio-nxp-74hc164 kmod-leds-gpio kmod-tpm-tis-spi airscan \
++		kmod-bluetooth kmod-hci-uart bluez-utils bluez-utils-extra \
++		kmod-usb-storage kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1
++endef
++TARGET_DEVICES += arista_c360

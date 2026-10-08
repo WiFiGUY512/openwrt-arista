@@ -1,0 +1,81 @@
+From: WiFiGUY512 <339406050+WiFiGUY512@users.noreply.github.com>
+Subject: [PATCH] wifi: ath11k: place PAGEABLE and type 10 segments in the fixed region
+
+QCN9074 2.9.x firmware requests a PAGEABLE (type 9, 8 MiB) segment and an
+8 KiB type 10 segment. In fixed-memory mode ath11k ignores both. On the
+Arista C-360 a firmware RAM dump shows the wlan_platform thread's code in
+a demand-paged segment, so carve both from the free tail of the reserved
+region (after the segments already placed), bounds-checked.
+
+--- a/drivers/net/wireless/ath/ath11k/qmi.c	2026-10-06 20:37:17.533807440 -0500
++++ b/drivers/net/wireless/ath/ath11k/qmi.c	2026-10-06 20:37:17.561807711 -0500
+@@ -25,6 +25,9 @@
+ 
+ #define FW_BUILD_ID_MASK "QC_IMAGE_VERSION_STRING="
+ 
++/* C-360 bring-up: undocumented 8 KiB segment type requested by QCN9074 2.9.x */
++#define ATH11K_QMI_C360_MEM_TYPE_10	10
++
+ bool ath11k_cold_boot_cal = 1;
+ EXPORT_SYMBOL(ath11k_cold_boot_cal);
+ module_param_named(cold_boot_cal, ath11k_cold_boot_cal, bool, 0644);
+@@ -2049,8 +2052,11 @@
+ 	u32 host_ddr_sz;
+ 	u32 addr;
+ 	int i, idx, ret;
++	phys_addr_t next_free = 0, pa;
++	int prev_idx;
+ 
+ 	for (i = 0, idx = 0; i < ab->qmi.mem_seg_count; i++) {
++		prev_idx = idx;
+ 		switch (ab->qmi.target_mem[i].type) {
+ 		case HOST_DDR_REGION_TYPE:
+ 			ret = of_reserved_mem_region_to_resource(dev->of_node, 0, &res);
+@@ -2135,11 +2141,47 @@
+ 			ab->qmi.target_mem[idx].type = ab->qmi.target_mem[i].type;
+ 			idx++;
+ 			break;
++		case PAGEABLE_MEM_REGION_TYPE:
++		case ATH11K_QMI_C360_MEM_TYPE_10:
++			/*
++			 * C-360 bring-up: QCN9074 2.9.x firmware also requests a
++			 * PAGEABLE segment (backing store for its demand pager) and an
++			 * 8 KiB type 10 segment. With a fixed host memory region, carve
++			 * both from the free space after the segments already placed
++			 * instead of ignoring them.
++			 */
++			if (res.flags == IORESOURCE_UNSET) {
++				ath11k_warn(ab, "qmi no reserved region for mem req type %d\n",
++					    ab->qmi.target_mem[i].type);
++				break;
++			}
++
++			pa = ALIGN(next_free, 0x1000);
++			if (pa < res.start ||
++			    pa + ab->qmi.target_mem[i].size > res.end + 1) {
++				ath11k_warn(ab, "qmi no room in reserved region for mem req type %d size %u\n",
++					    ab->qmi.target_mem[i].type,
++					    ab->qmi.target_mem[i].size);
++				break;
++			}
++
++			ab->qmi.target_mem[idx].paddr = pa;
++			ab->qmi.target_mem[idx].iaddr = NULL;
++			ab->qmi.target_mem[idx].size = ab->qmi.target_mem[i].size;
++			ab->qmi.target_mem[idx].type = ab->qmi.target_mem[i].type;
++			idx++;
++			break;
+ 		default:
+ 			ath11k_warn(ab, "qmi ignore invalid mem req type %d\n",
+ 				    ab->qmi.target_mem[i].type);
+ 			break;
+ 		}
++		if (idx > prev_idx) {
++			pa = ab->qmi.target_mem[idx - 1].paddr +
++			     ab->qmi.target_mem[idx - 1].size;
++			if (pa > next_free)
++				next_free = pa;
++		}
+ 	}
+ 	ab->qmi.mem_seg_count = idx;
+ 

@@ -1,0 +1,238 @@
+#!/bin/sh
+# arista-c360-install: install OpenWrt to NAND slot 0 of an Arista C-360, from
+# the RAM installer, with the images on a USB stick.
+#
+#	arista-c360-install [--dry-run] [--yes] [--stick DIR]
+#
+# Run it from the OpenWrt RAM installer (initramfs) booted from the stick. The
+# stick (FAT32) holds c360/factory.ubi and c360/SHA256SUMS, as made by
+# c360-make-stick. Steps, each refusing to go on if the one before failed:
+#
+#   1. Checks: a C-360; running from RAM, not from NAND; the expected flash
+#      layout; the image's checksums; and slot 1. OpenWrt always takes slot 0
+#      and always keeps slot 1, whichever of them Arista calls primary (pri):
+#      slot 1 must hold an Arista root filesystem with the Wi-Fi firmware and
+#      board files OpenWrt's first boot copies from it, and its kernel
+#      (NOR 0:HLOS_1), for the fallback. Arista may have
+#      written slot 0 itself since (it upgrades into its spare slot, and after
+#      an OpenWrt install that is slot 0), so pri=0 is only a warning.
+#   2. Backup of every flash partition to the stick, gzipped, under
+#      c360/backup-<MAC>-<time>/: each partition's checksum is taken from the
+#      flash, and the file must decompress to exactly that. The ART partition
+#      holds this unit's calibration and MACs and exists nowhere else.
+#   3. (not with --dry-run) ubiformat of slot 0 with factory.ubi, and a read
+#      back of its kernel and rootfs volumes against the checksums.
+#   4. (not with --dry-run) The U-Boot environment, written once with
+#      fw_setenv -s, and not at all when it is already right: the boot
+#      command, which boots OpenWrt from slot 0 and falls back to Arista's own
+#      boot (run ubootscript), and pri=1, so that fallback is slot 1's Arista.
+#
+# Nothing else is written: not NOR, not slot 1, not the LOGGING partition.
+# Without --yes it asks for the last four hex digits of the unit's MAC before
+# writing. The last line is C360-INSTALL-RESULT: OK ... or FAILED: ...
+
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+DRY=0 YES=0 STICK=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--dry-run) DRY=1 ;;
+	--yes) YES=1 ;;
+	--stick) STICK=$2; shift ;;
+	*) echo "usage: arista-c360-install [--dry-run] [--yes] [--stick DIR]" >&2; exit 2 ;;
+	esac
+	shift
+done
+
+OWRT_ARGS='console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat'
+OWRT_BOOT='setenv fdt_high 0x4A3E0000; setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi); ubi part ubi && ubi read 0x44000000 kernel && bootm 0x44000000#config@1'
+BOOTCMD='setenv bootargs ${owrt_args}; run owrt_boot; run ubootscript'
+
+say() { echo "c360-install: $*"; }
+fail() {
+	echo "c360-install: ERROR: $*" >&2
+	[ -n "${MNT_OURS:-}" ] && { sync; umount "$MNT_OURS" 2>/dev/null; }
+	echo "C360-INSTALL-RESULT: FAILED: $*"
+	exit 1
+}
+
+mkdir /tmp/arista-c360-install.lock 2>/dev/null || fail "another arista-c360-install is running"
+trap 'rmdir /tmp/arista-c360-install.lock 2>/dev/null' EXIT
+
+# --- 1. checks ---------------------------------------------------------------
+
+[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "arista,c360" ] || fail "this is not an Arista C-360"
+grep -q 'ubi.mtd=' /proc/cmdline && fail "running from NAND; boot the RAM installer from the stick first"
+
+# /proc/mtd: mtdN: size erasesize "name"
+mtd_dev() { grep "\"$1\"\$" /proc/mtd | cut -d: -f1; }
+mtd_size() { printf '%d' "0x$(grep "\"$1\"\$" /proc/mtd | awk '{print $2}')"; }
+# ubi_node /sys/class/ubi/ubiX_Y: its /dev node, made from sysfs if udev has
+# not made it yet (the first-boot extractor needed the same)
+ubi_node() {
+	n=/dev/$(basename "$1")
+	[ -c "$n" ] || mknod "$n" c "$(cut -d: -f1 "$1/dev")" "$(cut -d: -f2 "$1/dev")"
+	echo "$n"
+}
+for p in ubi rootfs_1 LOGGING 0:ART 0:APPSBLENV; do
+	[ -n "$(mtd_dev "$p")" ] || fail "no flash partition \"$p\": not the expected C-360 layout"
+done
+[ "$(mtd_size ubi)" = $((0x18000000)) ] || fail "slot 0 (\"ubi\") is $(mtd_size ubi) bytes, not 0x18000000"
+fw_printenv bootcmd >/dev/null 2>&1 || fail "cannot read the U-Boot environment (fw_printenv)"
+
+pri=$(fw_printenv -n pri 2>/dev/null)
+
+# Slot 1 is kept, whatever pri says, and must hold Arista's root filesystem
+# with the files OpenWrt's first boot copies from it (arista-c360-wifi-fw).
+# rootfs_1 is read-only in the device tree, so attaching it cannot write it.
+WIFI=lib/firmware/IPQ8074/WIFI_FW
+R1=$(mtd_dev rootfs_1)
+ubidetach -p /dev/$R1 >/dev/null 2>&1
+ubiattach -p /dev/$R1 -d 7 >/dev/null 2>&1 || fail "slot 1 (rootfs_1) has no UBI"
+node=
+for v in /sys/class/ubi/ubi7_*; do
+	[ "$(cat $v/name 2>/dev/null)" = ubi_rootfs ] && node=$(ubi_node $v)
+done
+S1=/tmp/c360-slot1
+rm -rf $S1
+if [ -n "$node" ] && [ "$(head -c 4 $node)" = hsqs ]; then
+	unsquashfs -n -d $S1 $node $WIFI/qcn9000/amss.bin $WIFI/qcn9000/m3.bin \
+		$WIFI/qcn9000/bdwlan.bab $WIFI/qcn9000/bdwlan.baa $WIFI/bdwlan.b290 >/dev/null 2>&1
+fi
+ubidetach -d 7 >/dev/null 2>&1
+[ -n "$node" ] || fail "slot 1 has no Arista root filesystem (no ubi_rootfs volume)"
+for f in qcn9000/amss.bin qcn9000/m3.bin qcn9000/bdwlan.bab qcn9000/bdwlan.baa bdwlan.b290; do
+	[ -s $S1/$WIFI/$f ] || fail "slot 1's Arista system has no $WIFI/$f, which OpenWrt's first boot copies from it"
+done
+# (BusyBox's tr here has no [:classes:], hence the ranges)
+fwver=$(tr -c 'A-Za-z0-9._-' '\n' <$S1/$WIFI/qcn9000/amss.bin | grep -m1 '^WLAN\.HK\.')
+rm -rf $S1
+say "C-360, running from RAM; slot 1 holds Arista, QCN9074 firmware ${fwver:-(version not found)}"
+case $fwver in
+WLAN.HK.2.5.r4*) ;;
+*) say "WARNING: the QCN9074 radios have only been proven with WLAN.HK.2.5.r4; slot 1 has ${fwver:-an unknown version}" ;;
+esac
+# The fallback also needs slot 1's Arista kernel, in NOR 0:HLOS_1: a signed
+# header (image id 0x17) with the kernel FIT after it at 0x28.
+H1=$(mtd_dev 0:HLOS_1)
+[ -n "$H1" ] || fail "no flash partition \"0:HLOS_1\" (slot 1's Arista kernel)"
+[ "$(head -c 4 /dev/$H1 | od -An -tx1 | tr -d ' \n')" = 17000000 ] &&
+[ "$(dd if=/dev/$H1 bs=8 skip=5 count=1 2>/dev/null | head -c 4 | od -An -tx1 | tr -d ' \n')" = d00dfeed ] ||
+	fail "0:HLOS_1 holds no Arista kernel, so slot 1 could not boot as the fallback"
+[ "$pri" = 1 ] || say "WARNING: Arista calls slot ${pri:-?} its primary (pri=${pri:-unset}); installing replaces what is in slot 0, perhaps Arista's newest system. Slot 1's Arista stays as the fallback, and pri is set to 1"
+
+# the stick
+MNT_OURS=
+if [ -z "$STICK" ]; then
+	for d in /dev/sd[a-z]1 /dev/sd[a-z]; do
+		[ -b "$d" ] || continue
+		mkdir -p /mnt/c360usb
+		if mount -t vfat -o rw "$d" /mnt/c360usb 2>/dev/null; then
+			if [ -f /mnt/c360usb/c360/factory.ubi ]; then
+				MNT_OURS=/mnt/c360usb STICK=/mnt/c360usb/c360
+				break
+			fi
+			umount /mnt/c360usb
+		fi
+	done
+fi
+[ -n "$STICK" ] && [ -f "$STICK/factory.ubi" ] || fail "no USB stick with c360/factory.ubi (FAT32)"
+[ -f "$STICK/SHA256SUMS" ] || fail "no c360/SHA256SUMS on the stick"
+want=$(awk '$2 == "factory.ubi" {print $1}' "$STICK/SHA256SUMS")
+have=$(sha256sum "$STICK/factory.ubi" | cut -d' ' -f1)
+[ -n "$want" ] && [ "$want" = "$have" ] || fail "factory.ubi does not match its checksum"
+say "image: factory.ubi $(wc -c <"$STICK/factory.ubi") bytes, checksum ok"
+
+# --- 2. backup ---------------------------------------------------------------
+
+mac=$(tr -d ':' </sys/class/net/eth0/address 2>/dev/null)
+[ -n "$mac" ] || mac=unknown
+BK="$STICK/backup-$mac-$(date +%Y%m%d-%H%M%S)"
+need=0
+for n in $(cut -d: -f1 /proc/mtd | grep '^mtd'); do
+	need=$((need + $(printf '%d' "0x$(grep "^$n:" /proc/mtd | awk '{print $2}')")))
+done
+# Gzipped, erased flash takes almost nothing; Arista's two systems and its
+# logs are what take room, a few hundred MiB at most.
+free=$(($(df -k "$STICK" | awk 'NR == 2 {print $4}') * 1024))
+[ $free -gt $((512 * 1048576)) ] || fail "the stick has only $((free / 1048576)) MiB free; a backup can need up to 512 MiB"
+mkdir -p "$BK" || fail "cannot write to the stick"
+say "backing up $((need / 1048576)) MiB of flash, gzipped, to ${BK#$STICK/}"
+cp /proc/mtd "$BK/proc-mtd.txt"
+fw_printenv >"$BK/u-boot-env.txt" 2>&1
+cat /proc/cmdline /tmp/sysinfo/model >"$BK/info.txt" 2>/dev/null
+for n in $(cut -d: -f1 /proc/mtd | grep '^mtd'); do
+	name=$(grep "^$n:" /proc/mtd | sed 's/.*"\(.*\)"$/\1/' | tr ':/' '__')
+	f="$BK/$n-$name.bin.gz"
+	# The flash's checksum, then a second read compressed: the file must
+	# decompress to exactly what the flash held, both times.
+	a=$(sha256sum /dev/$n | cut -d' ' -f1)
+	[ -n "$a" ] || fail "reading $n ($name) failed"
+	gzip -c </dev/$n >"$f" || fail "writing the backup of $n ($name) failed (stick full?)"
+	b=$(gunzip -c "$f" | sha256sum | cut -d' ' -f1)
+	[ "$a" = "$b" ] || fail "backup of $n ($name) does not verify (flash $a, file $b)"
+	echo "$a  $n-$name.bin" >>"$BK/SHA256SUMS"
+	say "  $n $name: ok, $(($(wc -c <"$f") / 1024)) KiB"
+done
+sync
+say "backup complete and verified: ${BK#$STICK/} (gunzip each .bin.gz to restore)"
+
+if [ $DRY = 1 ]; then
+	say "dry run: nothing written to flash or to the U-Boot environment"
+	[ -n "$MNT_OURS" ] && { sync; umount "$MNT_OURS"; }
+	echo "C360-INSTALL-RESULT: OK dry-run backup=${BK#$STICK/}"
+	exit 0
+fi
+
+if [ $YES != 1 ]; then
+	tail4=$(echo "$mac" | tail -c 5)
+	printf 'Write OpenWrt to slot 0 of this C-360 (MAC %s)? Type %s to go on: ' "$mac" "$tail4"
+	read answer
+	[ "$answer" = "$tail4" ] || fail "not confirmed; nothing was written"
+fi
+
+# --- 3. slot 0 ---------------------------------------------------------------
+
+M=$(mtd_dev ubi)
+ubidetach -p /dev/$M >/dev/null 2>&1
+say "writing factory.ubi to slot 0 (/dev/$M)"
+ubiformat /dev/$M -y -f "$STICK/factory.ubi" >/tmp/ubiformat.log 2>&1 || { tail -5 /tmp/ubiformat.log; fail "ubiformat failed"; }
+ubiattach -p /dev/$M -d 0 >/dev/null 2>&1 || fail "slot 0 does not attach after ubiformat"
+for vol in kernel rootfs; do
+	line=$(awk -v v="volume:$vol" '$2 == v {print $1, $3}' "$STICK/SHA256SUMS")
+	[ -n "$line" ] || fail "no checksum for volume $vol in SHA256SUMS"
+	sum=${line% *} size=${line#* }
+	dev=
+	for v in /sys/class/ubi/ubi0_*; do
+		[ "$(cat $v/name 2>/dev/null)" = $vol ] && dev=$(ubi_node $v)
+	done
+	[ -n "$dev" ] || fail "slot 0 has no $vol volume after ubiformat"
+	got=$(head -c "$size" "$dev" | sha256sum | cut -d' ' -f1)
+	[ "$got" = "$sum" ] || fail "slot 0 volume $vol reads back wrong"
+	say "  volume $vol: reads back identical ($size bytes)"
+done
+ubidetach -d 0 >/dev/null 2>&1
+
+# --- 4. boot command ---------------------------------------------------------
+
+# pri=1: Arista's own boot (ubootscript), the fallback, starts slot 1, the
+# Arista system the install kept, not slot 0, which is now OpenWrt.
+if [ "$(fw_printenv -n owrt_args 2>/dev/null)" = "$OWRT_ARGS" ] &&
+   [ "$(fw_printenv -n owrt_boot 2>/dev/null)" = "$OWRT_BOOT" ] &&
+   [ "$(fw_printenv -n bootcmd 2>/dev/null)" = "$BOOTCMD" ] &&
+   [ "$pri" = 1 ]; then
+	say "the U-Boot boot command is already set; the environment is not written"
+else
+	printf 'owrt_args %s\nowrt_boot %s\nbootcmd %s\npri 1\n' "$OWRT_ARGS" "$OWRT_BOOT" "$BOOTCMD" >/tmp/c360-env.txt
+	say "setting the U-Boot boot command and pri=1 (one environment write)"
+	fw_setenv -s /tmp/c360-env.txt || fail "fw_setenv failed"
+	[ "$(fw_printenv -n bootcmd)" = "$BOOTCMD" ] && [ "$(fw_printenv -n owrt_boot)" = "$OWRT_BOOT" ] &&
+		[ "$(fw_printenv -n owrt_args)" = "$OWRT_ARGS" ] && [ "$(fw_printenv -n pri)" = 1 ] ||
+		fail "the U-Boot environment does not read back as written"
+fi
+fw_printenv >"$BK/u-boot-env-after.txt" 2>&1
+
+[ -n "$MNT_OURS" ] && { sync; umount "$MNT_OURS"; }
+say "done: reboot to start OpenWrt from NAND. To boot Arista once, stop U-Boot and run ubootscript."
+echo "C360-INSTALL-RESULT: OK installed backup=${BK#$STICK/}"

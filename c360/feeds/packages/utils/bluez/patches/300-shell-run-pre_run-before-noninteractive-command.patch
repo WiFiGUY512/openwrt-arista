@@ -1,0 +1,65 @@
+From: WiFiGUY512 <339406050+WiFiGUY512@users.noreply.github.com>
+Subject: shared/shell: run the main menu's pre_run, and before non-interactive commands
+
+bt_shell_run() only ran the submenus' pre_run hooks. bt_shell_add_submenu()
+makes the first menu the main menu when none is set, so btmgmt's "mgmt"
+menu is the main menu and mgmt_menu_pre_run(), which opens the mgmt socket,
+never ran: every btmgmt command failed with "Unable to send ... cmd".
+Non-interactive mode also executed its command from bt_shell_attach(),
+before bt_shell_run(). Run the main menu's hook and the submenus' hooks
+once, before the first command, in both modes.
+
+--- a/src/shared/shell.c	2026-10-07 17:49:20.699549715 -0500
++++ b/src/shared/shell.c	2026-10-07 17:49:20.755551162 -0500
+@@ -1444,11 +1444,27 @@
+ 	free(env);
+ }
+ 
+-int bt_shell_run(void)
++/* Run the pre_run hooks once: the main menu's, then each submenu's.
++ *
++ * bt_shell_add_submenu() makes the first menu the main menu when none is set,
++ * so btmgmt's "mgmt" menu (whose pre_run opens the mgmt socket) is the main
++ * menu and its hook was never called. Non-interactive mode also executes its
++ * command from bt_shell_attach(), before bt_shell_run(), so the hooks have to
++ * run there as well.
++ */
++static void shell_pre_run(void)
+ {
+-	int status;
++	static bool done;
+ 	const struct queue_entry *submenu;
+ 
++	if (done)
++		return;
++
++	done = true;
++
++	if (data.main && data.main->pre_run)
++		data.main->pre_run(data.main);
++
+ 	for (submenu = queue_get_entries(data.submenus); submenu;
+ 	     submenu = submenu->next) {
+ 		struct bt_shell_menu *menu = submenu->data;
+@@ -1456,6 +1472,13 @@
+ 		if (menu->pre_run != NULL)
+ 			menu->pre_run(menu);
+ 	}
++}
++
++int bt_shell_run(void)
++{
++	int status;
++
++	shell_pre_run();
+ 
+ 	status = mainloop_run_with_signal(signal_callback, NULL);
+ 
+@@ -1635,6 +1658,7 @@
+ 	}
+ 
+ 	if (data.mode == MODE_NON_INTERACTIVE) {
++		shell_pre_run();
+ 		if (shell_exec(data.argc, data.argv) < 0) {
+ 			bt_shell_noninteractive_quit(EXIT_FAILURE);
+ 			return true;

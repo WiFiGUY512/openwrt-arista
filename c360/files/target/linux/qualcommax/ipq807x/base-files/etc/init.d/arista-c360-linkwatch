@@ -1,0 +1,23 @@
+#!/bin/sh /etc/rc.common
+# Arista C-360: eth0's PHY has dropped shortly after boot and stayed down until
+# the interface was bounced. For the first 10 minutes after boot, bounce eth0
+# after 20 s without carrier, at most 5 times.
+
+START=99
+
+boot() {
+	. /lib/functions.sh
+	[ "$(board_name)" = "arista,c360" ] || return 0
+	(
+		n=0; down=0; t=0
+		while [ $t -lt 600 ] && [ $n -lt 5 ]; do
+			sleep 5; t=$((t + 5))
+			[ "$(cat /sys/class/net/eth0/carrier 2> /dev/null)" = "1" ] && { down=0; continue; }
+			down=$((down + 5))
+			[ $down -lt 20 ] && continue
+			n=$((n + 1)); down=0
+			logger -t arista-c360-linkwatch "eth0 without carrier for 20 s, bounce $n"
+			ip link set eth0 down; sleep 2; ip link set eth0 up
+		done
+	) &
+}

@@ -1,0 +1,16 @@
+Subject: qualcommax: ipq807x: Arista C-360 sysupgrade
+
+sysupgrade writes the UBI volumes in NAND slot 0 ("ubi").
+
+diff --git a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
+index 6962b27..e5b58e3 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
+@@ -175,6 +175,7 @@ platform_do_upgrade() {
+ 		nand_do_upgrade "$1"
+ 		;;
+ 	arcadyan,aw1000|\
++	arista,c360|\
+ 	cmcc,rm2-6|\
+ 	compex,wpq873|\
+ 	dynalink,dl-wrx36|\

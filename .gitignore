@@ -1,0 +1,7 @@
+# the OpenWrt trees build.sh clones, and its output
+/build/
+/out/
+__pycache__/
+*.pyc
+# never: the package signing key
+private-key.pem

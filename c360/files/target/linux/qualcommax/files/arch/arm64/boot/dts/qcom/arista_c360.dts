@@ -1,0 +1,958 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Arista C-360 -- Qualcomm IPQ807x based campus access point
+ *
+ * Board identity, read from the running device (/tmp/platform_info on the
+ * vendor firmware) rather than assumed:
+ *
+ *	MODEL_STRING=C-360
+ *	VENDOR_NAME=ARISTA
+ *	PLATFORM_SUB_ID=1
+ *
+ * The vendor device tree carries NO C-360 strings at all: its root is
+ * model = "Qualcomm Technologies, Inc. IPQ807x/AP-HK09" with
+ * compatible = "qcom,ipq807x-hk09", "qcom,ipq807x". So this file is a board
+ * file in its own right, not a patch of the vendor tree. The root compatibles
+ * below are kept as the device actually declares them.
+ *
+ * SoC identity: IPQ8076A, as identified by the vendor kernel. That
+ * identification stands. It is worth being explicit about what does NOT
+ * establish it, because the reverse inference is tempting and wrong:
+ *
+ *   - The OPP list in ipq8074-cpr-regulator.dtsi
+ *     (1017600000 1382400000 1651200000 1843200000 1920000000 2208000000) is
+ *     an exact match for the vendor DT's /cpus/opp_table0. But that table is
+ *     shared across the IPQ8074/IPQ8076 family, so the match is consistent with
+ *     IPQ8076A and does not distinguish it from IPQ8074A.
+ *   - Likewise "ipq8074" in the dtsi and driver names is a driver-family name.
+ *
+ * What that leaves: this board is built against the ipq8074 DTS/driver family
+ * because that is the family mainline provides for this silicon, and the
+ * family name is not a statement about which part is fitted.
+ *
+ * Console: UART2 at 0x78b3000, established rather than assumed. The vendor
+ * U-Boot drives a node named "serial@78B3000" and emits
+ * "2nd UART : Not found, skipping initialization"; in the vendor DT
+ * /soc/serial@78af000 is status="disabled" while 78B1000 and 78B3000 are "ok".
+ * Its IRQ (GIC_SPI 308 == the vendor's 0x134) independently agrees with
+ * mainline.
+ *
+ * msm_serial assigns ttyMSM<n> by probe order, not by node label, so all
+ * three other BLSP1 UARTs are explicitly disabled. That leaves exactly one
+ * serial probed, which makes it deterministically ttyMSM0 and matches the
+ * vendor bootargs "console=ttyMSM0,115200n8". Note that mainline's label for
+ * 0x78b3000 is blsp1_uart5, not blsp1_uart2: the BLSP1 index is not the
+ * hardware UART number.
+ *
+ * Storage (W1-W6: deliberately disabled on all three flash paths, since
+ * U-Boot's own bootcmd runs saveenv and the guarantee had to be on the kernel
+ * side). W7 makes NAND and SPI NOR visible with EVERY partition read-only, for
+ * read-path verification and backups before an install; see the storage block
+ * below. SDHC stays disabled (both controllers are disabled in the vendor DT).
+ *
+ * reserved-memory: mainline ipq8074.dtsi already reserves bootloader@4a600000,
+ * sbl@4aa00000, smem@4ab00000 and memory@4ac00000. The nodes below are the
+ * remaining spans measured on the live device (fdt_reserved.report against
+ * running_fdt.dtb), which total 292 MiB across 16 merged spans. Reserving the
+ * NSS and WCNSS windows matters even though this kernel drives neither: the
+ * running U-Boot has already loaded NSS and Wi-Fi firmware into them, so
+ * letting Linux allocate over them would corrupt live state.
+ *
+ * Scope: serial console only. Ethernet and the radios are staged after this
+ * boots. The vendor DT already speaks qcom,ess-switch-ipq807x,
+ * qcom,ess-uniphy and qcom,edma, which are the same bindings OpenWrt's
+ * ipq8074-ess.dtsi uses, and the external Aquantia PHYs sit on MDIO at
+ * addresses 8 and 0; but none of that is wired up here yet.
+ *
+ * A consequence worth stating, since it limits what stage 1 can reveal about
+ * the radios: the two PCIe radios hang off controllers this file does not enable,
+ * and their MHI paths need working PCIe clocks, resets and PHY support. A kernel
+ * without all of that enumerates no PCI devices, so absent devices on this boot
+ * say nothing about which silicon the radios are. Identifying them requires
+ * either enabling the full PCIe path or reading IDs out of the vendor firmware,
+ * not inferring a part number from the vendor's node names.
+ */
+
+/dts-v1/;
+
+#include "ipq8074.dtsi"
+#include "ipq8074-hk-cpu.dtsi"
+#include "ipq8074-ess.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "Arista C-360";
+	compatible = "arista,c360", "qcom,ipq807x-hk09", "qcom,ipq807x";
+
+	aliases {
+		serial0 = &blsp1_uart5;
+		serial1 = &blsp1_uart3;
+		led-boot = &led_power_orange;
+		led-failsafe = &led_power_orange;
+		led-running = &led_power_green;
+		led-upgrade = &led_power_orange;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		/*
+		 * panic=0 disables the kernel's own timed panic reboot. This is
+		 * NOT panic=-1, which reboots immediately and is the opposite of
+		 * what is wanted here: an unattended reboot runs this vendor
+		 * U-Boot's bootcmd, which does saveenv and boots vendor firmware.
+		 * With panic=0 the kernel halts and leaves the console intact.
+		 *
+		 * The watchdog is a SEPARATE mechanism and is not configured by
+		 * this parameter. The stage-1 boot ended in "Rebooting in 3
+		 * seconds..", which came from the kernel panic timeout; that does
+		 * not establish whether a watchdog is also armed. Left unset here
+		 * pending separate investigation.
+		 */
+		/*
+		 * pcie_ports=compat (W4): stops PCIe portdrv claiming a GICv2m SPI per
+		 * root port for PME/AER, so both QCN9074s can get 16 MSI vectors
+		 * (without it, 0001:01:00.0 got 16 and 0000:01:00.0 got 1).
+		 */
+		bootargs = "console=ttyMSM0,115200n8 rootwait pcie_ports=compat";
+	};
+
+	/* 2 GiB, base 0x40000000, read from the live device's /memory node. */
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x0 0x80000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* 16 MiB. Live U-Boot loads NSS firmware here. */
+		nss_core: nss@40000000 {
+			reg = <0x0 0x40000000 0x0 0x1000000>;
+			no-map;
+		};
+
+		/* 2 MiB, immediately below mainline's bootloader reservation. */
+		tzapp: tzapp@4a400000 {
+			reg = <0x0 0x4a400000 0x0 0x200000>;
+			no-map;
+		};
+
+		/*
+		 * 95 MiB (0x05f00000). Wi-Fi firmware and WCNSS working memory.
+		 *
+		 * The vendor DTB reserves exactly this span: 0x4b000000 with size
+		 * 0x05f00000, ending at 0x50f00000 where q6_etr_dump begins.
+		 *
+		 * This was 0x50f00000 (1295 MiB) until 2026-10-05 -- a zero typed
+		 * into the wrong nibble. That silently shadowed every reservation
+		 * below this one (q6_etr_dump, m3_dump, both qcn9000 PCIe windows,
+		 * both DMA pools and ramoops) and cut the free-DRAM gap count from
+		 * 9 to 2. Fix it, and note the magnitude: the size field must be
+		 * 0x05f00000, not 0x50f00000.
+		 */
+		wcnss: wcnss@4b000000 {
+			reg = <0x0 0x4b000000 0x0 0x05f00000>;
+			no-map;
+		};
+
+		q6_etr_dump: q6_etr_dump@50f00000 {
+			reg = <0x0 0x50f00000 0x0 0x100000>;
+			no-map;
+		};
+
+		m3_dump: m3_dump@51000000 {
+			reg = <0x0 0x51000000 0x0 0x100000>;
+			no-map;
+		};
+
+		/* Two QCN9000 PCIe radios, 55 MiB each. */
+		qcn9000_pcie0: qcn9000_pcie0@51100000 {
+			reg = <0x0 0x51100000 0x0 0x3700000>;
+			no-map;
+		};
+
+		qcn9000_pcie1: qcn9000_pcie1@54800000 {
+			reg = <0x0 0x54800000 0x0 0x3700000>;
+			no-map;
+		};
+
+		/* Two 24 MiB DMA pools. */
+		dma_pool0: dma_pool0@57f00000 {
+			reg = <0x0 0x57f00000 0x0 0x1800000>;
+			no-map;
+		};
+
+		dma_pool1: dma_pool1@59700000 {
+			reg = <0x0 0x59700000 0x0 0x1800000>;
+			no-map;
+		};
+
+		ramoops: ramoops@5f700000 {
+			reg = <0x0 0x5f700000 0x0 0x900000>;
+			no-map;
+		};
+
+		/* 16 bytes; kept for fidelity to the measured map. */
+		device_last_ts: device_last_ts@60800000 {
+			reg = <0x0 0x60800000 0x0 0x10>;
+			no-map;
+		};
+	};
+};
+
+/* The one UART we have proven is wired to the host: 0x78b3000. */
+&blsp1_uart5 {
+	status = "okay";
+};
+
+/*
+ * Keep ttyMSM0 unambiguous. msm_serial numbers ports by probe order, so if any
+ * of these were left enabled the console could land on the wrong index.
+ * 0x78af000 is already "disabled" in mainline; the rest are not.
+ */
+&blsp1_uart1 {
+	status = "disabled";
+};
+
+/*
+ * BLE/802.15.4 module (W12). 0x78b1000 (blsp1_uart3) is the host link to the
+ * on-board Nordic nRF52833, which runs Arista's Zephyr hci_uart controller
+ * firmware. The vendor rootfs attaches it with
+ *   hciattach -s 115200 /dev/ttyMSM1 any 115200 noflow nosleep
+ * Pins gpio46-49 = function blsp2_uart (the vendor hsuart group). serial1
+ * alias pins it to ttyMSM1. The nRF reset line is IPQ gpio37 (vendor devmem
+ * 0x1025000, active-low reset): hogged high here so the controller is out of
+ * reset and running for the whole OpenWrt boot. Four wires are muxed; the
+ * controller is driven no-flow, matching the vendor.
+ */
+&blsp1_uart3 {
+	pinctrl-0 = <&ble_uart_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&blsp1_uart6 {
+	status = "disabled";
+};
+
+/*
+ * USB (W13): the external USB 3.0 Type-A port. The vendor DT enables exactly
+ * one controller, usb3@8A00000 (mainline usb_0, dwc3, host mode), with its
+ * qusb@79000 / ssphy@78000 PHYs (qusb_phy_0 / ssphy_0); usb3@8C00000 (usb_1)
+ * is disabled there and stays disabled here. The vendor DT has no VBUS
+ * regulator or GPIO for the port.
+ */
+&qusb_phy_0 {
+	status = "okay";
+};
+
+&ssphy_0 {
+	status = "okay";
+};
+
+&usb_0 {
+	status = "okay";
+};
+
+/*
+ * Flash (W8, the installable image).
+ *
+ * NAND keeps Arista's three partitions. Slot 0 ("rootfs" in the vendor layout)
+ * becomes OpenWrt's UBI and is labelled "ubi", so OpenWrt attaches it by name
+ * (pending patch 490) and sysupgrade finds it (CI_UBIPART default). Arista's
+ * active slot 1 ("rootfs_1") stays read-only and intact: it is the fallback
+ * system, and the first-boot script copies the unit's own Wi-Fi firmware out of
+ * it. LOGGING stays read-only. On NOR, only 0:APPSBLENV is writable (fw_setenv);
+ * the bootloaders, ART (calibration, MACs) and the HLOS images are read-only.
+ * MTD refuses writes and erases on read-only partitions. No nand-on-flash-bbt:
+ * the bad-block table is built in RAM from the OOB markers.
+ *
+ * Layout = the vendor OS's /proc/mtd (ap_root_mtd_layout.txt): NOR mtd0-24
+ * from the SMEM table, NAND rootfs/rootfs_1/LOGGING from U-Boot's mtdparts.
+ * NAND: Micron MT29F8G08ABBCAH4, 4 KiB page, 224 B OOB, 256 KiB block. ECC
+ * is 8 bits per 512 B. The vendor DT says 4 (nandcs@0 nand-ecc-strength), but
+ * W7 read rootfs_1 with 4-bit ECC and got ~307k ECC failures and hashes that
+ * matched none of the U-Boot backups (section 44); the chip's ONFI requirement
+ * is 8b/512B, which the QSDK U-Boot/kernel evidently used. The QSDK U-Boot adds SMEM partitions to the NAND
+ * controller node at bootm; the dummy disabled "partitions" node absorbs that,
+ * as in ipq8074-sxk80.dtsi.
+ *
+ * The NOR (MX25U25635F, 32 MiB) has 4-byte opcodes, so spi-nor does not switch
+ * the chip into 4-byte address mode (which could otherwise upset the boot ROM
+ * on a warm reset).
+ */
+&sdhc_1 {
+	status = "disabled";
+};
+
+&qpic_bam {
+	status = "okay";
+};
+
+&qpic_nand {
+	status = "okay";
+
+	partitions {
+		status = "disabled";
+	};
+
+	nand@0 {
+		reg = <0>;
+		nand-ecc-strength = <8>;
+		nand-ecc-step-size = <512>;
+		nand-bus-width = <8>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/* OpenWrt: Arista's slot 0 ("rootfs"), reused as the UBI */
+			partition@0 {
+				label = "ubi";
+				reg = <0x0 0x18000000>;
+			};
+
+			partition@18000000 {
+				label = "rootfs_1";
+				reg = <0x18000000 0x18000000>;
+				read-only;
+			};
+
+			partition@30000000 {
+				label = "LOGGING";
+				reg = <0x30000000 0x10000000>;
+				read-only;
+			};
+		};
+	};
+};
+
+&blsp1_spi1 {
+	status = "okay";
+
+	flash@0 {
+		reg = <0>;
+		compatible = "jedec,spi-nor";
+		spi-max-frequency = <50000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "0:SBL1";
+				reg = <0x0 0x50000>;
+				read-only;
+			};
+
+			partition@50000 {
+				label = "0:MIBIB";
+				reg = <0x50000 0x10000>;
+				read-only;
+			};
+
+			partition@60000 {
+				label = "0:BOOTCONFIG";
+				reg = <0x60000 0x20000>;
+				read-only;
+			};
+
+			partition@80000 {
+				label = "0:BOOTCONFIG1";
+				reg = <0x80000 0x20000>;
+				read-only;
+			};
+
+			partition@a0000 {
+				label = "0:QSEE";
+				reg = <0xa0000 0x180000>;
+				read-only;
+			};
+
+			partition@220000 {
+				label = "0:QSEE_1";
+				reg = <0x220000 0x180000>;
+				read-only;
+			};
+
+			partition@3a0000 {
+				label = "0:DEVCFG";
+				reg = <0x3a0000 0x10000>;
+				read-only;
+			};
+
+			partition@3b0000 {
+				label = "0:DEVCFG_1";
+				reg = <0x3b0000 0x10000>;
+				read-only;
+			};
+
+			partition@3c0000 {
+				label = "0:APDP";
+				reg = <0x3c0000 0x10000>;
+				read-only;
+			};
+
+			partition@3d0000 {
+				label = "0:APDP_1";
+				reg = <0x3d0000 0x10000>;
+				read-only;
+			};
+
+			partition@3e0000 {
+				label = "0:RPM";
+				reg = <0x3e0000 0x40000>;
+				read-only;
+			};
+
+			partition@420000 {
+				label = "0:RPM_1";
+				reg = <0x420000 0x40000>;
+				read-only;
+			};
+
+			partition@460000 {
+				label = "0:CDT";
+				reg = <0x460000 0x10000>;
+				read-only;
+			};
+
+			partition@470000 {
+				label = "0:CDT_1";
+				reg = <0x470000 0x10000>;
+				read-only;
+			};
+
+			partition@480000 {
+				label = "0:APPSBLENV";
+				reg = <0x480000 0x10000>;
+			};
+
+			partition@490000 {
+				label = "0:APPSBL";
+				reg = <0x490000 0x100000>;
+				read-only;
+			};
+
+			partition@590000 {
+				label = "0:APPSBL_1";
+				reg = <0x590000 0x100000>;
+				read-only;
+			};
+
+			partition@690000 {
+				label = "0:ART";
+				reg = <0x690000 0x100000>;
+				read-only;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_art_0: macaddr@0 {
+						reg = <0x0 0x6>;
+					};
+
+					macaddr_art_6: macaddr@6 {
+						reg = <0x6 0x6>;
+					};
+				};
+			};
+
+			partition@790000 {
+				label = "0:ETHPHYFW";
+				reg = <0x790000 0x80000>;
+				read-only;
+			};
+
+			partition@810000 {
+				label = "0:HLOS";
+				reg = <0x810000 0x800000>;
+				read-only;
+			};
+
+			partition@1010000 {
+				label = "0:HLOS_1";
+				reg = <0x1010000 0x800000>;
+				read-only;
+			};
+
+			partition@1810000 {
+				label = "CONFIG";
+				reg = <0x1810000 0x400000>;
+				read-only;
+			};
+
+			partition@1c10000 {
+				label = "DEVCERT";
+				reg = <0x1c10000 0x20000>;
+				read-only;
+			};
+
+			partition@1c30000 {
+				label = "RESERVED1";
+				reg = <0x1c30000 0x20000>;
+				read-only;
+			};
+
+			partition@1c50000 {
+				label = "RESERVED2";
+				reg = <0x1c50000 0x3b0000>;
+				read-only;
+			};
+		};
+	};
+};
+
+/*
+ * TPM (W11). The vendor DT has a TIS-over-SPI TPM ("tcg,tpm_spi_tis") at chip
+ * select 0 of the QUP SPI at 0x78b8000 (mainline blsp1_spi4), 12 MHz max, pins
+ * GPIO 50-53 in function blsp3_spi (vendor spi_3_pins: 8 mA, no bias).
+ */
+&blsp1_spi4 {
+	pinctrl-0 = <&tpm_spi_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	tpm@0 {
+		compatible = "tcg,tpm_tis-spi";
+		reg = <0>;
+		spi-max-frequency = <12000000>;
+	};
+};
+
+&blsp1_spi5 {
+	status = "disabled";
+};
+
+/*
+ * Ethernet, stage 2.
+ *
+ * Wiring is derived from the VENDOR device tree (running_fdt.dtb), not assumed:
+ *
+ *   mdio@90000   qcom,ipq40xx-mdio / qcom,qca-mdio, reg 0x90000 0x64
+ *       ethernet-phy@4   reg = 0x08        <- node NAME says 4, ADDRESS is 0x08
+ *       ethernet-phy@5   reg = 0x00        <- node NAME says 5, ADDRESS is 0x00
+ *   ess-switch@3a000000  qcom,port_phyinfo:
+ *       port@4  port_id 0x05  phy_address 0x08
+ *       port@5  port_id 0x06  phy_address 0x00
+ *   dp5  qcom,id 0x05  reg 0x3a003000 0x3fff  mactype 0x01
+ *       local-mac-address 02:00:00:00:00:01
+ *   dp6  qcom,id 0x06  reg 0x3a007000 0x3fff  mactype 0x01
+ *       local-mac-address 02:00:00:00:00:02
+ *
+ * Note the PHY node names do NOT correspond to their MDIO addresses: the node
+ * named ethernet-phy@4 sits at address 0x08. Everything below keys off reg,
+ * never off the node name.
+ *
+ * ipq8074-ess.dtsi (included above) defines dp5-syn and dp6-syn with exactly
+ * these reg values and mactype 1, so the port datapaths are dp5_syn/dp6_syn,
+ * not dp1..dp6. Both ship status = "disabled" and are enabled here.
+ *
+ * ipq8074-ess.dtsi already declares the MDIO bus at mdio@90000 as
+ * qcom,ipq4019-mdio, but without any PHY child, so the PHY nodes have to be
+ * added under it. phy-aquantia registers PHY_ID_AQR113C = 0x31c31c12, which is
+ * the 0x31c3 / 0x1c12 pair this board's U-Boot reported -- so the driver should
+ * bind. Matching IDs supports compatibility; it does NOT establish that probing
+ * and link operation will succeed. That needs testing.
+ */
+
+/*
+ * MDIO bus. The label in ipq8074.dtsi:362 is `mdio`, not `mdio_phy`, and the
+ * node ships status = "disabled". It already carries its clock and 6.25 MHz
+ * clock-frequency, and there are no mdio pinctrl entries to reference, so
+ * nothing else needs adding here.
+ */
+&mdio {
+	status = "okay";
+
+	/*
+	 * Aquantia AQR113C on MDIO address 0x08, wired to ESS port_id 5.
+	 * The vendor node is called ethernet-phy@4; the address is 0x08.
+	 */
+	ethernet_phy_port5: ethernet-phy@8 {
+		reg = <0x08>;
+	};
+
+	/*
+	 * Second Aquantia on MDIO address 0x00, wired to ESS port_id 6.
+	 * The vendor node is called ethernet-phy@5; the address is 0x00.
+	 */
+	ethernet_phy_port6: ethernet-phy@0 {
+		reg = <0x00>;
+	};
+};
+
+/*
+ * ESS switch: the ppe block the datapaths sit on. Ships disabled.
+ *
+ * ---------------------------------------------------------------------------
+ * DIAGNOSTIC CANDIDATE -- NOT a complete configuration.
+ *
+ * Two additions, both traced to observed runtime behaviour on stage 2:
+ *
+ * 1. qcom,port_phyinfo. Without it, ssdk_dt_parse_phy_info() returns
+ *    SW_NOT_FOUND and ssdk_dt_parse_mdio() falls through to a generic
+ *    enumeration of the MDIO node's children, assigning them to ports 1, 2, ...
+ *    in device-tree order:
+ *
+ *        i=1 <- ethernet-phy@8   ->  phy_address[1] = 0x08
+ *        i=2 <- ethernet-phy@0   ->  phy_address[2] = 0x00
+ *
+ *    That binds the AQR113C at MDIO 0x08 -- the one that reports carrier -- to
+ *    switch port 1, which sits on Uniphy instance 0. On link-up the Aquantia
+ *    driver sets phydev->interface = PHY_INTERFACE_MODE_USXGMII, which maps to
+ *    PORT_USXGMII (7); qca_hppe_mac_sw_sync_task writes that into
+ *    port_mode[1], and _adpt_hppe_instance0_mode_get() then rejects it:
+ *
+ *        _adpt_hppe_instance0_mode_get[2417]: port 1 doesn't support
+ *        port_interface_mode 7
+ *
+ *    after which the Uniphy0 port 1 clock fails to enable.
+ *
+ *    The vendor DT supplies port_phyinfo mapping 0x08 -> port 5 and
+ *    0x00 -> port 6. That is reproduced here, so USXGMII lands on port 5,
+ *    which the instance-0 scan excludes.
+ *
+ * 2. Explicit switch_lan_bmp / switch_wan_bmp. ssdk_dt_parse_port_bmp()
+ *    computes port_bmp = lan_bmp | wan_bmp and overwrites the 0x3e that
+ *    qca_ssdk_port_bmp_init() seeds. Note it reads all three bitmap properties
+ *    through a single || chain, so one absent property aborts the chain and
+ *    logs "port_bmp doesn't exist!" -- which is exactly what stage 2 logged.
+ *    With neither present, the MDIO fallback above sets wan_bmp = BIT(1) and
+ *    lan_bmp = BIT(2), yielding port_bmp = 0x6 (ports 1 and 2 only) -- also
+ *    consistent with the two ssdk_phy_driver_init lines the boot log showed.
+ *
+ * DEVIATION FROM VENDOR, deliberate: the vendor uses switch_lan_bmp = 0x3e and
+ * switch_wan_bmp = 0x40, i.e. ports 1-6. Those values are NOT copied here.
+ * Only ports 5 and 6 exist on this board; ports 1-4 have no PHY here and would
+ * keep the placeholder addresses 0..3 from qca_ssdk_phy_info_init()'s
+ * "phy_address[j] = j - 1" default. Address 0 is a real PHY, so a port 1 in the
+ * bitmap would resolve to it and re-create the same failure this node is meant
+ * to remove. Restricting the bitmap to the two populated ports keeps the
+ * diagnostic single-variable.
+ *
+ * Resulting active port set: port_bmp = 0x60 = ports 5 and 6 only.
+ * switch_cpu_bmp = 0x1 (port 0) and switch_inner_bmp = 0x80 (port 7) are
+ * inherited unchanged from ipq8074-ess.dtsi.
+ *
+ * STILL OPEN, and why this is not a fix: hsl_port_to_uniphy() routes port 5 to
+ * instance 1 only when switch_mac_mode1 != PORT_WRAPPER_MAX. Those properties
+ * are left at 0xff (PORT_WRAPPER_MAX) in this candidate deliberately, to
+ * isolate one variable per boot. With 0xff, port 5 still routes to instance 0,
+ * so the Uniphy topology may still be wrong even once the port-1 warning is
+ * gone. Correcting the PHY association may remove the warning WITHOUT fixing
+ * packet communication, which remains unproven.
+ */
+&switch {
+	status = "okay";
+
+	/* Port 5 carries LAN; port 6 carries WAN. See note above. */
+	switch_lan_bmp = <0x20>;  /* BIT(5) */
+	switch_wan_bmp = <0x40>;  /* BIT(6) */
+
+	/*
+	 * PHY association, from the vendor DT. Node names port@4 / port@5 are the
+	 * vendor's and are kept for traceability; they do NOT correspond to port_id
+	 * or phy_address. Only the properties are meaningful to the parser.
+	 *
+	 * mdiobus is explicit because the parser's fallback searches for compatible
+	 * "qcom,ipq40xx-mdio" / "qcom,qca-mdio", and this board's MDIO node is
+	 * compatible "qcom,ipq8074-mdio", "qcom,ipq4019-mdio" -- no match. Adding
+	 * the phandle makes bus resolution explicit rather than relying on the
+	 * miibus_index default. ssdk_miibus_add() is idempotent for a bus it has
+	 * already registered.
+	 *
+	 * This node is also what makes ssdk_dt_parse_phy_info() return SW_OK, which
+	 * is what suppresses the generic MDIO-child enumeration described above.
+	 */
+	qcom,port_phyinfo {
+		/* vendor port@4: port_id 5, MDIO 0x08 */
+		port@4 {
+			port_id = <5>;
+			phy_address = <0x08>;
+			ethernet-phy-ieee802.3-c45;
+			mdiobus = <&mdio>;
+		};
+
+		/* vendor port@5: port_id 6, MDIO 0x00 */
+		port@5 {
+			port_id = <6>;
+			phy_address = <0x00>;
+			ethernet-phy-ieee802.3-c45;
+			mdiobus = <&mdio>;
+		};
+	};
+};
+
+/* EDMA: required by qca-nss-dp. Ships disabled. */
+&edma {
+	status = "okay";
+};
+
+/*
+ * Port datapath 5 -- the one to bring up first. reg and mactype match the
+ * vendor dp5 exactly. MAC from ART offset 0x0 (U-Boot's ethaddr).
+ */
+&dp5_syn {
+	status = "okay";
+	nvmem-cells = <&macaddr_art_0>;
+	nvmem-cell-names = "mac-address";
+	phy-handle = <&ethernet_phy_port5>;
+};
+
+/*
+ * Port datapath 6 -- second PHY. Enabled in the same revision so both PHYs are
+ * probed and both report their link state, even though only port 5 gets an
+ * address for now.
+ */
+&dp6_syn {
+	status = "okay";
+	nvmem-cells = <&macaddr_art_6>;
+	nvmem-cell-names = "mac-address";
+	phy-handle = <&ethernet_phy_port6>;
+};
+/* wireless-candidate-W1: bring up both PCIe root ports so the endpoint IDs
+ * can be confirmed against the preserved vendor logs (17cb:1104 on both).
+ * Labels resolved from ipq8074.dtsi, which this board file already includes:
+ *   pcie_qmp0 = phy@84000 (gen3)   pcie0 = pcie@20000000 (domain 0)
+ *   pcie_qmp1 = phy@8e000 (gen2)   pcie1 = pcie@10000000 (domain 1)
+ * perst-gpios come from the preserved vendor DT, which spells them
+ * "perst-gpio = <tlmm 0x3a 0x01>" (domain 0) and "<tlmm 0x3d 0x01>" (domain 1)
+ * -> GPIO 58 / GPIO 61, flags 1 = active low. Mainline's pcie-qcom driver
+ * reads the plural property "perst-gpios".
+ * num-lanes = 1 and max-link-speed (gen2/gen3) are already correct in the
+ * candidate DTB and are deliberately NOT touched here.
+ * This block deliberately does NOT enable the wifi node: W1 enumerates PCI
+ * only, so no wireless driver probes.
+ */
+
+&pcie_qmp0 {
+	status = "okay";
+};
+
+&pcie0 {
+	status = "okay";
+
+	perst-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
+};
+
+&pcie_qmp1 {
+	status = "okay";
+};
+
+&pcie1 {
+	status = "okay";
+
+	perst-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
+};
+/* wireless-candidate-W2: enable the integrated IPQ8074 radio node.
+ * Appended AFTER dts_w1_pcie.dts.txt.
+ *
+ * The node already carries everything ath11k-ahb requires except status:
+ *   compatible = "qcom,ipq8074-wifi"
+ *   qcom,rproc = <0x23>   (-> q6v5_wcss@cd00000, which has no status property
+ *                          and is already "available" in the running kernel)
+ *   the full interrupt list, reg <0xc000000 0x2000000>
+ * The "disabled" comes from OpenWrt patch
+ *   target/linux/qualcommax/patches-6.12/0121-arm64-dts-ipq8074-Add-WLAN-node.patch
+ * (line 131); every OpenWrt ipq807x board overrides it exactly like this.
+ *
+ * The two QCN9074 endpoints do NOT need a qcom,rproc or any MHI node: mainline
+ * ath11k/pci.c binds by PCI device ID (QCN9074_DEVICE_ID 0x1104) and
+ * ath11k/mhi.c registers its own MHI controller over the PCI device. The
+ * wifi@0,0 child nodes below exist only to name the endpoints, following the
+ * OpenWrt reference pattern (ipq8072-ax9000.dts uses compatible
+ * "pci17cb,1104" with reg <0x00010000 ...> for exactly this chip).
+ *
+ * W6: qcom,ath11k-calibration-variant added to both QCN9074 nodes. Both cards
+ * report qmi-board-id 255 (OTP unprogrammed), so without a variant they share
+ * one board-2.bin entry. The vendor stack gave each its own BDF: pcie0
+ * bdwlan.bab (6 GHz serving radio, band 4 only) and pcie1 bdwlan.baa
+ * (2.4/5/6 GHz, the multifunction radio) -- both verified live on W4. The
+ * names are ours; the W6 board-2.bin carries matching ",variant=" entries.
+ * The IPQ8074 (AHB) keeps board.bin (API 1, vendor bdwlan.b290).
+ */
+
+&wifi {
+	status = "okay";
+};
+
+&pcie0 {
+	pcie@0 {
+		wifi@0,0 {
+			status = "okay";
+
+			/* ath11k has no DT compatible for PCI cards */
+			compatible = "pci17cb,1104";
+			reg = <0x00010000 0 0 0 0>;
+
+			/*
+			 * W4: fixed host memory, as the vendor stack gives this card
+			 * (vendor wifi2: base-addr 0x51100000, m3-dump-addr 0x53e00000,
+			 * tgt-mem-mode 0). Without it the firmware reaches mission mode
+			 * and QMI FW_MEM_READY, then times out the cap request (W2/W3).
+			 */
+			memory-region = <&qcn9000_pcie0>;
+			qcom,ath11k-fw-memory-mode = <0>;
+			qcom,m3-dump-addr = <0x53e00000>;
+			qcom,ath11k-calibration-variant = "Arista-C360-pcie0";
+		};
+	};
+};
+
+&pcie1 {
+	pcie@0 {
+		wifi@0,0 {
+			status = "okay";
+
+			compatible = "pci17cb,1104";
+			reg = <0x00010000 0 0 0 0>;
+
+			/*
+			 * W4: vendor wifi3: base-addr 0x54800000, tgt-mem-mode 0.
+			 * m3-dump-addr decompiles as the string "WP\0", i.e. the bytes
+			 * 57 50 00 00 = 0x57500000 (= base + hremote-size 0x2d00000,
+			 * the same offset as pcie0's 0x53e00000).
+			 */
+			memory-region = <&qcn9000_pcie1>;
+			qcom,ath11k-fw-memory-mode = <0>;
+			qcom,m3-dump-addr = <0x57500000>;
+			qcom,ath11k-calibration-variant = "Arista-C360-pcie1";
+		};
+	};
+};
+
+/*
+ * W4: front-panel LEDs. The vendor U-Boot prints "SENAO 74LV164 SHIFT LED
+ * INIT!" and drives a 74LV164 shift-register chain from TLMM GPIOs: 18 = clock,
+ * 19 = data, 20 = clear (vendor ledc_pinmux led0/led1/led2). Linux found the
+ * pins in GPIO mode (func0) with clear high. The 74LV164 has no latch, so no
+ * chip select is wired; spi-gpio without cs-gpios toggles none. Two registers,
+ * 16 outputs, all active-high.
+ *
+ * Mapping, walked output by output against the front panel (2026-10-07):
+ * 0 power green, 1 power orange, 2 2.4G green, 3 5G green, 4 5/6G green,
+ * 5 Ethernet 1 green, 6 Ethernet 1 orange, 8 Ethernet 2 green,
+ * 9 Ethernet 2 orange; 7 and 10-15 light nothing visible. Ethernet 1 is eth0
+ * (dp5, the 2.5G PoE port), Ethernet 2 is eth1 (dp6). The radio LEDs are tied
+ * to their phys by /etc/hotplug.d/ieee80211 (the phy numbers of the two PCIe
+ * cards change between boots).
+ */
+&tlmm {
+	tpm_spi_pins: tpm-spi-state {
+		pins = "gpio50", "gpio51", "gpio52", "gpio53";
+		function = "blsp3_spi";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	ble_uart_pins: ble-uart-state {
+		pins = "gpio46", "gpio47", "gpio48", "gpio49";
+		function = "blsp2_uart";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	/* Release the nRF52833 reset (active-low) for the whole OpenWrt boot. */
+	ble-nreset-hog {
+		gpio-hog;
+		gpios = <37 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "ble-nreset";
+	};
+
+	led-sr-clr-hog {
+		gpio-hog;
+		gpios = <20 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "led-sr-clr";
+	};
+};
+
+/ {
+	spi-leds {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		sck-gpios = <&tlmm 18 GPIO_ACTIVE_HIGH>;
+		mosi-gpios = <&tlmm 19 GPIO_ACTIVE_HIGH>;
+
+		led_sr: gpio@0 {
+			compatible = "fairchild,74hc595";
+			reg = <0>;
+			spi-max-frequency = <100000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			registers-number = <2>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_power_green: led-0 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&led_sr 0 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_power_orange: led-1 {
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&led_sr 1 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-2 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN_2GHZ;
+			gpios = <&led_sr 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-3 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN_5GHZ;
+			gpios = <&led_sr 3 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-4 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN_6GHZ;
+			gpios = <&led_sr 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-5 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+			gpios = <&led_sr 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-6 {
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+			gpios = <&led_sr 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-8 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
+			gpios = <&led_sr 8 GPIO_ACTIVE_HIGH>;
+		};
+
+		led-9 {
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
+			gpios = <&led_sr 9 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};

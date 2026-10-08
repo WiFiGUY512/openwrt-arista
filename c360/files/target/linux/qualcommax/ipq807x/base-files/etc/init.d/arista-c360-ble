@@ -1,0 +1,115 @@
+#!/bin/sh /etc/rc.common
+# Attach the on-board Nordic nRF52833 BLE/802.15.4 controller.
+#
+# The nRF52833 runs Arista's Zephyr hci_uart controller firmware on
+# blsp1_uart3 (/dev/ttyMSM1, 115200, no flow control; reset released by the
+# ble-nreset gpio hog in the DTS). btattach puts the H4 line discipline on the
+# port, which registers hci0.
+#
+# The controller has no public address of its own (the vendor OS writes one
+# with a vendor command), and an LE-only controller cannot be powered on
+# without an identity address. This unit's BLE MAC is in 0:ART at 0x40 (the
+# vendor's BLE_ART_OFFSET); it is turned into a static random address by
+# setting the top two bits (e.g. 30:86:2d:.. -> f0:86:2d:..), so the address
+# is stable and unique per unit.
+#
+# The controller is powered on but left NOT advertising: what it advertises is
+# a policy decision (the operator's, or Aeolus'), not the base image's.
+#
+# C-360 only. Does nothing on any other board.
+
+START=96
+USE_PROCD=1
+
+BLE_TTY=/dev/ttyMSM1
+
+# Run a command, killing it after $1 seconds (busybox here has no timeout).
+# stdin is a pipe: btmgmt registers stdin with its event loop, and /dev/null
+# (what procd and background jobs get) cannot be polled, so with it btmgmt
+# never runs the command and waits forever.
+run_bounded() {
+	local secs=$1 pid s=0
+	shift
+	true | "$@" >/dev/null 2>&1 &
+	pid=$!
+	while kill -0 $pid 2>/dev/null; do
+		if [ $s -ge $secs ]; then
+			kill $pid 2>/dev/null
+			sleep 1
+			kill -9 $pid 2>/dev/null
+			return 124
+		fi
+		sleep 1
+		s=$((s + 1))
+	done
+	wait $pid
+}
+
+ble_static_addr() {
+	local mtd addr b0
+	mtd=$(grep '"0:ART"' /proc/mtd | cut -d: -f1)
+	[ -n "$mtd" ] || return 1
+	addr=$(hexdump -s 0x40 -n 6 -e '6/1 "%02x "' "/dev/$mtd" 2>/dev/null)
+	case "$addr" in
+	""|"ff ff ff ff ff ff"*|"00 00 00 00 00 00"*) return 1 ;;
+	esac
+	set -- $addr
+	b0=$(printf '%02x' $((0x$1 | 0xc0)))
+	echo "$b0:$2:$3:$4:$5:$6"
+}
+
+start_service() {
+	case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+	arista,c360) ;;
+	*) return 0 ;;
+	esac
+	[ -c "$BLE_TTY" ] || { logger -t arista-c360-ble "no $BLE_TTY (is blsp1_uart3 enabled?)"; return 1; }
+
+	procd_open_instance
+	# btattach holds the line discipline in the foreground; procd supervises it.
+	procd_set_param command /usr/bin/btattach -B "$BLE_TTY" -P h4 -S 115200 -N
+	procd_set_param respawn 3600 5 0
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+
+	# Once hci0 registers: static address (while powered off), then power on.
+	# busybox sleep is whole seconds only. Advertising stays off.
+	# The subshell first drops procd's service lock (fd 1000, procd.sh), or a
+	# btmgmt waiting on the controller would block stop/restart of this service.
+	( exec 1000>&-
+	  i=0
+	  while [ ! -d /sys/class/bluetooth/hci0 ] && [ $i -lt 15 ]; do
+		sleep 1
+		i=$((i + 1))
+	  done
+	  if [ ! -d /sys/class/bluetooth/hci0 ]; then
+		logger -t arista-c360-ble "hci0 did not register after btattach"
+		exit 0
+	  fi
+	  # hci0 shows up in sysfs before the kernel has finished its setup
+	  # commands over the 115200 link; mgmt only accepts the index after
+	  # that, and earlier static-addr / power on are rejected. Wait for it.
+	  i=0
+	  until run_bounded 5 btmgmt --index 0 info; do
+		i=$((i + 1))
+		if [ $i -ge 30 ]; then
+			logger -t arista-c360-ble "hci0 never became available to mgmt"
+			exit 0
+		fi
+		sleep 1
+	  done
+	  addr=$(ble_static_addr)
+	  if [ -n "$addr" ]; then
+		run_bounded 10 btmgmt --index 0 static-addr "$addr" ||
+			logger -t arista-c360-ble "static-addr $addr rejected or timed out"
+	  else
+		logger -t arista-c360-ble "no BLE MAC at 0:ART+0x40; static address not set"
+	  fi
+	  if run_bounded 10 btmgmt --index 0 power on; then
+		logger -t arista-c360-ble "hci0 powered on, static address ${addr:-none} (not advertising)"
+	  else
+		logger -t arista-c360-ble "hci0 power on failed or timed out (controller not answering?)"
+	  fi
+	) &
+}
