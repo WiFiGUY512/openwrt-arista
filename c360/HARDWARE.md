@@ -84,10 +84,15 @@ Two 10 GbE ports. Each has its own Aquantia AQR113C PHY (10GBASE-T, down to
 - **The PHY firmware:** Arista's U-Boot loads it into both PHYs at boot,
   from `0:ETHPHYFW` (`v5.5.6 Marvell Standard USX-All`). Each PHY then
   reports its temperature, which only the firmware provides.
-- **10G needs USXGMII** on Uniphy 1 and 2 (`switch_mac_mode1`/`2` =
-  `MAC_MODE_USXGMII`, and `phy-mode = "usxgmii"` on both datapaths), as in
-  Arista's own device tree. Unset, both ports run SGMII: they pass traffic,
-  but only up to 2.5 Gb/s.
+- **USXGMII:** the PHYs talk USXGMII to the SoC. When a PHY reports it at
+  link-up, the switch driver (qca-ssdk) sets its Uniphy to match. So even
+  with `switch_mac_mode1`/`2` unset and the datapaths left at their default
+  `sgmii`, eth0 linked at 10 Gb/s and passed traffic.
+  - Arista's own device tree sets USXGMII from boot (`switch_mac_mode1`/`2`
+    = `0x0d`, `MAC_MODE_USXGMII`).
+  - Whether that is worth doing here is being evaluated: the first link
+    after boot flaps once ("uniphy autoneg time out"), and throughput at 10G
+    is not yet measured.
 
 ## Bluetooth LE: Nordic nRF52833
 
