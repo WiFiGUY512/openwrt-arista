@@ -3,7 +3,7 @@ Subject: qualcommax: ipq807x: Arista C-360 front-panel LEDs
 Steady link-speed colours on the two 10 GbE ports, green for a multi-gig link (2.5, 5 or 10G), orange for 1G or slower, no activity blinking.
 
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-index ae94165..621a0f5 100644
+index ae94165..d9a10a4 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 @@ -6,6 +6,12 @@ board_config_update
@@ -19,39 +19,3 @@ index ae94165..621a0f5 100644
  arcadyan,aw1000)
  	ucidef_set_led_netdev "5g" "5G" "green:5g" "wwan0"
  	ucidef_set_led_netdev "wan" "WAN" "green:internet" "wan"
-@@ -19,7 +25,7 @@ asus,rt-ax89x)
- dynalink,dl-wrx36|\
- spectrum,sax1v1k)
- 	ucidef_set_led_netdev "wan-port-link-green" "WAN-PORT-LINK-GREEN" "90000.mdio-1:1c:green:wan" "wan" "link_2500"
--	ucidef_set_led_netdev "wan-port-link-yellow" "WAN-PORT-LINK-YELLOW" "90000.mdio-1:1c:yellow:wan" "wan" "tx rx link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "wan-port-link-yellow" "WAN-PORT-LINK-YELLOW" "90000.mdio-1:1c:yellow:wan" "wan" "link_10 link_100 link_1000"
- 	;;
- edgecore,eap102)
- 	ucidef_set_led_netdev "wan" "WAN" "green:wanpoe" "wan"
-@@ -43,18 +49,18 @@ redmi,ax6)
- 	ucidef_set_led_netdev "wan" "WAN" "blue:network" "wan"
- 	;;
- xiaomi,ax3600)
--	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:01:green:wan" "wan" "tx rx link_10 link_100 link_1000"
--	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:02:green:lan" "lan1" "tx rx link_10 link_100 link_1000"
--	ucidef_set_led_netdev "lan2-port-link" "LAN2-PORT-LINK" "90000.mdio-1:03:green:lan" "lan2" "tx rx link_10 link_100 link_1000"
--	ucidef_set_led_netdev "lan3-port-link" "LAN3-PORT-LINK" "90000.mdio-1:04:green:lan" "lan3" "tx rx link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:01:green:wan" "wan" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:02:green:lan" "lan1" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan2-port-link" "LAN2-PORT-LINK" "90000.mdio-1:03:green:lan" "lan2" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan3-port-link" "LAN3-PORT-LINK" "90000.mdio-1:04:green:lan" "lan3" "link_10 link_100 link_1000"
- 	ucidef_set_led_netdev "wan" "WAN" "blue:network" "wan"
- 	;;
- xiaomi,ax9000)
- 	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:18:green:wan" "wan" "tx rx link_10 link_100 link_1000 link_2500"
--	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:03:green:lan" "lan1" "tx rx link_10 link_100 link_1000"
--	ucidef_set_led_netdev "lan2-port-link" "LAN2-PORT-LINK" "90000.mdio-1:02:green:lan" "lan2" "tx rx link_10 link_100 link_1000"
--	ucidef_set_led_netdev "lan3-port-link" "LAN3-PORT-LINK" "90000.mdio-1:01:green:lan" "lan3" "tx rx link_10 link_100 link_1000"
--	ucidef_set_led_netdev "lan4-port-link" "LAN4-PORT-LINK" "90000.mdio-1:00:green:lan" "lan4" "tx rx link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:03:green:lan" "lan1" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan2-port-link" "LAN2-PORT-LINK" "90000.mdio-1:02:green:lan" "lan2" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan3-port-link" "LAN3-PORT-LINK" "90000.mdio-1:01:green:lan" "lan3" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan4-port-link" "LAN4-PORT-LINK" "90000.mdio-1:00:green:lan" "lan4" "link_10 link_100 link_1000"
- 	;;
- qnap,301w)
- 	ucidef_set_led_netdev "lan1" "LAN1" "green:lan-1" "lan1"
