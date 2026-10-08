@@ -1,9 +1,9 @@
 Subject: qualcommax: ipq807x: Arista C-360 network roles
 
-Both 10 GbE ports are LAN, with no WAN; the LAN is a DHCP client, as for this target's other APs. The MAC is the unit's own, from 0:ART. uci-defaults/99-arista-c360-bond then makes the two ports an LACP bond on a fresh config.
+Ethernet 1 (eth0) is the LAN, a DHCP client as for this target's other APs, and there is no WAN. Ethernet 2 (eth1) stays free, so two cables to one switch make no loop; arista-c360-net attaches it to the LAN, a VLAN or a VXLAN, or makes the two ports a bond. The MAC is the unit's own, from 0:ART.
 
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
-index 7a5f280..2a2adb3 100644
+index 7a5f280..4905295 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 @@ -18,6 +18,9 @@ ipq807x_setup_interfaces()
@@ -11,7 +11,7 @@ index 7a5f280..2a2adb3 100644
  		ucidef_set_interfaces_lan_wan "lan" "wan"
  		;;
 +	arista,c360)
-+		ucidef_set_interface_lan "eth0 eth1" "dhcp"
++		ucidef_set_interface_lan "eth0" "dhcp"
 +		;;
  	asus,rt-ax89x)
  		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 lan7 lan8 10g-sfp 10g-copper" "wan"

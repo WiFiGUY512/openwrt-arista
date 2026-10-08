@@ -18,14 +18,32 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - Both ports link at 10 Gb/s and at 2.5 Gb/s, and pass traffic both ways.
   - MACs and radio calibration are read from the unit's own ART partition.
   - Not yet measured: throughput at 10G.
-- **Both ports are LAN; there is no WAN.** On a fresh install they are one
-  LACP bond (802.3ad, `bond0`), and `br-lan` on it takes its address by DHCP.
-  - With an LACP switch the two links aggregate. With one cable, or a switch
-    without LACP, the bond runs on a single link, so two cables never make a
-    loop.
-  - LACP was seen working against an Arista switch (both links collecting
-    and distributing), on a config set by hand. The fresh-install default
-    *(built, not yet on a unit)* was tested on scratch configs.
+- **Ethernet 1 is the uplink; there is no WAN.** On a fresh install `br-lan`
+  holds Ethernet 1 only and takes its address by DHCP, so the port works as an
+  access port, and as a trunk once VLANs are added on it. Ethernet 2 is free,
+  in no bridge, so two cables to one switch make no loop.
+- **Ethernet 2, or a bond, with `arista-c360-net`:**
+
+  | command | what it does |
+  |---|---|
+  | `port2 lan` | Ethernet 2 on the LAN, with Ethernet 1 |
+  | `port2 vlan 30` | Ethernet 2 an access port on VLAN 30, bridged to VLAN 30 on the uplink |
+  | `port2 trunk 20 30` | the LAN untagged and VLANs 20 and 30 tagged, to chain another AP |
+  | `port2 vxlan 100 <peer>` | Ethernet 2 bridged into a VXLAN tunnel (VNI 100) |
+  | `port2 off` | Ethernet 2 back in no bridge |
+  | `bond on` / `bond off` | both ports one LACP bond (802.3ad), and back; the uplink's VLANs move with it |
+  | `status` | the uplink, the bridges and their ports |
+
+  - A device on Ethernet 2 needs power of its own: both ports are PoE in only.
+  - Each change is undone after 120 s unless `arista-c360-net confirm` follows,
+    so a change that cuts the AP off reverts by itself.
+  - Tested on a unit managed on a tagged VLAN, against an Arista switch with
+    LACP fallback: `bond off`, `bond on` (both links in one aggregator),
+    `port2 vxlan`, and, with Ethernet 2 unplugged so nothing could loop,
+    `port2 vlan` and `port2 trunk`. A change left unconfirmed was undone by
+    itself.
+  - A port the bond releases stays down on OpenWrt 25.12 (the bonding driver
+    closes it after netifd has raised it); the tool raises it again.
 - **VXLAN:** netifd's `vxlan` protocol and `kmod-vxlan` are in the image
   *(built, not yet on a unit)*. The kernel's VXLAN, from this build's
   module, was tested on a unit: VNI 42 between two network namespaces, with
@@ -82,7 +100,6 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 - **The reset button** (the pinhole): a short press reboots, as on any
   OpenWrt device, and a press of 5 s or more resets the configuration. The
   reboot was tested on a unit.
-- **USB storage** on the Type-A port.
 - **sysupgrade**, and **Arista's system kept as a fallback:** OpenWrt lives in
   NAND slot 0, and Arista's slot 1 is never written.
 
@@ -92,6 +109,11 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   zero after boot), so the TPM can't attest to what booted.
 - **Zigbee and Thread.** The nRF52833's radio can do 802.15.4, but Arista's
   firmware is Bluetooth LE only, and signed.
+- **The USB port sees no device yet.** The controller and its root hubs come
+  up, but a stick plugged in raises no event at all: the port appears to get
+  no power under OpenWrt. Arista's device tree has no VBUS control, so its
+  bootloader or system must switch it. Under investigation. (U-Boot's own
+  `usb start` reads the stick, which is how the installer boots.)
 - **The USB stick installer has not been run on a unit yet** (INSTALL.md,
   section A). The manual install (section B) has.
 
@@ -201,8 +223,8 @@ strongSwan can authenticate IKEv2 with one.
   - the TPM module on this target.
 - `files/`:
   - the device tree;
-  - the board's scripts: the first-boot Wi-Fi firmware copy, the LACP bond
-    on a fresh config, the installer, the BLE start-up, and the LED and link
+  - the board's scripts: the first-boot Wi-Fi firmware copy, the port tool
+    (`arista-c360-net`), the installer, the BLE start-up, and the LED and link
     watchers;
   - the airscan package;
   - the TPM 2.0 software stack, `tpm2-tss` and `tpm2-tools`;
