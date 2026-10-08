@@ -200,17 +200,19 @@ zone that accepts input (`lan`), or SSH will be refused.
 
 ## First boot
 
-The C-360's defaults: both Ethernet ports are LAN, with no WAN. On the first
-boot they become one LACP bond (`bond0`), and `br-lan` on it **takes its
-address by DHCP**, so look for the AP in your DHCP server's leases. It uses the
-unit's own MAC, the one on its label.
-- **Either port works.** With two cables, the switch ports belong in one LACP
-  port-channel. A switch without LACP is fine too: the bond then uses one link.
+The C-360's defaults: **Ethernet 1 is the uplink**, with no WAN. `br-lan`
+holds Ethernet 1 only and **takes its address by DHCP**, so look for the AP
+in your DHCP server's leases. It uses the unit's own MAC, the one on its
+label.
+- **Ethernet 2 is free**, in no bridge, so a second cable to the same switch
+  makes no loop. `arista-c360-net` puts it on the LAN, on a VLAN or a VXLAN,
+  or bonds both ports (README.md).
 - **Before setting a root password,** Wi-Fi is off and SSH and LuCI have no
   password: set one first.
 - **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device. Enter it
-  from the serial console: press `f` and Enter when the boot offers it. The
-  reset button isn't mapped yet.
+  from the serial console: press `f` and Enter when the boot offers it.
+- **The reset pinhole:** a short press reboots (tested on a unit). As on any
+  OpenWrt device, a press of 5 s or more resets the configuration.
 
 The first boot copies the Wi-Fi firmware from the Arista slot and restarts
 the radios; `logread | grep arista-c360-wifi` shows what happened. Later

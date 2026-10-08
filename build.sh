@@ -79,6 +79,28 @@ apply_patches() {
 	done
 }
 
+# model_files SRC DIR LIST: the files under SRC, copied into DIR with their
+# modes and times. A file an earlier build copied (listed in LIST) that SRC no
+# longer has goes back to its committed state in DIR, or away, so a tree from
+# an earlier build carries nothing the model has dropped.
+model_files() {
+	local src=$1 dir=$2 list=$3 f
+	[ -d "$src" ] || return 0
+	(cd "$src" && find . ! -type d | sed 's|^\./||' | LC_ALL=C sort) >"$list.new"
+	if [ -f "$list" ]; then
+		LC_ALL=C comm -23 "$list" "$list.new" | while IFS= read -r f; do
+			if git -C "$dir" cat-file -e "HEAD:$f" 2>/dev/null; then
+				git -C "$dir" checkout -q HEAD -- "$f"
+			else
+				rm -f "$dir/$f"
+			fi
+			say "removed $f (no longer in the model)"
+		done
+	fi
+	cp -rp "$src/." "$dir/"
+	mv "$list.new" "$list"
+}
+
 # modules_fit OUT PACKAGE...: each module in the feed is built for the image's kernel
 modules_fit() {
 	local out=$1 k f dep
@@ -113,7 +135,7 @@ apply_patches . "$MODEL_DIR"/patches/openwrt/*.patch
 # 3. the model's own files, with their modes, and their times: OpenWrt's
 # kernel stamp hashes the times of target/linux files, so a fresh time on an
 # unchanged file would rebuild the kernel and every module
-cp -rp "$MODEL_DIR/files/." .
+model_files "$MODEL_DIR/files" . .model-files
 fix_modes
 
 # 4. the feeds, at their pinned commits, and the model's additions to them
@@ -128,7 +150,7 @@ for d in "$MODEL_DIR"/patches/feeds/*/; do
 done
 ./scripts/feeds update -i >/dev/null
 ./scripts/feeds install $FEEDS_INSTALL >/dev/null
-[ -d "$MODEL_DIR/feeds" ] && cp -r "$MODEL_DIR/feeds/." feeds/
+model_files "$MODEL_DIR/feeds" feeds .model-feeds
 say "feeds: $(sed 's/^src-git \([a-z]*\) .*\^\(.\{8\}\).*/\1 \2/' feeds.conf | tr '\n' ' ')"
 
 # 5. configure and build

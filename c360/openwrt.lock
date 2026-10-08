@@ -1,8 +1,8 @@
 # The OpenWrt and feed commits this repo is built against (build.sh).
 OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
-OPENWRT_COMMIT=0aaa16fc9eb729b709834466b8a62362f7619451
-FEED_packages=https://git.openwrt.org/feed/packages.git^4f03c21a2b09ad0d52cdd1fbdbcb29f88c0ce16f
-FEED_luci=https://git.openwrt.org/project/luci.git^be446e365cfd2cfee549a0c32af884dfb2cced66
+OPENWRT_COMMIT=c740570351512e4400369b3c2aff49741f65580e
+FEED_packages=https://git.openwrt.org/feed/packages.git^705e1cc3beb7a0cb3ef53ba18a3ba1fed8f4342c
+FEED_luci=https://git.openwrt.org/project/luci.git^a450f0d67c6d9d854ba19e57a1361da8cedd8d98
 FEED_routing=https://git.openwrt.org/feed/routing.git^b32747dca62435f1ea01b7a5320c3da15eead46f
 FEED_telephony=https://git.openwrt.org/feed/telephony.git^2618106d5846a4a542fdf5809f0d3ed228ce439b
 FEED_video=https://github.com/openwrt/video.git^094bf58da6682f895255a35a84349a79dab4bf95

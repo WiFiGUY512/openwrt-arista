@@ -146,10 +146,11 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - Only Arista's build of that firmware (`WLAN.HK.2.5.r4`) runs these cards;
     every public `ath11k-firmware` build tested stops during start-up.
   - The installer checks slot 1 before writing anything.
-- **Two ath11k fixes**, in `files/package/kernel/mac80211/patches/ath11k/`:
-  with the board's fixed host-memory region, the QCN9074 must be given its
-  calibration area and paged memory inside that region, or its firmware falls
-  silent.
+- **No changes to ath11k.** Arista's firmware runs with OpenWrt's ath11k as
+  it is. Two earlier patches, which put the cards' calibration area and paged
+  memory in the board's fixed host-memory region, were only needed while
+  trying the public firmware. Without them, a unit's four radios came up and
+  scanned on both OpenWrt 25.12 and main (2026-10-08).
 
 ## Packages
 

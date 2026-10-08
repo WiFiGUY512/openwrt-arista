@@ -65,9 +65,11 @@ The IPQ8074's two radios share one calibration area. Each area is 0x20000 bytes.
   `Arista-C360-pcie0`/`-pcie1`. The IPQ8074's is `bdwlan.b290`.
 - **OpenWrt copies these five files from slot 1 at first boot**
   (`arista-c360-wifi-fw`), before the radios start.
-- **The board reserves a fixed host-memory region for the cards.** ath11k
-  must put the cards' calibration area (CALDB) and paged memory inside it
-  (the two 99x ath11k patches).
+- **The board reserves a fixed host-memory region for each card**
+  (`memory-region`). Arista's firmware asks only for what ath11k already
+  places there. The public 2.9.x firmware also asks for a calibration area
+  (CALDB) and paged memory, which ath11k leaves out. Placing them in the
+  region (two patches, since dropped) didn't make that firmware work.
 - **`pcie_ports=compat`** keeps PCIe port services from taking interrupts, so
   both cards get their 16 MSI vectors.
 
