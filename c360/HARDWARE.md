@@ -151,5 +151,11 @@ Uniphy, connected over USXGMII:
     `patches/feeds/packages/0001-strongswan-tpm-plugin.patch` fixes that.
     - The SLB 9670 reports FIPS 140-2 mode (`TPM2_PT_MODES`), so its RSA-PSS
       salt is the hash's length; strongSwan reads the mode from the TPM.
+- **The reset pinhole** is gpio42, low while pressed. Arista's device tree
+  has it as a gpio-keys "wps" key with a pull-up.
+- **The SoC is an IPQ8076A** (`/sys/devices/soc0/machine`). Its cpufreq driver,
+  `qcom-cpufreq-nvmem`, matches the board's root compatible `qcom,ipq8074`.
+  Arista's device tree has `qcom,ipq807x-hk09`, `qcom,ipq807x` instead, which
+  leaves no cpufreq and the cores at 800 MHz.
 - **USB 3.0, Type-A:** `usb_0`, with one port and no hub. `usb_1` is unused,
   as in Arista's own device tree.

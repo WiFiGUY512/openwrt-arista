@@ -141,7 +141,7 @@ class FakeC360:
             self.emit("\r\n\r\nBusyBox v1.37.0 built-in shell (ash)\r\n\r\nroot@OpenWrt:/# ")
             return
         if cmd.startswith("cat /tmp/sysinfo/board_name"):
-            self.emit("%s\r\n0\r\n02:00:00:00:00:01\r\n" % self.board)
+            self.emit("%s\r\n0\r\n00:11:22:33:44:55\r\n" % self.board)
         elif cmd.startswith("ls /dev/sd"):
             self.emit("/dev/sda\r\n/dev/sda1\r\n" if self.stick else "")
         elif cmd.startswith("arista-c360-install"):
@@ -203,7 +203,7 @@ def main():
             pass
     os.chdir(os.environ.get("TMP", "."))
     results = [
-        run("install, confirmed by MAC digits", FakeC360(), [], 0, "OpenWrt is running from NAND", inputs=["17ff"]),
+        run("install, confirmed by MAC digits", FakeC360(), [], 0, "OpenWrt is running from NAND", inputs=["4455"]),
         run("install, --yes", FakeC360(), ["--yes"], 0, "OpenWrt is running from NAND"),
         run("dry run", FakeC360(), ["--dry-run"], 0, "Dry run complete: nothing was written"),
         run("wrong digits: nothing written", FakeC360(), [], 1, "not confirmed; nothing was written", inputs=["0000"]),

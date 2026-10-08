@@ -9,8 +9,8 @@ Non-interactive mode also executed its command from bt_shell_attach(),
 before bt_shell_run(). Run the main menu's hook and the submenus' hooks
 once, before the first command, in both modes.
 
---- a/src/shared/shell.c	2026-10-07 17:49:20.699549715 -0500
-+++ b/src/shared/shell.c	2026-10-07 17:49:20.755551162 -0500
+--- a/src/shared/shell.c
++++ b/src/shared/shell.c
 @@ -1444,11 +1444,27 @@
  	free(env);
  }

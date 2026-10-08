@@ -7,8 +7,8 @@ Arista C-360 a firmware RAM dump shows the wlan_platform thread's code in
 a demand-paged segment, so carve both from the free tail of the reserved
 region (after the segments already placed), bounds-checked.
 
---- a/drivers/net/wireless/ath/ath11k/qmi.c	2026-10-06 20:37:17.533807440 -0500
-+++ b/drivers/net/wireless/ath/ath11k/qmi.c	2026-10-06 20:37:17.561807711 -0500
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
 @@ -25,6 +25,9 @@
  
  #define FW_BUILD_ID_MASK "QC_IMAGE_VERSION_STRING="

@@ -76,6 +76,12 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   factory certificate and its key, which never leaves the TPM. Tested on a
   unit: an IKEv2 exchange and an ESP tunnel, with the RSA identity and with
   the ECC one. Setup below.
+- **CPU frequency scaling,** 1.0 to 2.2 GHz (`cpufreq-dt`, `schedutil`).
+  Before, with the device tree's QSDK compatibles, the cores stayed at
+  800 MHz.
+- **The reset button** (the pinhole): a short press reboots, as on any
+  OpenWrt device, and a press of 5 s or more resets the configuration. The
+  reboot was tested on a unit.
 - **USB storage** on the Type-A port.
 - **sysupgrade**, and **Arista's system kept as a fallback:** OpenWrt lives in
   NAND slot 0, and Arista's slot 1 is never written.

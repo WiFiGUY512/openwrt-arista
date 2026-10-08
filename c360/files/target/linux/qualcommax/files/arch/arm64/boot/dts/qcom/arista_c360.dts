@@ -12,8 +12,8 @@
  * The vendor device tree carries NO C-360 strings at all: its root is
  * model = "Qualcomm Technologies, Inc. IPQ807x/AP-HK09" with
  * compatible = "qcom,ipq807x-hk09", "qcom,ipq807x". So this file is a board
- * file in its own right, not a patch of the vendor tree. The root compatibles
- * below are kept as the device actually declares them.
+ * file in its own right, not a patch of the vendor tree. Its root compatible
+ * is the C-360's own and "qcom,ipq8074", not the vendor's (see the root node).
  *
  * SoC identity: IPQ8076A, as identified by the vendor kernel. That
  * identification stands. It is worth being explicit about what does NOT
@@ -79,11 +79,17 @@
 #include "ipq8074-hk-cpu.dtsi"
 #include "ipq8074-ess.dtsi"
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
 
 / {
 	model = "Arista C-360";
-	compatible = "arista,c360", "qcom,ipq807x-hk09", "qcom,ipq807x";
+	/*
+	 * "qcom,ipq8074", as upstream boards have it, not the QSDK's
+	 * "qcom,ipq807x-hk09", "qcom,ipq807x": qcom-cpufreq-nvmem matches on it,
+	 * and without it there is no cpufreq and the cores stay at 800 MHz.
+	 */
+	compatible = "arista,c360", "qcom,ipq8074";
 
 	aliases {
 		serial0 = &blsp1_uart5;
@@ -543,9 +549,9 @@
  *       port@4  port_id 0x05  phy_address 0x08
  *       port@5  port_id 0x06  phy_address 0x00
  *   dp5  qcom,id 0x05  reg 0x3a003000 0x3fff  mactype 0x01
- *       local-mac-address 02:00:00:00:00:01
+ *       local-mac-address <the unit's MAC, ART 0x0>
  *   dp6  qcom,id 0x06  reg 0x3a007000 0x3fff  mactype 0x01
- *       local-mac-address 02:00:00:00:00:02
+ *       local-mac-address <the unit's MAC - 1, ART 0x6>
  *
  * Note the PHY node names do NOT correspond to their MDIO addresses: the node
  * named ethernet-phy@4 sits at address 0x08. Everything below keys off reg,
@@ -864,6 +870,17 @@
 		bias-disable;
 	};
 
+	/*
+	 * The reset pinhole: gpio42, low while pressed (seen on a unit). Arista's
+	 * own device tree has it as gpio-keys "wps" with a pull-up.
+	 */
+	button_pins: button-state {
+		pins = "gpio42";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
 	/* Release the nRF52833 reset (active-low) for the whole OpenWrt boot. */
 	ble-nreset-hog {
 		gpio-hog;
@@ -881,6 +898,18 @@
 };
 
 / {
+	keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&button_pins>;
+		pinctrl-names = "default";
+
+		reset {
+			label = "reset";
+			gpios = <&tlmm 42 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
 	spi-leds {
 		compatible = "spi-gpio";
 		#address-cells = <1>;
