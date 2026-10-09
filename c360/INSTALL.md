@@ -7,8 +7,9 @@ unit yet**.
 
 ## What you get
 
-* OpenWrt on the IPQ8074 (2.4 + 5 GHz) and both QCN9074 cards: one 6 GHz
-  serving radio and the 2.4/5/6 GHz multifunction radio (airscan).
+* OpenWrt on the IPQ8074 (2.4 + 5 GHz), the QCN9074 card (the 6 GHz
+  serving radio) and the QCN9072 card (the 2.4/5/6 GHz multifunction radio,
+  airscan).
 * OpenWrt lives in NAND slot 0. **Arista's system in slot 1 is kept**: it is
   the fallback, and it is where OpenWrt gets the QCN9074 firmware from.
 * The image contains no Arista or unit-specific files. When the radios first

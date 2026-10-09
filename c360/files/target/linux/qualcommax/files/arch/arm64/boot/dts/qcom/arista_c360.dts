@@ -117,7 +117,7 @@
 		 */
 		/*
 		 * pcie_ports=compat (W4): stops PCIe portdrv claiming a GICv2m SPI per
-		 * root port for PME/AER, so both QCN9074s can get 16 MSI vectors
+		 * root port for PME/AER, so both cards can get 16 MSI vectors
 		 * (without it, 0001:01:00.0 got 16 and 0000:01:00.0 got 1).
 		 */
 		bootargs = "console=ttyMSM0,115200n8 rootwait pcie_ports=compat";
@@ -764,14 +764,15 @@
  *   target/linux/qualcommax/patches-6.12/0121-arm64-dts-ipq8074-Add-WLAN-node.patch
  * (line 131); every OpenWrt ipq807x board overrides it exactly like this.
  *
- * The two QCN9074 endpoints do NOT need a qcom,rproc or any MHI node: mainline
+ * The two endpoints (a QCN9074 on pcie0, a QCN9072 on pcie1, both 17cb:1104)
+ * do NOT need a qcom,rproc or any MHI node: mainline
  * ath11k/pci.c binds by PCI device ID (QCN9074_DEVICE_ID 0x1104) and
  * ath11k/mhi.c registers its own MHI controller over the PCI device. The
  * wifi@0,0 child nodes below exist only to name the endpoints, following the
  * OpenWrt reference pattern (ipq8072-ax9000.dts uses compatible
  * "pci17cb,1104" with reg <0x00010000 ...> for exactly this chip).
  *
- * W6: qcom,ath11k-calibration-variant added to both QCN9074 nodes. Both cards
+ * W6: qcom,ath11k-calibration-variant added to both card nodes. Both cards
  * report qmi-board-id 255 (OTP unprogrammed), so without a variant they share
  * one board-2.bin entry. The vendor stack gave each its own BDF: pcie0
  * bdwlan.bab (6 GHz serving radio, band 4 only) and pcie1 bdwlan.baa

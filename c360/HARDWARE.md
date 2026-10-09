@@ -52,12 +52,16 @@ has the detail, with comments saying how each part was worked out.
 | radio1 | IPQ8074 | `c000000.wifi` (AHB) | 2.4 GHz | serving | 0x1000 |
 | radio0 | IPQ8074 | `c000000.wifi` (AHB) | 5 GHz (lower 5 GHz)* | serving | 0x1000 (0x71800)* |
 | radio3 | QCN9074 | PCIe `0000:01:00.0` | 6 GHz (upper 5 GHz)* | serving | 0x26800 |
-| radio2 | QCN9074 | PCIe `0001:01:00.0` | 2.4/5/6 GHz | scan radio (airscan) | 0x4c000 |
+| radio2 | QCN9072 | PCIe `0001:01:00.0` | 2.4/5/6 GHz | scan radio (airscan) | 0x4c000 |
 
 The IPQ8074's two radios share one calibration area. Each area is 0x20000
 bytes. *In brackets: the dual 5 GHz radio plan (below).
 
-- **The QCN9074s only run Arista's build of Qualcomm's firmware,**
+- **The PCIe 1 card is a QCN9072,** the QCN9074's 2x2 sibling (chip
+  markings in the FCC internal photos, TOR-C360; antenna mask 0x5 where the
+  QCN9074 has 0xf). It has the same PCI ID, 17cb:1104, so ath11k drives it
+  as a QCN9074, with the QCN9074 firmware.
+- **Both cards only run Arista's build of Qualcomm's firmware,**
   `WLAN.HK.2.5.r4-00683` (amss.bin and m3.bin, in Arista's
   `/lib/firmware/IPQ8074/WIFI_FW/qcn9000/`). Every public build tested,
   2.5.0.1 to 2.9.0.1, stops at the QMI capability request.
