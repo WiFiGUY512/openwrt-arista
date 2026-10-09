@@ -109,6 +109,19 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - The radio's own settings are saved and put back on full power, unless you
     changed the antennas in the meantime. A radio you set antennas for is left
     alone.
+  - **LLDP:** `lldpd` runs on both Ethernet ports, sending and receiving LLDP
+    only (CDP, FDP, EDP and SONMP off), so the switch sees the AP as a
+    neighbor. As on Arista's system, the power a switch reports allocating on
+    a port overrides that input's pins when there's no DC supply. 38.1 W or
+    more counts as 802.3bt, 25 W or more as 802.3at, and less as 802.3af.
+    `arista-c360-power status` shows both readings. The AP sends no power
+    request of its own, so the switch allocates by hardware class.
+  - The policy is checked every 30 s, and a change applies after two readings
+    in a row, so allocations that arrive late and supplies that change at
+    runtime take effect.
+  - Tested on a unit against an Arista switch that reports 40 W allocated on
+    both ports (full power), and with an override reporting 25.5 W (802.3at:
+    USB off, caps, 2 chains, back on the real reading).
 - **TPM 2.0:** an Infineon SLB 9670 (firmware 7.85) on SPI (`tpm_tis_spi`).
   `/dev/tpm0` and the resource manager `/dev/tpmrm0` work, and the TPM is the
   kernel's hardware random source (`tpm-rng`).

@@ -11,9 +11,15 @@
 # at 5 and 6 GHz), and the 2.4 GHz radio uses 2 of its 4 chains (mask 3, TX
 # and RX). The scan radio is left alone.
 #
+# Without a DC supply, the power a switch reports by LLDP that it allocated
+# on a port (lldpd, Power via MDI TLV) decides that input's class instead of
+# its pins, as on Arista's system: 38.1 W or more is 802.3bt, 25 W or more
+# 802.3at, less 802.3af.
+#
 #	arista-c360-power status	what the inputs read, and what is applied
 #	arista-c360-power apply		read the inputs, apply the policy
 #	arista-c360-power radios	apply the radio caps again (after Wi-Fi restarts)
+#	arista-c360-power monitor	apply again whenever the inputs change
 
 STATE=/var/run/arista-c360-power
 USB=8af8800.usb
@@ -55,11 +61,48 @@ class() {
 	esac
 }
 
+# Ethernet 1 and 2: eth0/eth1, or lan1/lan2 with DSA port names
+port() { # port 1|2
+	local p
+	for p in eth$(($1 - 1)) lan$1; do
+		[ -e /sys/class/net/$p ] && { echo $p; return; }
+	done
+}
+
+lldp_mw() { # lldp_mw <port>: the power (mW) a switch allocated on it, by LLDP
+	local kv mw
+	if [ -n "$C360_POWER_LLDP" ]; then
+		# test hook: C360_POWER_LLDP="eth0=25000 eth1=40000"
+		mw=$(echo "$C360_POWER_LLDP" | tr ' ' '\n' | sed -n "s/^$1=//p")
+	else
+		command -v lldpcli > /dev/null || return 0
+		kv=$(lldpcli -f keyvalue show neighbors ports "$1" details 2>/dev/null)
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.device-type=PSE$" || return 0
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.enabled=yes$" || return 0
+		mw=$(echo "$kv" | sed -n "s/^lldp\.$1\.port\.power\.allocated=\([0-9]*\)$/\1/p" | head -1)
+	fi
+	[ "${mw:-0}" -gt 0 ] 2>/dev/null && echo $mw
+}
+
+mw_class() { # Arista's thresholds (ap_power.sh)
+	if [ $1 -ge 38100 ]; then echo 802.3bt
+	elif [ $1 -ge 25000 ]; then echo 802.3at
+	else echo 802.3af
+	fi
+}
+
 read_inputs() {
-	POE1=$(class $(pin 54) $(pin 55) $(pin 56))
-	POE2=$(class $(pin 2) $(pin 66) $(pin 27))
+	PINS1=$(class $(pin 54) $(pin 55) $(pin 56))
+	PINS2=$(class $(pin 2) $(pin 66) $(pin 27))
+	POE1=$PINS1 POE2=$PINS2 LLDP1= LLDP2=
 	DC=0
 	[ "$(pin 64)" = 0 ] && DC=1
+	if [ $DC = 0 ] && [ "$(opt lldp 1)" = 1 ]; then
+		LLDP1=$(lldp_mw "$(port 1)")
+		LLDP2=$(lldp_mw "$(port 2)")
+		[ -n "$LLDP1" ] && POE1=$(mw_class $LLDP1)
+		[ -n "$LLDP2" ] && POE2=$(mw_class $LLDP2)
+	fi
 	if [ $DC = 1 ] || [ $POE1 = 802.3bt ] || [ $POE2 = 802.3bt ]; then
 		LEVEL=full
 	elif [ $POE1 != none ] || [ $POE2 != none ]; then
@@ -191,10 +234,31 @@ apply() {
 	} > $STATE
 }
 
+# Read the inputs every 30 s; apply again once a new level has been read twice
+# in a row, so LLDP that arrives after boot, or a supply that changes, takes
+# effect without a flap on one odd reading.
+monitor() {
+	local seen= applied
+	while :; do
+		sleep $(opt interval 30)
+		[ "$(opt enabled 1)" = 1 ] || { seen=; continue; }
+		read_inputs
+		applied=$(cat $STATE.level 2>/dev/null)
+		if [ "$LEVEL" = "$applied" ]; then
+			seen=
+		elif [ "$LEVEL" = "$seen" ]; then
+			apply
+			seen=
+		else
+			seen=$LEVEL
+		fi
+	done
+}
+
 status() {
 	read_inputs
-	echo "PoE 1 (Ethernet 1): $POE1"
-	echo "PoE 2 (Ethernet 2): $POE2"
+	echo "PoE 1 (Ethernet 1): $POE1 (pins $PINS1${LLDP1:+, LLDP $LLDP1 mW allocated})"
+	echo "PoE 2 (Ethernet 2): $POE2 (pins $PINS2${LLDP2:+, LLDP $LLDP2 mW allocated})"
 	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
 	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
 	echo "USB port: $([ -e $USBDRV/$USB ] && echo on || echo off)"
@@ -206,6 +270,7 @@ status() {
 case "$1" in
 apply) apply ;;
 radios) radios_apply ;;
+monitor) monitor ;;
 status|"") status ;;
 *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

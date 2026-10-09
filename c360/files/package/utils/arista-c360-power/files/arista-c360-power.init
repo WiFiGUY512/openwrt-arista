@@ -1,6 +1,8 @@
 #!/bin/sh /etc/rc.common
 # Apply the C-360's PoE power policy once a port has link: the PoE
 # controller's class pins are only settled then (Arista reads them likewise).
+# Then keep watching: the power a switch allocates by LLDP arrives later, and
+# a supply can change while the AP runs.
 
 START=99
 USE_PROCD=1
@@ -16,7 +18,9 @@ start_service() {
 			done
 			sleep 2
 		done
-		exec /usr/sbin/arista-c360-power apply'
+		/usr/sbin/arista-c360-power apply
+		exec /usr/sbin/arista-c360-power monitor'
+	procd_set_param respawn 3600 5 0
 	procd_close_instance
 }
 
