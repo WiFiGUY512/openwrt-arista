@@ -13,9 +13,10 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 - **All four radios.** radio0 (5 GHz) and radio1 (2.4 GHz) are on the
   IPQ8074, and radio3 (6 GHz) is on the first QCN9074. radio2, the second
   QCN9074, is the scan radio and serves no clients (below).
-- **Two radio plans, as on Arista's system** (`arista-c360-radio`)
-  *(built, not yet on a unit)*: 6 GHz, the default, or dual 5 GHz (radio0 on
-  lower 5 GHz, radio3 on upper 5 GHz). `arista-c360-radio-mode dual5g &&
+- **Two radio plans, as on Arista's system** (`arista-c360-radio`): 6 GHz,
+  the default, or dual 5 GHz (radio0 on lower 5 GHz, radio3 on upper 5 GHz).
+  On a unit, both ways: in dual 5 GHz, radio0 has 5180-5320 MHz and radio3
+  5500-5845 MHz; back in 6 GHz, both have their full bands again. `arista-c360-radio-mode dual5g &&
   reboot` switches: it moves radio3 to 5 GHz (channel auto) and keeps radio0
   in the lower band, and the next boot brings the plan's gpio9 level, IPQ8074
   calibration and board data for all three radios (HARDWARE.md).
