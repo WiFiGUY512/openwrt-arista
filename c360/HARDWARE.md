@@ -84,11 +84,17 @@ bytes. *In brackets: the dual 5 GHz radio plan (below).
   slot is attached read-only. The kernel won't mount Arista's squashfs (its
   xz options block is 12 bytes where the kernel expects 8), so `unsquashfs`
   reads it.
-- **The board reserves a fixed host-memory region for each card**
-  (`memory-region`). Arista's firmware asks only for what ath11k already
-  places there. The public 2.9.x firmware also asks for a calibration area
-  (CALDB) and paged memory, which ath11k leaves out. Placing them in the
-  region (two patches, since dropped) didn't make that firmware work.
+- **ath11k allocates the cards' host memory itself** (no `memory-region`),
+  as on the other QCN9074 boards. Arista's system gives each card a fixed
+  55 MiB window; Arista's firmware runs as well without one (tested in
+  memory modes 0 and 2), and the public firmware times out the cap request
+  the same with it or without. Memory mode 0, as on Arista's system: 16 + 1
+  interfaces and 512 clients per card (the QCN9074 default, 2, has 8 and
+  128).
+- **A newer Qualcomm build, WLAN.HK.2.15.0.1.r2-00004** (from DD-WRT, not
+  redistributable here), answers the cap request on both cards: the 6 GHz
+  card runs as an AP, but the scan card stops answering at its first scan
+  on any band (2026-10-09). Arista's build stays.
 - **`pcie_ports=compat`** keeps PCIe port services from taking interrupts, so
   both cards get their 16 MSI vectors.
 
