@@ -111,9 +111,10 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
     alone.
   - **LLDP:** `lldpd` runs on both Ethernet ports, sending and receiving LLDP
     only (CDP, FDP, EDP and SONMP off), so the switch sees the AP as a
-    neighbor, with port IDs `eth0` and `eth1`. As on Arista's system, the power a switch reports allocating on
-    a port overrides that input's pins when there's no DC supply. 38.1 W or
-    more counts as 802.3bt, 25 W or more as 802.3at, and less as 802.3af.
+    neighbor, with port IDs `eth0` and `eth1`. As on Arista's system, the
+    power a switch reports allocating on a port overrides that input's pins
+    when there's no DC supply. 38.1 W or more counts as 802.3bt, 25 W or more
+    as 802.3at, and less as 802.3af.
     `arista-c360-power status` shows both readings. The AP sends no power
     request of its own, so the switch allocates by hardware class.
   - The policy is checked every 30 s, and a change applies after two readings
