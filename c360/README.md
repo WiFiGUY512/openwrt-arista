@@ -16,12 +16,12 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 - **Two radio plans, as on Arista's system** (`arista-c360-radio`): 6 GHz,
   the default, or dual 5 GHz (radio0 on lower 5 GHz, radio3 on upper 5 GHz).
   On a unit, both ways: in dual 5 GHz, radio0 has 5180-5320 MHz and radio3
-  5500-5845 MHz; back in 6 GHz, both have their full bands again. `arista-c360-radio-mode dual5g &&
-  reboot` switches: it moves radio3 to 5 GHz (channel auto) and keeps radio0
-  in the lower band, and the next boot brings the plan's gpio9 level, IPQ8074
-  calibration and board data for all three radios (HARDWARE.md).
-  `arista-c360-radio-mode 6g` puts the radios' settings back, and `status`
-  shows what runs.
+  5500-5845 MHz; back in 6 GHz, both have their full bands again.
+  `arista-c360-radio-mode dual5g && reboot` switches: it moves radio3 to
+  5 GHz (channel auto) and keeps radio0 in the lower band, and the next boot
+  brings the plan's gpio9 level, IPQ8074 calibration and board data for all
+  three radios (HARDWARE.md). `arista-c360-radio-mode 6g` puts the radios'
+  settings back, and `status` shows what runs.
   - Board data follows the wireless country, by Arista's country groups. After
     changing the country: `arista-c360-radio-mode apply`, then reboot.
 - **Ethernet: two 10 GbE ports, both PoE in** (Aquantia AQR113C: 10G, 5G,
