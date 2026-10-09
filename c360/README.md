@@ -109,9 +109,9 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - The radio's own settings are saved and put back on full power, unless you
     changed the antennas in the meantime. A radio you set antennas for is left
     alone.
-  - **LLDP:** `lldpd` runs on both Ethernet ports (port IDs `eth0`/`eth1`), sending and receiving LLDP
+  - **LLDP:** `lldpd` runs on both Ethernet ports, sending and receiving LLDP
     only (CDP, FDP, EDP and SONMP off), so the switch sees the AP as a
-    neighbor. As on Arista's system, the power a switch reports allocating on
+    neighbor, with port IDs `eth0` and `eth1`. As on Arista's system, the power a switch reports allocating on
     a port overrides that input's pins when there's no DC supply. 38.1 W or
     more counts as 802.3bt, 25 W or more as 802.3at, and less as 802.3af.
     `arista-c360-power status` shows both readings. The AP sends no power
