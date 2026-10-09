@@ -6,9 +6,10 @@
 # (Ethernet 1) on gpio54/55/56, PoE 2 (Ethernet 2) on gpio2/66/27, reading
 # 1 1 1 for 802.3af, 1 0 1 for 802.3at, 0 1 0 for 802.3bt. gpio64 is 0 when a
 # DC supply is plugged in. A DC supply or 802.3bt on either input is full
-# power. On 802.3at (or af) alone the USB port is turned off and the serving
+# power. On 802.3at (or af) alone the USB port is turned off, the serving
 # radios' transmit power is capped (Arista's values: 15 dBm at 2.4 GHz, 18 dBm
-# at 5 and 6 GHz). The scan radio is left alone.
+# at 5 and 6 GHz), and the 2.4 GHz radio uses 2 of its 4 chains (mask 3, TX
+# and RX). The scan radio is left alone.
 #
 #	arista-c360-power status	what the inputs read, and what is applied
 #	arista-c360-power apply		read the inputs, apply the policy
@@ -17,10 +18,17 @@
 STATE=/var/run/arista-c360-power
 USB=8af8800.usb
 USBDRV=/sys/bus/platform/drivers/dwc3-qcom
+# uci writes go through a save directory of their own, so a commit here never
+# commits changes someone else has staged
+UCI="uci -q -t /var/run/arista-c360-power.uci"
 
 log() { logger -t arista-c360-power "$*"; }
 
 opt() { uci -q get arista-c360-power.main.$1 || echo "$2"; }
+
+scan_section() { ubus call airscan status 2>/dev/null | jsonfilter -e '@.section' 2>/dev/null; }
+
+wifi_devices() { uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"; }
 
 tlmm_base() {
 	local c
@@ -86,10 +94,10 @@ band_cap() { # band_cap <phy>: the cap in dBm for the phy's band
 # again then (hotplug).
 radios_apply() {
 	local level=$(cat $STATE.level 2>/dev/null || echo full)
-	local scan=$(ubus call airscan status 2>/dev/null | jsonfilter -e '@.section' 2>/dev/null)
+	local scan=$(scan_section)
 	local sec phy cap user
 	rm -f $STATE.caps.new
-	for sec in $(uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"); do
+	for sec in $(wifi_devices); do
 		[ "$sec" = "$scan" ] && continue
 		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
 		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
@@ -108,18 +116,72 @@ radios_apply() {
 	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
 }
 
+# The 2.4 GHz serving radio's chains. A radio's antennas can change only while
+# it is down, and Wi-Fi sets them from the config whenever it starts a radio,
+# so they go into the radio's config (txantenna/rxantenna) and Wi-Fi reloads
+# that radio. What it had before is kept in this package's config (section
+# 'chains') and put back on full power, unless the antennas were changed in
+# the meantime. A radio with antennas of its own in the config is left alone.
+# Runs only from apply: a Wi-Fi restart does not bring it back.
+chains_apply() { # chains_apply limited|full
+	local level=$1 mask=$(opt chains_2g 3) scan=$(scan_section) sec saved tx rx wifi=0 own=0
+	mkdir -p /var/run/arista-c360-power.uci
+	for sec in $(wifi_devices); do
+		[ "$sec" = "$scan" ] && continue
+		[ "$(uci -q get wireless.$sec.band)" = 2g ] || continue
+		saved=$(uci -q get arista-c360-power.chains.$sec)
+		tx=$(uci -q get wireless.$sec.txantenna)
+		rx=$(uci -q get wireless.$sec.rxantenna)
+		if [ $level = limited ] && [ "$(opt chains 1)" = 1 ]; then
+			[ -n "$saved" ] && continue
+			case "${tx:-all} ${rx:-all}" in
+			"all all") ;;
+			*) log "$sec keeps the antennas it is configured with ($tx/$rx)"; continue ;;
+			esac
+			uci -q get arista-c360-power.chains > /dev/null || $UCI set arista-c360-power.chains=state
+			$UCI set arista-c360-power.chains.$sec="${tx:--} ${rx:--}"
+			$UCI set wireless.$sec.txantenna=$mask
+			$UCI set wireless.$sec.rxantenna=$mask
+			log "$sec: 2.4 GHz chains to mask $mask"
+			wifi=1 own=1
+		elif [ -n "$saved" ]; then
+			if [ "$tx" = "$mask" ] && [ "$rx" = "$mask" ]; then
+				tx=${saved% *} rx=${saved#* }
+				if [ "$tx" = - ]; then $UCI delete wireless.$sec.txantenna; else $UCI set wireless.$sec.txantenna=$tx; fi
+				if [ "$rx" = - ]; then $UCI delete wireless.$sec.rxantenna; else $UCI set wireless.$sec.rxantenna=$rx; fi
+				log "$sec: 2.4 GHz chains back to the configured antennas"
+				wifi=1
+			else
+				log "$sec: antennas changed since the reduction ($tx/$rx), kept"
+			fi
+			$UCI delete arista-c360-power.chains.$sec
+			own=1
+		fi
+	done
+	if [ $own = 1 ]; then
+		$UCI commit arista-c360-power
+		# the section goes once no radio is reduced
+		[ "$(uci -q show arista-c360-power.chains | wc -l)" = 1 ] &&
+			$UCI delete arista-c360-power.chains && $UCI commit arista-c360-power
+	fi
+	[ $wifi = 1 ] && $UCI commit wireless && wifi reload
+	return 0
+}
+
 apply() {
 	read_inputs
 	echo $LEVEL > $STATE.level
 	if [ "$(opt enabled 1)" != 1 ]; then
 		usb_set on
 		echo full > $STATE.level
+		chains_apply full
 		radios_apply
 		log "disabled: full power regardless (PoE 1 $POE1, PoE 2 $POE2, DC $DC)"
 		return
 	fi
 	log "power: $LEVEL (PoE 1 $POE1, PoE 2 $POE2, DC $DC)"
 	if [ $LEVEL = limited ] && [ "$(opt usb 1)" = 1 ]; then usb_set off; else usb_set on; fi
+	chains_apply $LEVEL
 	radios_apply
 	{
 		echo "level=$LEVEL"
@@ -137,6 +199,7 @@ status() {
 	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
 	echo "USB port: $([ -e $USBDRV/$USB ] && echo on || echo off)"
 	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
+	uci -q show arista-c360-power.chains | sed -n "s/^arista-c360-power\.chains\.\([^=]*\)=.*/radio \1: 2.4 GHz chains reduced to mask $(opt chains_2g 3)/p"
 	return 0
 }
 

@@ -101,8 +101,14 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   comes from the PoE controller's pins (HARDWARE.md). `arista-c360-power
   status` shows the inputs and what is applied; `/etc/config/arista-c360-power`
   turns it off or changes the caps. Tested on a unit on 802.3bt (full power),
-  and the 802.3at path with a test override. Not done: Arista also drops the
-  2.4 GHz radio from 4 chains to 2.
+  and the 802.3at path with a test override.
+  - The 2.4 GHz radio also drops from 4 chains to 2 (TX and RX mask 3), as on
+    Arista's system. Chains can only change while a radio is down, so they go
+    into that radio's `txantenna`/`rxantenna` in `/etc/config/wireless`, and
+    Wi-Fi reloads that radio once.
+  - The radio's own settings are saved and put back on full power, unless you
+    changed the antennas in the meantime. A radio you set antennas for is left
+    alone.
 - **TPM 2.0:** an Infineon SLB 9670 (firmware 7.85) on SPI (`tpm_tis_spi`).
   `/dev/tpm0` and the resource manager `/dev/tpmrm0` work, and the TPM is the
   kernel's hardware random source (`tpm-rng`).

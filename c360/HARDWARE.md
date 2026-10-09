@@ -184,7 +184,9 @@ Uniphy, connected over USXGMII:
   | PoE 2 (Ethernet 2) | gpio2, gpio66, gpio27 | 1 1 1 | 1 0 1 | 0 1 0 |
 
   - gpio64 is the DC jack: 0 when a DC supply is present.
-  - On 802.3at, Arista turns the USB port off and lowers the radios' chains
-    and transmit power. OpenWrt does neither yet.
+  - On 802.3at, Arista turns the USB port off, caps the radios' transmit power
+    and runs the 2.4 GHz radio on 2 of its 4 chains (`/etc/poe_prof.cfg`:
+    `CHAIN_2G_MIN=3`, TX and RX; 5 GHz, 6 GHz and the scan radio unchanged).
+    `arista-c360-power` does the same (README.md).
   - A unit on 802.3bt on both inputs read 0 1 0 on both groups, and gpio64 1
     (no DC supply).
