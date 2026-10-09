@@ -882,6 +882,14 @@
 		bias-pull-up;
 	};
 
+	/* the radio plan line, configured as Arista's system does (0x2c1) */
+	radio_plan_pins: radio-plan-state {
+		pins = "gpio9";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
+
 	/* Release the nRF52833 reset (active-low) for the whole OpenWrt boot. */
 	ble-nreset-hog {
 		gpio-hog;
@@ -912,6 +920,26 @@
 		regulator-max-microvolt = <5000000>;
 		gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
+	};
+
+	/*
+	 * gpio9 selects the radio plan, as in Arista's read_caldata_to_fs.sh and
+	 * country_map.cfg: low for 6 GHz (the IPQ8074 on all of 5 GHz, the
+	 * serving QCN9074 on 6 GHz), high for dual 5 GHz (the IPQ8074 on lower
+	 * 5 GHz, the serving QCN9074 on upper 5 GHz). Each plan has its own IPQ8074
+	 * calibration and board data. It starts low, Arista's default;
+	 * arista-c360-radio-mode drives it through /sys/class/gpio/dual-5g.
+	 */
+	gpio-export {
+		compatible = "gpio-export";
+		pinctrl-0 = <&radio_plan_pins>;
+		pinctrl-names = "default";
+
+		dual-5g {
+			gpio-export,name = "dual-5g";
+			gpio-export,output = <0>;
+			gpios = <&tlmm 9 GPIO_ACTIVE_HIGH>;
+		};
 	};
 
 	keys {

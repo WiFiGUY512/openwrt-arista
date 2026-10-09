@@ -1,22 +1,28 @@
 Subject: qualcommax: ipq807x: Arista C-360 calibration from ART
 
-Each radio's calibration comes from the unit's own 0:ART partition, at three offsets.
+Each radio's calibration comes from the unit's own 0:ART partition: the QCN9074 cards' at 0x26800 and 0x4c000, the IPQ8074's at 0x1000, or at 0x71800 in the dual 5 GHz radio plan (arista-c360-radio), as on Arista's system.
 
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
-index df4907c..c2fcc50 100644
+index df4907c..c357d87 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
-@@ -9,6 +9,9 @@ board=$(board_name)
+@@ -9,6 +9,15 @@ board=$(board_name)
  case "$FIRMWARE" in
  "ath11k/IPQ8074/hw2.0/cal-ahb-c000000.wifi.bin")
  	case "$board" in
 +	arista,c360)
-+		caldata_extract "0:ART" 0x1000 0x20000
++		# the calibration of the radio plan (arista-c360-radio-mode), as
++		# in Arista's country_map.cfg: 0x1000 for 6 GHz, 0x71800 for dual 5 GHz
++		if [ "$(uci -q get arista-c360-radio.main.mode)" = dual5g ]; then
++			caldata_extract "0:ART" 0x71800 0x20000
++		else
++			caldata_extract "0:ART" 0x1000 0x20000
++		fi
 +		;;
  	aliyun,ap8220)
  		caldata_extract "0:art" 0x1000 0x20000
  		addr=$(mtd_get_mac_text product_info 0x4b)
-@@ -138,6 +141,12 @@ case "$FIRMWARE" in
+@@ -138,6 +147,12 @@ case "$FIRMWARE" in
  "ath11k/QCN9074/hw1.0/cal-pci-0000:01:00.0.bin"|\
  "ath11k/QCN9074/hw1.0/cal-pci-0001:01:00.0.bin")
  	case "$board" in

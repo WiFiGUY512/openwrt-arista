@@ -1,0 +1,8 @@
+#!/bin/sh /etc/rc.common
+# The radio plan's gpio9 level, before netifd brings the radios up.
+
+START=11
+
+start() {
+	/usr/sbin/arista-c360-radio-mode boot
+}

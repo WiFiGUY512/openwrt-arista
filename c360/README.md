@@ -13,6 +13,16 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 - **All four radios.** radio0 (5 GHz) and radio1 (2.4 GHz) are on the
   IPQ8074, and radio3 (6 GHz) is on the first QCN9074. radio2, the second
   QCN9074, is the scan radio and serves no clients (below).
+- **Two radio plans, as on Arista's system** (`arista-c360-radio`)
+  *(built, not yet on a unit)*: 6 GHz, the default, or dual 5 GHz (radio0 on
+  lower 5 GHz, radio3 on upper 5 GHz). `arista-c360-radio-mode dual5g &&
+  reboot` switches: it moves radio3 to 5 GHz (channel auto) and keeps radio0
+  in the lower band, and the next boot brings the plan's gpio9 level, IPQ8074
+  calibration and board data for all three radios (HARDWARE.md).
+  `arista-c360-radio-mode 6g` puts the radios' settings back, and `status`
+  shows what runs.
+  - Board data follows the wireless country, by Arista's country groups. After
+    changing the country: `arista-c360-radio-mode apply`, then reboot.
 - **Ethernet: two 10 GbE ports, both PoE in** (Aquantia AQR113C: 10G, 5G,
   2.5G, 1G, 100M). eth0 is Ethernet 1 and eth1 is Ethernet 2.
   - Both ports link at 10 Gb/s and at 2.5 Gb/s, and pass traffic both ways.
@@ -266,12 +276,13 @@ strongSwan can authenticate IKEv2 with one.
   - the TPM module on this target.
 - `files/`:
   - the device tree;
-  - the board's scripts: the first-boot Wi-Fi firmware copy, the port tool
-    (`arista-c360-net`), the installer, the BLE start-up, and the LED and link
-    watchers;
+  - the board's scripts: the Wi-Fi firmware and board data copies (firmware
+    hotplug), the port tool (`arista-c360-net`), the installer, the BLE
+    start-up, and the LED and link watchers;
   - the airscan package;
-  - the TPM 2.0 software stack, `tpm2-tss` and `tpm2-tools`;
-  - the two ath11k fixes.
+  - the PoE power policy (`arista-c360-power`) and the radio plan
+    (`arista-c360-radio`);
+  - the TPM 2.0 software stack, `tpm2-tss` and `tpm2-tools`.
 - `patches/feeds/packages/`: strongSwan's TPM plugin, with a fix that lets
   it sign with TPM keys that have no fixed signature scheme (as the factory
   identity keys).

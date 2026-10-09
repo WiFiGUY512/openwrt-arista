@@ -50,19 +50,34 @@ has the detail, with comments saying how each part was worked out.
 | Radio | Chip | Where | Bands | Use | Calibration (ART) |
 |---|---|---|---|---|---|
 | radio1 | IPQ8074 | `c000000.wifi` (AHB) | 2.4 GHz | serving | 0x1000 |
-| radio0 | IPQ8074 | `c000000.wifi` (AHB) | 5 GHz | serving | 0x1000 |
-| radio3 | QCN9074 | PCIe `0000:01:00.0` | 6 GHz | serving | 0x26800 |
+| radio0 | IPQ8074 | `c000000.wifi` (AHB) | 5 GHz (lower 5 GHz)* | serving | 0x1000 (0x71800)* |
+| radio3 | QCN9074 | PCIe `0000:01:00.0` | 6 GHz (upper 5 GHz)* | serving | 0x26800 |
 | radio2 | QCN9074 | PCIe `0001:01:00.0` | 2.4/5/6 GHz | scan radio (airscan) | 0x4c000 |
 
-The IPQ8074's two radios share one calibration area. Each area is 0x20000 bytes.
+The IPQ8074's two radios share one calibration area. Each area is 0x20000
+bytes. *In brackets: the dual 5 GHz radio plan (below).
 
 - **The QCN9074s only run Arista's build of Qualcomm's firmware,**
   `WLAN.HK.2.5.r4-00683` (amss.bin and m3.bin, in Arista's
   `/lib/firmware/IPQ8074/WIFI_FW/qcn9000/`). Every public build tested,
   2.5.0.1 to 2.9.0.1, stops at the QMI capability request.
-- **Board files come from the same place:** `bdwlan.bab` for the card on
-  pcie0 and `bdwlan.baa` for pcie1, with calibration variants
-  `Arista-C360-pcie0`/`-pcie1`. The IPQ8074's is `bdwlan.b290`.
+- **Board files come from the same system,** from the set Arista itself
+  copies in at every boot (`link_board_data` in its `/etc/country_map.cfg`):
+  `/lib/boarddata/radio12` (IPQ8074), `radio3` (the card on pcie0) and
+  `radio4` (pcie1), per radio plan and country group, under `user/<group>/`.
+  The group follows the wireless country (FCC_CE, Arista's fallback, covers
+  the US and the EU, and any group without a file of its own). The stock
+  files in `WIFI_FW` (`bdwlan.b290`, `qcn9000/bdwlan.bab`, `bdwlan.baa`) are
+  not what Arista runs; they are the fallback for an Arista system without
+  `/lib/boarddata`. Calibration variants: `Arista-C360-pcie0`/`-pcie1`.
+- **Two radio plans, as on Arista's system.** 6 GHz (the default): the
+  IPQ8074 on all of 5 GHz with `b290_2G_5G_full`, the pcie0 card on 6 GHz
+  with `bab_6G_full`. Dual 5 GHz: the IPQ8074 on lower 5 GHz with
+  `b290_2G_5G_low` and the calibration at ART 0x71800, the pcie0 card on
+  upper 5 GHz with `bab_5G_high`. The pcie1 card (`baa`) is the same in both.
+  **gpio9** selects the plan (Arista's `read_caldata_to_fs.sh` writes the
+  TLMM registers: 0x2c1 and low for 6 GHz, 0x2c3 and high for dual 5 GHz);
+  here it is a `gpio-export` line, `/sys/class/gpio/dual-5g`, low at boot.
 - **OpenWrt copies these five files from slot 1 when ath11k first asks for
   them**, as firmware hotplug scripts: `12-ath11k-vendor-firmware` for
   amss.bin and m3.bin, `13-arista-c360-board-data` for the board data. The

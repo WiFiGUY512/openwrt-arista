@@ -1,0 +1,173 @@
+#!/bin/sh
+#
+# Arista C-360 radio plan, as on Arista's system:
+#
+#   6g      the IPQ8074 on 2.4 GHz and all of 5 GHz, the serving QCN9074
+#           (pcie0) on 6 GHz. Arista's default.
+#   dual5g  the IPQ8074 on 2.4 GHz and lower 5 GHz, the serving QCN9074 on
+#           upper 5 GHz.
+#
+# The multifunction QCN9074 (pcie1, airscan) is the same in both. A plan is
+# a level on gpio9 (/sys/class/gpio/dual-5g, low for 6g), the IPQ8074
+# calibration (ART 0x1000 or 0x71800, 11-ath11k-caldata) and the board data
+# of all three radios (13-arista-c360-board-data). The radios read
+# calibration and board data when they start, so a new plan takes a reboot;
+# the init script sets gpio9 at boot.
+
+. /lib/functions.sh
+
+CFG=arista-c360-radio
+GPIO=/sys/class/gpio/dual-5g/value
+FW=/lib/firmware/ath11k
+IPQ=$FW/IPQ8074/hw2.0
+QCN=$FW/QCN9074/hw1.0
+# what the hotplug scripts wrote for the running plan
+GEN="$IPQ/board.bin $IPQ/board.bin.source $IPQ/cal-ahb-c000000.wifi.bin
+	$QCN/board-2.bin $QCN/board-2.bin.source"
+
+usage() {
+	cat <<EOF
+Usage: arista-c360-radio-mode <6g|dual5g|apply|status>
+
+  6g       the 6 GHz plan (Arista's default): IPQ8074 2.4 + 5 GHz,
+           serving QCN9074 6 GHz
+  dual5g   the dual 5 GHz plan: IPQ8074 2.4 + lower 5 GHz, serving
+           QCN9074 upper 5 GHz
+  apply    the configured plan's board data again (after a change of
+           the wireless country)
+  status   the configured plan and what the radios run now
+
+A new plan takes effect at the next boot, e.g.
+  arista-c360-radio-mode dual5g && reboot
+EOF
+}
+
+die() {
+	echo "arista-c360-radio-mode: $*" >&2
+	exit 1
+}
+
+mode() {
+	[ "$(uci -q get $CFG.main.mode)" = dual5g ] && echo dual5g || echo 6g
+}
+
+gpio_set() { # gpio_set <plan>
+	[ -w $GPIO ] || { logger -t arista-c360-radio "$GPIO missing"; return 1; }
+	if [ "$1" = dual5g ]; then echo 1 > $GPIO; else echo 0 > $GPIO; fi
+}
+
+# SERVING: the serving QCN9074's wifi-device (pcie0); IPQ5: the IPQ8074's 5 GHz one
+radios() {
+	local s
+	SERVING= IPQ5=
+	for s in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
+		case "$(uci -q get wireless.$s.path)" in
+		*/0000:01:00.0) SERVING=$s ;;
+		*/c000000.wifi|*/c000000.wifi+1)
+			[ "$(uci -q get wireless.$s.band)" = 5g ] && IPQ5=$s ;;
+		esac
+	done
+}
+
+# keep <option> <value>: a 6 GHz-plan setting to put back later ("-" = unset)
+keep() {
+	uci -q set $CFG.saved=saved
+	uci set $CFG.saved.$1="${2:--}"
+}
+
+# put_back <section> <option> <saved option> <default>
+put_back() {
+	local v=$(uci -q get $CFG.saved.$3)
+	case "$v" in
+	-) uci -q delete wireless.$1.$2 ;;
+	'') uci set wireless.$1.$2="$4" ;;
+	*) uci set wireless.$1.$2="$v" ;;
+	esac
+}
+
+# the wireless configuration for <plan>: the serving radio's band, and the
+# IPQ8074's 5 GHz channel kept in the lower band
+wireless_plan() {
+	local ch
+	radios
+	if [ "$1" = dual5g ]; then
+		if [ -n "$SERVING" ]; then
+			keep serving_band "$(uci -q get wireless.$SERVING.band)"
+			keep serving_channel "$(uci -q get wireless.$SERVING.channel)"
+			uci set wireless.$SERVING.band=5g
+			uci set wireless.$SERVING.channel=auto
+		fi
+		if [ -n "$IPQ5" ]; then
+			ch=$(uci -q get wireless.$IPQ5.channel)
+			case "$ch" in
+			''|auto|3[2-9]|4[0-9]|5[0-9]|6[0-8]) ;;
+			*)
+				keep ipq5_channel "$ch"
+				uci set wireless.$IPQ5.channel=36
+				;;
+			esac
+		fi
+	else
+		if [ -n "$SERVING" ]; then
+			put_back $SERVING band serving_band 6g
+			put_back $SERVING channel serving_channel auto
+		fi
+		[ -n "$IPQ5" ] && [ -n "$(uci -q get $CFG.saved.ipq5_channel)" ] &&
+			put_back $IPQ5 channel ipq5_channel auto
+		uci -q delete $CFG.saved
+	fi
+	uci commit wireless
+}
+
+status() {
+	local m=$(mode) f s src running=
+	echo "plan: $m"
+	echo "gpio9 (dual-5g): $(cat $GPIO 2>/dev/null || echo missing)"
+	for f in $IPQ/board.bin $QCN/board-2.bin; do
+		src=$(cat $f.source 2>/dev/null)
+		running="$running ${src%% *}"
+		if [ ! -e $f ]; then
+			src="none yet, written at the next boot"
+		elif [ -z "$src" ]; then
+			src="written before arista-c360-radio"
+		fi
+		echo "${f#$FW/}: $src"
+	done
+	case "$running" in
+	" $m $m") ;;
+	*) echo "board data is not the $m plan's: reboot" ;;
+	esac
+	radios
+	for s in $SERVING $IPQ5; do
+		echo "$s: band $(uci -q get wireless.$s.band), channel $(uci -q get wireless.$s.channel)"
+	done
+}
+
+case "$1" in
+6g|dual5g)
+	[ "$(board_name)" = arista,c360 ] || die "not an Arista C-360"
+	[ "$1" = "$(mode)" ] && { echo "already the $1 plan"; exit 0; }
+	uci -q set $CFG.main=radio
+	uci set $CFG.main.mode=$1
+	wireless_plan $1
+	uci commit $CFG
+	rm -f $GEN
+	logger -t arista-c360-radio "$1 plan from the next boot"
+	echo "the $1 plan from the next boot: reboot"
+	;;
+apply)
+	[ "$(board_name)" = arista,c360 ] || die "not an Arista C-360"
+	rm -f $GEN
+	echo "the $(mode) plan's board data from the next boot: reboot"
+	;;
+boot)
+	[ "$(board_name)" = arista,c360 ] && gpio_set "$(mode)"
+	;;
+status|'')
+	status
+	;;
+*)
+	usage
+	exit 1
+	;;
+esac

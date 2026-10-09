@@ -102,7 +102,8 @@ def main():
                  "etc/hotplug.d/firmware/13-arista-c360-board-data",
                  "usr/sbin/unsquashfs", "usr/sbin/ubiattach", "usr/sbin/fw_setenv",
                  "etc/hotplug.d/ieee80211/12-arista-c360-leds",
-                 "usr/sbin/arista-c360-install", "usr/sbin/ubiformat"):
+                 "usr/sbin/arista-c360-install", "usr/sbin/ubiformat",
+                 "usr/sbin/arista-c360-radio-mode", "etc/init.d/arista-c360-radio"):
         if need not in rootfs:
             fails.append("missing %s" % need)
     # the installer mounts the USB stick (FAT32) from Linux

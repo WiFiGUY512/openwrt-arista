@@ -5,6 +5,16 @@
 # asks for it. On OpenWrt main the same data comes in ipq-wifi-arista_c360;
 # once that package reaches 25.12, this goes. The firmware itself comes from
 # 12-ath11k-vendor-firmware.
+#
+# Arista keeps a set of board data per radio plan and country group in
+# /lib/boarddata/radio{12,3,4}/user/<group>/ and copies the matching set in
+# at every boot (link_board_data in its /etc/country_map.cfg). This takes the
+# same files: the plan from arista-c360-radio (6g or dual5g), the group from
+# the country of the wireless configuration, FCC_CE when the group has no
+# file of its own (as Arista does). Units whose Arista system predates
+# /lib/boarddata get its stock files, in the 6 GHz plan only. Each file
+# written gets a .source next to it; arista-c360-radio-mode removes both
+# when the plan changes.
 
 case "$FIRMWARE" in
 "ath11k/IPQ8074/hw2.0/board.bin"|\
@@ -18,6 +28,7 @@ esac
 [ "$(board_name)" = arista,c360 ] || exit 0
 
 SRC=lib/firmware/IPQ8074/WIFI_FW
+BD=lib/boarddata
 IPQ=/lib/firmware/ath11k/IPQ8074/hw2.0
 QCN=/lib/firmware/ath11k/QCN9074/hw1.0
 
@@ -44,6 +55,38 @@ board_ie() {
 	le32 1; le32 $dlen; cat "$file"; pad4 $dlen
 }
 
+# Arista's country groups (ISO 3166 numeric codes in its country_map.cfg)
+country_group() {
+	case "$1" in
+	AU) echo AU ;;
+	CA) echo IC ;;
+	KR) echo KCC ;;
+	TW) echo TW ;;
+	GB) echo UK ;;
+	IL) echo IL ;;
+	ZA) echo ZA ;;
+	JP) echo JP ;;
+	SA|SG|JM|QA) echo SA_SG_JM ;;
+	HK|KE|MY|MA|AE|SV|CR|GT|CO|NA|PE|KW|NZ|PH) echo HK_KE_MY ;;
+	CL|TH|MX) echo CL_TH_MX ;;
+	TR) echo TR ;;
+	BW) echo BW ;;
+	BR) echo BZ ;;
+	*) echo FCC_CE ;;
+	esac
+}
+
+mode=$(uci -q get arista-c360-radio.main.mode)
+[ "$mode" = dual5g ] || mode=6g
+country=$(uci -q show wireless | sed -n "s/^wireless\.[^.]*\.country='\([A-Z][A-Z]\)'$/\1/p" | head -n 1)
+group=$(country_group "$country")
+if [ $mode = dual5g ]; then
+	f12=bdwlan.b290_2G_5G_low f3=bdwlan.bab_5G_high
+else
+	f12=bdwlan.b290_2G_5G_full f3=bdwlan.bab_6G_full
+fi
+f4=bdwlan.baa
+
 mtd=$(find_mtd_index rootfs_1)
 [ -n "$mtd" ] || exit 0
 ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
@@ -57,25 +100,43 @@ tmp=$(mktemp -d)
 if [ -n "$vol" ]; then
 	# the node's own hotplug event waits behind this one
 	[ -c /dev/$vol ] || mknod /dev/$vol c $(sed 's/:/ /' /sys/class/ubi/$vol/dev)
-	unsquashfs -n -d "$tmp" /dev/$vol $SRC/bdwlan.b290 \
-		$SRC/qcn9000/bdwlan.bab $SRC/qcn9000/bdwlan.baa > /dev/null 2>&1
+	unsquashfs -n -d "$tmp" /dev/$vol \
+		$BD/radio12/user/$group $BD/radio3/user/$group $BD/radio4/user/$group \
+		$BD/radio12/user/FCC_CE $BD/radio3/user/FCC_CE $BD/radio4/user/FCC_CE \
+		$SRC/bdwlan.b290 $SRC/qcn9000/bdwlan.bab $SRC/qcn9000/bdwlan.baa > /dev/null 2>&1
 fi
 ubidetach -d "$ubi" > /dev/null 2>&1
 
-s=$tmp/$SRC
-if [ -s $s/bdwlan.b290 ] && [ ! -e $IPQ/board.bin ]; then
+# pick <radio> <file> <stock file>: the group's, else FCC_CE's, else (6 GHz plan) stock
+pick() {
+	local f
+	for f in $tmp/$BD/$1/user/$group/$2 $tmp/$BD/$1/user/FCC_CE/$2; do
+		[ -s "$f" ] && { echo "$f"; return; }
+	done
+	[ $mode = 6g ] && [ -s "$tmp/$3" ] && echo "$tmp/$3"
+}
+b12=$(pick radio12 $f12 $SRC/bdwlan.b290)
+b3=$(pick radio3 $f3 $SRC/qcn9000/bdwlan.bab)
+b4=$(pick radio4 $f4 $SRC/qcn9000/bdwlan.baa)
+
+if [ -n "$b12" ] && [ ! -e $IPQ/board.bin ]; then
 	mkdir -p $IPQ
-	cp $s/bdwlan.b290 $IPQ/board.bin.tmp && mv $IPQ/board.bin.tmp $IPQ/board.bin
+	cp "$b12" $IPQ/board.bin.tmp && mv $IPQ/board.bin.tmp $IPQ/board.bin
+	echo "$mode $group ${b12#$tmp/}" > $IPQ/board.bin.source
 fi
-if [ -s $s/qcn9000/bdwlan.bab ] && [ -s $s/qcn9000/bdwlan.baa ] && [ ! -e $QCN/board-2.bin ]; then
+if [ -n "$b3" ] && [ -n "$b4" ] && [ ! -e $QCN/board-2.bin ]; then
 	mkdir -p $QCN
 	{
 		printf 'QCA-ATH11K-BOARD'; printf '\000'; pad4 17
-		board_ie "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360-pcie0" $s/qcn9000/bdwlan.bab
-		board_ie "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360-pcie1" $s/qcn9000/bdwlan.baa
+		board_ie "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360-pcie0" "$b3"
+		board_ie "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360-pcie1" "$b4"
 	} > $QCN/board-2.bin.tmp && mv $QCN/board-2.bin.tmp $QCN/board-2.bin
+	echo "$mode $group ${b3#$tmp/} ${b4#$tmp/}" > $QCN/board-2.bin.source
 fi
 rm -rf "$tmp"
 
-[ -s /lib/firmware/$FIRMWARE ] ||
-	logger -t arista-c360-board-data "no board data for $FIRMWARE in the Arista system"
+if [ -s /lib/firmware/$FIRMWARE ]; then
+	logger -t arista-c360-board-data "$FIRMWARE: $mode plan, $group board data"
+else
+	logger -t arista-c360-board-data "no $mode board data for $FIRMWARE in the Arista system"
+fi
