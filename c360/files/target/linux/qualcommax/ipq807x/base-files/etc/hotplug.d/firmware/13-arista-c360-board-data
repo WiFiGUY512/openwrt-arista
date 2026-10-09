@@ -1,0 +1,81 @@
+#!/bin/sh
+#
+# Arista C-360 on OpenWrt 25.12: the board data of the IPQ8074 and of both
+# QCN9074 cards, from the Arista system in NAND slot 1, when ath11k first
+# asks for it. On OpenWrt main the same data comes in ipq-wifi-arista_c360;
+# once that package reaches 25.12, this goes. The firmware itself comes from
+# 12-ath11k-vendor-firmware.
+
+case "$FIRMWARE" in
+"ath11k/IPQ8074/hw2.0/board.bin"|\
+"ath11k/QCN9074/hw1.0/board-2.bin") ;;
+*) exit 0 ;;
+esac
+[ -e /lib/firmware/$FIRMWARE ] && exit 0
+
+. /lib/functions.sh
+
+[ "$(board_name)" = arista,c360 ] || exit 0
+
+SRC=lib/firmware/IPQ8074/WIFI_FW
+IPQ=/lib/firmware/ath11k/IPQ8074/hw2.0
+QCN=/lib/firmware/ath11k/QCN9074/hw1.0
+
+le32() {
+	# busybox ash does not expand "\\$(...)", so an inner printf builds the escapes
+	printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $((($1 >> 8) & 255)) \
+		$((($1 >> 16) & 255)) $((($1 >> 24) & 255)))"
+}
+
+# padding to 4 bytes, with ath11k-bdencoder's padding byte
+pad4() {
+	local n=$(((4 - $1 % 4) % 4))
+	[ $n -eq 0 ] || printf 'mmm' | head -c $n
+}
+
+# one board-2.bin BOARD element: { 0, len, { 0 (NAME), len, name }, { 1 (DATA), len, data } }
+board_ie() {
+	local name="$1" file="$2" nlen dlen
+	nlen=${#name}
+	dlen=$(wc -c < "$file")
+	le32 0
+	le32 $((8 + nlen + (4 - nlen % 4) % 4 + 8 + dlen + (4 - dlen % 4) % 4))
+	le32 0; le32 $nlen; printf %s "$name"; pad4 $nlen
+	le32 1; le32 $dlen; cat "$file"; pad4 $dlen
+}
+
+mtd=$(find_mtd_index rootfs_1)
+[ -n "$mtd" ] || exit 0
+ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+[ -n "$ubi" ] || exit 0
+
+vol=
+for v in /sys/class/ubi/ubi${ubi}_*; do
+	[ "$(cat "$v/name" 2>/dev/null)" = ubi_rootfs ] && vol=${v##*/}
+done
+tmp=$(mktemp -d)
+if [ -n "$vol" ]; then
+	# the node's own hotplug event waits behind this one
+	[ -c /dev/$vol ] || mknod /dev/$vol c $(sed 's/:/ /' /sys/class/ubi/$vol/dev)
+	unsquashfs -n -d "$tmp" /dev/$vol $SRC/bdwlan.b290 \
+		$SRC/qcn9000/bdwlan.bab $SRC/qcn9000/bdwlan.baa > /dev/null 2>&1
+fi
+ubidetach -d "$ubi" > /dev/null 2>&1
+
+s=$tmp/$SRC
+if [ -s $s/bdwlan.b290 ] && [ ! -e $IPQ/board.bin ]; then
+	mkdir -p $IPQ
+	cp $s/bdwlan.b290 $IPQ/board.bin.tmp && mv $IPQ/board.bin.tmp $IPQ/board.bin
+fi
+if [ -s $s/qcn9000/bdwlan.bab ] && [ -s $s/qcn9000/bdwlan.baa ] && [ ! -e $QCN/board-2.bin ]; then
+	mkdir -p $QCN
+	{
+		printf 'QCA-ATH11K-BOARD'; printf '\000'; pad4 17
+		board_ie "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360-pcie0" $s/qcn9000/bdwlan.bab
+		board_ie "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360-pcie1" $s/qcn9000/bdwlan.baa
+	} > $QCN/board-2.bin.tmp && mv $QCN/board-2.bin.tmp $QCN/board-2.bin
+fi
+rm -rf "$tmp"
+
+[ -s /lib/firmware/$FIRMWARE ] ||
+	logger -t arista-c360-board-data "no board data for $FIRMWARE in the Arista system"

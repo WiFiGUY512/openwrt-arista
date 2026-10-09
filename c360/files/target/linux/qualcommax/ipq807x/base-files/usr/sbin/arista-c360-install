@@ -84,7 +84,7 @@ fw_printenv bootcmd >/dev/null 2>&1 || fail "cannot read the U-Boot environment 
 pri=$(fw_printenv -n pri 2>/dev/null)
 
 # Slot 1 is kept, whatever pri says, and must hold Arista's root filesystem
-# with the files OpenWrt's first boot copies from it (arista-c360-wifi-fw).
+# with the files OpenWrt copies from it (/etc/hotplug.d/firmware/12-, 13-).
 # rootfs_1 is read-only in the device tree, so attaching it cannot write it.
 WIFI=lib/firmware/IPQ8074/WIFI_FW
 R1=$(mtd_dev rootfs_1)

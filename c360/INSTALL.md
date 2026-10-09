@@ -11,10 +11,10 @@ unit yet**.
   serving radio and the 2.4/5/6 GHz multifunction radio (airscan).
 * OpenWrt lives in NAND slot 0. **Arista's system in slot 1 is kept**: it is
   the fallback, and it is where OpenWrt gets the QCN9074 firmware from.
-* The image contains no Arista or unit-specific files. On first boot,
-  `arista-c360-wifi-fw` copies the Wi-Fi firmware and board files **unmodified
-  from your unit's own Arista slot 1**; MAC addresses and calibration come from
-  the unit's ART partition. If slot 1 is erased, the radios stay off.
+* The image contains no Arista or unit-specific files. When the radios first
+  start, OpenWrt copies the Wi-Fi firmware and board files **unmodified from
+  your unit's own Arista slot 1**; MAC addresses and calibration come from the
+  unit's ART partition. If slot 1 is erased, the QCN9074 radios stay off.
 
 ## Why it is installed this way
 
@@ -214,9 +214,11 @@ label.
 - **The reset pinhole:** a short press reboots (tested on a unit). As on any
   OpenWrt device, a press of 5 s or more resets the configuration.
 
-The first boot copies the Wi-Fi firmware from the Arista slot and restarts
-the radios; `logread | grep arista-c360-wifi` shows what happened. Later
-updates are ordinary `sysupgrade`s, which keep the settings.
+On the first boot, and the first after each `sysupgrade`, the radios take the
+Wi-Fi firmware and board data from the Arista slot as they start; nothing is
+restarted. If that fails, `logread` shows `ath11k-vendor-firmware` or
+`arista-c360-board-data`. Later updates are ordinary `sysupgrade`s, which keep
+the settings.
 
 ## Known limitations
 

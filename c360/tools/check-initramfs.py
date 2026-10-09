@@ -79,6 +79,14 @@ def main():
     amss_sha = hashlib.sha256(amss[1]).hexdigest() if amss else None
     if amss_sha == VENDOR_AMSS:
         fails.append("Arista amss.bin is inside the image")
+    elif amss:
+        # the firmware hotplug supplies Arista's only when none is installed
+        fails.append("a QCN9074 amss.bin is in the image (it would shadow Arista's)")
+    for n in ("lib/firmware/ath11k/QCN9074/hw1.0/m3.bin",
+              "lib/firmware/ath11k/QCN9074/hw1.0/board-2.bin",
+              "lib/firmware/ath11k/IPQ8074/hw2.0/board.bin"):
+        if n in rootfs:
+            fails.append("%s is in the image (the hotplug would not supply Arista's)" % n)
     cal = [n for n in rootfs if re.search(r"lib/firmware/ath11k/.*/(cal-|caldata)", n)]
     if cal:
         fails.append("pre-staged calibration files: %s" % cal)
@@ -90,7 +98,8 @@ def main():
             fails.append("a baked /etc/config/wireless is present")
     elif len(site) != 2:
         fails.append("site uci-defaults missing (found %s)" % site)
-    for need in ("usr/sbin/arista-c360-wifi-fw", "lib/preinit/81_arista_c360_wifi",
+    for need in ("etc/hotplug.d/firmware/12-ath11k-vendor-firmware",
+                 "etc/hotplug.d/firmware/13-arista-c360-board-data",
                  "usr/sbin/unsquashfs", "usr/sbin/ubiattach", "usr/sbin/fw_setenv",
                  "etc/hotplug.d/ieee80211/12-arista-c360-leds",
                  "usr/sbin/arista-c360-install", "usr/sbin/ubiformat"):
@@ -102,8 +111,10 @@ def main():
         if ko not in mods:
             fails.append("missing module %s (the installer cannot read the stick)" % ko)
 
-    if "etc/init.d/arista-c360-wifi-fw" in rootfs:
-        fails.append("the old init.d extractor (rebinds live cards) is still present")
+    for old in ("etc/init.d/arista-c360-wifi-fw", "usr/sbin/arista-c360-wifi-fw",
+                "lib/preinit/81_arista_c360_wifi"):
+        if old in rootfs:
+            fails.append("the old extractor %s is still present" % old)
     print("  %s: %d entries, amss.bin %s, cal files %d, site defaults %s"
           % (kind, len(rootfs), (amss_sha or "absent")[:12], len(cal), site or "none"))
     for f in fails:

@@ -63,8 +63,12 @@ The IPQ8074's two radios share one calibration area. Each area is 0x20000 bytes.
 - **Board files come from the same place:** `bdwlan.bab` for the card on
   pcie0 and `bdwlan.baa` for pcie1, with calibration variants
   `Arista-C360-pcie0`/`-pcie1`. The IPQ8074's is `bdwlan.b290`.
-- **OpenWrt copies these five files from slot 1 at first boot**
-  (`arista-c360-wifi-fw`), before the radios start.
+- **OpenWrt copies these five files from slot 1 when ath11k first asks for
+  them**, as firmware hotplug scripts: `12-ath11k-vendor-firmware` for
+  amss.bin and m3.bin, `13-arista-c360-board-data` for the board data. The
+  slot is attached read-only. The kernel won't mount Arista's squashfs (its
+  xz options block is 12 bytes where the kernel expects 8), so `unsquashfs`
+  reads it.
 - **The board reserves a fixed host-memory region for each card**
   (`memory-region`). Arista's firmware asks only for what ath11k already
   places there. The public 2.9.x firmware also asks for a calibration area

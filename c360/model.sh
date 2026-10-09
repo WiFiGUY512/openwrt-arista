@@ -10,9 +10,11 @@ FEEDS_INSTALL="squashfs-tools luci bluez proto-bonding curl strongswan"
 # fix_modes: modes for files/ that git on some hosts does not keep
 fix_modes() {
 	local q=target/linux/qualcommax/ipq807x/base-files
-	chmod 0755 $q/usr/sbin/arista-c360-wifi-fw $q/usr/sbin/arista-c360-install $q/usr/sbin/arista-c360-net \
+	chmod 0755 $q/usr/sbin/arista-c360-install $q/usr/sbin/arista-c360-net \
 		$q/etc/init.d/arista-c360-ble $q/etc/init.d/arista-c360-linkwatch
-	chmod 0644 $q/lib/preinit/81_arista_c360_wifi $q/etc/hotplug.d/ieee80211/12-arista-c360-leds
+	chmod 0644 $q/etc/hotplug.d/ieee80211/12-arista-c360-leds \
+		$q/etc/hotplug.d/firmware/12-ath11k-vendor-firmware \
+		$q/etc/hotplug.d/firmware/13-arista-c360-board-data
 }
 
 # after_build OUT: checks on the collected images, and the USB stick image

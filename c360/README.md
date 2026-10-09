@@ -140,9 +140,10 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
 
 ## Requirements
 
-- **Arista's system in slot 1.** OpenWrt contains no Arista files. At first
-  boot it copies the QCN9074 firmware and board files, unmodified, from the
-  unit's own Arista system in NAND slot 1.
+- **Arista's system in slot 1.** OpenWrt contains no Arista files. When the
+  radios first start it copies the QCN9074 firmware and the board files,
+  unmodified, from the unit's own Arista system in NAND slot 1 (firmware
+  hotplug scripts, read-only).
   - Only Arista's build of that firmware (`WLAN.HK.2.5.r4`) runs these cards;
     every public `ath11k-firmware` build tested stops during start-up.
   - The installer checks slot 1 before writing anything.
