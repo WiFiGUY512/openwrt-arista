@@ -104,6 +104,24 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
     Seen on a unit.
   - Results also from `ubus call airscan status|spectrum|bss|clients|ble|events`,
     and JSON in `/tmp/airscan`.
+  - **The radio can be lent.** `ubus call airscan lend '{"seconds":60,"to":"who"}'`
+    gives it to another service for a while, a client test for one: airscan
+    takes its own interfaces off it and runs no job on it until
+    `ubus call airscan reclaim`, or until the loan runs out (300 s at the
+    most), when it also removes what the borrower left. It answers no while
+    it scans or sweeps. Its jobs keep their times, so a loan costs no scan or
+    sweep. `status` lists what it can do in `features`.
+  - **A deaf scan radio is brought back.** One that hears no network at all,
+    where the last look heard some or the AP itself is on the air, has its
+    driver bound again (`ath11k_pci`, about 20 s), and the next look says
+    whether that worked: at most 6 times an hour, and not again for an hour
+    after a try that did not. A look follows every sweep, and a whole round
+    of client surveys with no beacon heard asks for one. `status` counts the
+    tries in `heal`.
+    - This radio goes deaf within half a minute of being a client on a DFS
+      channel (seen six times of six, never off DFS; 2026-10-11). Why isn't
+      known. A borrower that had it there should bind the driver again
+      before it gives the radio back.
   - Settings: `/etc/config/airscan`, or the LuCI page. List your own SSIDs in
     `trusted_ssid`, or your other APs show up as wired rogues.
 - **Arista's PoE power policy** (`arista-c360-power`): on 802.3at (or af)

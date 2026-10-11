@@ -18,6 +18,16 @@
 // is not ours), evil twin (our SSID on a BSS that never relays them), own BSSID
 // heard on a channel the AP is not using, deauth/disassoc floods.
 // Results: ubus object "airscan" and JSON files under /tmp/airscan.
+//
+// The radio can be lent (ubus "lend"): another service, a client test for
+// one, borrows it for a while. airscan takes its own interfaces off it, runs
+// no job on it, and has it back when told ("reclaim") or when the loan runs
+// out. Its jobs keep their times, so a loan costs no scan or sweep of its own.
+//
+// A scan radio that hears nothing is deaf, and airscan binds its driver
+// again, which is what brings it back. The C-360's goes deaf at a sweep once
+// it has been a client on a DFS channel (2026-10-11), so a look follows
+// every sweep.
 
 'use strict';
 
@@ -36,11 +46,19 @@ const MYPID = +fs.readlink("/proc/self");
 const FFT = "/usr/libexec/airscan-fft";
 const BLE = "/usr/libexec/airscan-ble";
 
+const LOAN_MOST = 300;     // seconds the radio is lent for at the most
+const HEAL_EVERY = 60;     // seconds between two tries at binding the driver again
+const HEAL_MOST = 6;       // tries in an hour at the most
+const HEAL_LATER = 3600;   // seconds before another, after one that did not bring the radio back
+
 let conn, cfg, radio = {}, state = "idle", busy = false;
+let loan = { until: 0, to: null };
+let heal = { count: 0, failed: 0, last: 0, next: 0, check: false, times: [], told: false };
 let results = { spectrum: null, bss: null, clients: {}, ble: {} };
 let last = { spectral: 0, bss: 0, clients: 0, ble: 0 };
 let next = { spectral: 0, bss: 0, ble: 0 };
 let errors = [], events = [], seen_events = {};
+let pending = { spectral: null, bss: false };
 
 function log(msg) {
 	system(["logger", "-t", "airscan", msg]);
@@ -235,6 +253,8 @@ function run_spectral(done, only_band) {
 		last.spectral = time();
 		write_json("spectrum", results.spectrum);
 		log(`spectral sweep: ${length(wins) - length(skipped)} windows, ${total} samples`);
+		// A look after every sweep: it is at a sweep that this radio goes deaf.
+		pending.bss = true;
 		done();
 	}
 
@@ -481,6 +501,17 @@ function reclassify() {
 	write_json("bss", results.bss);
 }
 
+// on_air says whether the AP itself is on the air on another radio. Then a
+// look that hears nothing, not even that, is a deaf radio and not a quiet
+// place.
+function on_air() {
+	for (let mac, f in local_macs())
+		if (type(f) == "int") return true;
+	return false;
+}
+
+let heal_radio;   // assigned below: it closes the capture, which is declared further down
+
 function run_bss(done) {
 	cfg = load_config();
 	iface_del(MON);
@@ -501,6 +532,10 @@ function run_bss(done) {
 			b.hidden = b.ssid == "" || match(b.ssid, /^(\\x00)+$/) != null;
 			if (!length(b.security)) push(b.security, "open");
 		}
+		// Nothing heard where the last look heard networks, or where the AP
+		// itself is on the air: the radio is deaf.
+		let deaf = !length(list) && ((results.bss?.count || 0) >= 3 || on_air());
+		let was = results.bss?.count || 0;
 		l2_domains();
 		classify(list);
 		results.bss = { time: time(), phy: radio.phy, count: length(list), list: sort(list, (a, b) => (b.signal || -200) - (a.signal || -200)) };
@@ -508,13 +543,26 @@ function run_bss(done) {
 		write_json("bss", results.bss);
 		let rogues = filter(list, (b) => b.rogue_candidate);
 		log(`bss scan: ${length(list)} networks, ${length(rogues)} rogue candidates`);
+		if (heal.check) {
+			heal.check = false;
+			if (length(list)) { heal.failed = 0; heal.told = false; log(`the scan radio hears again, its driver bound again: ${length(list)} networks`); }
+			else { heal.failed++; heal.next = time() + HEAL_LATER; note_error("binding its driver again did not bring the scan radio back"); }
+			done();
+			return;
+		}
+		if (deaf) {
+			// the count the next look is held against is the last one that heard
+			results.bss.count_before = was;
+			heal_radio(done);
+			return;
+		}
 		done();
 	});
 }
 
 // ---------------------------------------------------------------- clients
 
-let cap = { sock: null, handle: null, freq: 0, ch_list: [], ch_i: 0, deauth: {}, heard: {}, hit: {}, probed: 0 };
+let cap = { sock: null, handle: null, freq: 0, ch_list: [], ch_i: 0, deauth: {}, heard: {}, hit: {}, probed: 0, round_heard: 0, round_dwells: 0 };
 const DEAUTH_FLOOD = 20;   // deauth + disassoc frames for one BSSID per second of dwell
 
 // radiotap flags (bit 1): 0x10 = frame carries its FCS
@@ -663,7 +711,7 @@ function clients_report() {
 // One dwell on the next channel; the round ends after every channel was visited.
 function run_client_slice(done) {
 	if (!iface_up(MON, "monitor") || !capture_open()) { done(); return; }
-	if (cap.ch_i >= length(cap.ch_list)) { cap.ch_list = client_channels(); cap.ch_i = 0; }
+	if (cap.ch_i >= length(cap.ch_list)) { cap.ch_list = client_channels(); cap.ch_i = 0; cap.round_heard = 0; cap.round_dwells = 0; }
 	let f = cap.ch_list[cap.ch_i++];
 	if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
 	if (sh(`iw dev ${MON} set freq ${f}`) != 0) { uloop.timer(10, done); return; }
@@ -701,7 +749,17 @@ function run_client_slice(done) {
 				}
 			}
 		}
+		cap.round_heard += length(cap.heard);
+		cap.round_dwells++;
 		if (cap.ch_i >= length(cap.ch_list)) {
+			// A whole round with no beacon on any channel that had networks:
+			// a look says whether the radio is deaf.
+			if (!cap.round_heard && cap.round_dwells >= length(cap.ch_list) && length(cap.ch_list) >= 3 && (results.bss?.count || 0) >= 3) {
+				log("no beacon heard in a whole round of the channels: a look, to see whether the scan radio is deaf");
+				pending.bss = true;
+			}
+			cap.round_heard = 0;
+			cap.round_dwells = 0;
 			expire_clients();
 			for (let b, w in wp.bss) if (time() - w.seen > 3600) delete wp.bss[b];
 			reclassify();
@@ -711,6 +769,55 @@ function run_client_slice(done) {
 		done();
 	});
 }
+
+// ---------------------------------------------------------------- heal
+
+// heal_radio binds the scan radio's driver again, which is what brings a
+// deaf one back: the firmware starts afresh. Its phy comes back under a new
+// name, which run_next finds by where the radio is. The look that follows
+// says whether it worked. A radio that goes deaf again is bound again, but
+// not within HEAL_EVERY seconds, not more than HEAL_MOST times an hour, and
+// after a try that did not work, not for HEAL_LATER: binding a driver over
+// and over helps no one.
+heal_radio = function(done) {
+	let now = time();
+	heal.times = filter(heal.times, (t) => now - t < 3600);
+	if (now < heal.next || length(heal.times) >= HEAL_MOST) {
+		if (!heal.told) note_error("the scan radio hears nothing, and its driver was bound again too lately to do it once more yet");
+		heal.told = true;
+		done();
+		return;
+	}
+	let drv = fs.readlink(`/sys/bus/pci/devices/${radio.pci}/driver`);
+	if (!drv) { note_error("the scan radio hears nothing, and has no driver to bind again"); heal.next = now + HEAL_LATER; done(); return; }
+	let dir = `/sys/bus/pci/drivers/${fs.basename(drv)}`;
+	heal.count++;
+	heal.last = now;
+	heal.next = now + HEAL_EVERY;
+	push(heal.times, now);
+	heal.check = true;
+	note_error("the scan radio hears nothing: binding its driver again");
+	state = "healing";
+	capture_close();
+	if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
+	for (let i in own_ifaces()) iface_del(i);
+	fs.writefile(`${dir}/unbind`, radio.pci);
+	let tries = 0;
+	function wait() {
+		// its phy is there once the firmware has started, about ten seconds
+		if (find_phy(radio.pci) || ++tries > 40) {
+			pending.bss = true;
+			uloop.timer(2000, done);
+			return;
+		}
+		uloop.timer(1000, wait);
+	}
+	uloop.timer(3000, () => {
+		fs.writefile(`${dir}/bind`, radio.pci);
+		uloop.timer(1000, wait);
+	});
+};
+
 
 // ---------------------------------------------------------------- ble
 
@@ -778,10 +885,32 @@ run_ble = function() {
 
 // ---------------------------------------------------------------- scheduler
 
-let pending = { spectral: null, bss: false };
+// loan_end takes the radio back: what the borrower left on it is removed.
+function loan_end(why) {
+	for (let i in own_ifaces())
+		if (i != MON && i != STA) iface_del(i);
+	log(`the scan radio is back from ${loan.to}: ${why}`);
+	loan.until = 0;
+	loan.to = null;
+}
 
 function run_next() {
 	if (busy) return;
+	if (loan.until) {
+		if (time() < loan.until) {
+			if (state != "lent") {
+				capture_close();
+				if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
+				iface_del(MON);
+				iface_del(STA);
+				state = "lent";
+				log(`the scan radio is lent to ${loan.to}, for ${loan.until - time()} s at the most`);
+			}
+			uloop.timer(200, run_next);
+			return;
+		}
+		loan_end("the loan ran out");
+	}
 	if (!resolve_radio()) {
 		state = "waiting for scan radio";
 		uloop.timer(5000, run_next);
@@ -849,6 +978,10 @@ const methods = {
 		call: () => ({
 			board: board_name(), radio: radio.pci, phy: radio.phy, section: radio.section,
 			spectral_supported: radio.spectral, state,
+			// what a borrower can count on: "lend", and a deaf radio healed
+			features: [ "lend", "heal" ],
+			loan: loan.until ? { to: loan.to, until: loan.until } : null,
+			heal: { count: heal.count, failed: heal.failed, last: heal.last },
 			last, next, config: cfg,
 			counts: { bss: results.bss?.count || 0, clients: length(results.clients), windows: length(results.spectrum?.windows || []), events: length(events), ble: length(results.ble) },
 			ble: { enabled: cfg.ble_enabled, running: ble.running, error: ble.error, rounds: ble.rounds },
@@ -884,6 +1017,30 @@ const methods = {
 	scan: {
 		args: SESSION,
 		call: () => { pending.bss = true; return { queued: "bss" }; },
+	},
+	// lend: the radio, for seconds, to whoever asks (to, for the log). Only
+	// between jobs: during a scan or a sweep the answer is no, with the
+	// state, and the borrower asks again. The radio is free once status says
+	// "lent", a client dwell later at the most (wait_ms).
+	lend: {
+		args: { ...SESSION, seconds: 0, to: "" },
+		call: (req) => {
+			let secs = +req.args.seconds || 60;
+			if (secs < 1 || secs > LOAN_MOST) return { error: `seconds must be 1 to ${LOAN_MOST}` };
+			if (loan.until) return { lent: false, state, to: loan.to };
+			if (!(state in [ "clients", "idle" ]) || !radio.phy) return { lent: false, state };
+			loan.until = time() + secs;
+			loan.to = req.args.to || "another service";
+			return { lent: true, phy: radio.phy, until: loan.until, wait_ms: cfg.client_dwell + 500 };
+		},
+	},
+	// reclaim: the borrower is done, and the radio is airscan's again.
+	reclaim: {
+		args: SESSION,
+		call: () => {
+			if (loan.until) loan_end("given back");
+			return { lent: false };
+		},
 	},
 	ble: {
 		args: SESSION,
