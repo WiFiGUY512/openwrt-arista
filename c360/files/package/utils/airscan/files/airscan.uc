@@ -9,7 +9,8 @@
 //
 // Jobs, one at a time, all receive-only on the scan radio:
 //   spectral  ath11k spectral scan, 80 MHz windows on 5/6 GHz, 20 MHz on 2.4 GHz
-//   bss       passive scan of every channel the radio supports (2.4/5/6 GHz)
+//   bss       passive scan of every channel the radio supports (2.4/5/6 GHz),
+//             then of the 6 GHz channels again, long enough on each for a beacon
 //   clients   monitor capture, one dwell per channel that has networks on it
 //   ble       Bluetooth LE survey on the board's BLE controller (hci0), on its
 //             own timer: a different radio, so it never waits for or delays
@@ -372,6 +373,25 @@ function band_of(f) {
 	return f < 3000 ? "2g" : (f < 5950 ? "5g" : "6g");
 }
 
+// A passive scan listens on each 6 GHz channel for 30 ms only (ath11k's
+// dwell_time_passive_6g; 150 ms on 2.4 and 5 GHz), and a beacon comes every
+// 102.4 ms, so a look heard a 6 GHz network about one time in three
+// (2026-10-14). The 6 GHz channels are scanned again, DWELL_6G on each: three
+// tries of that each heard a second C-360's 6 GHz network close by.
+const DWELL_6G = 120;
+
+// The radio's 6 GHz channels, those not disabled.
+function freqs_6g() {
+	let out = [], p = fs.popen(`iw phy ${radio.phy} channels 2>/dev/null`);
+	if (!p) return out;
+	for (let line in split(p.read("all") || "", "\n")) {
+		let m = match(line, /^[ \t]*\* ([0-9]+) MHz \[[0-9]+\](.*)$/);
+		if (m && +m[1] >= 5950 && !match(m[2], /disabled/)) push(out, +m[1]);
+	}
+	p.close();
+	return out;
+}
+
 // ---------------------------------------------------------------- wired probe
 
 // Rogue and evil-twin test (the wired-probe method). The AP sends an ARP probe on every
@@ -517,16 +537,14 @@ function run_bss(done) {
 	iface_del(MON);
 	if (!iface_up(STA, "managed")) { note_error("bss: station interface failed"); done(); return; }
 	let tmp = `${OUT}/.scan.txt`;
-	uloop.process("/bin/sh", [ "-c", `exec iw dev ${STA} scan passive > ${tmp} 2>&1` ], {}, (code) => {
-		let text = fs.readfile(tmp) || "";
-		fs.unlink(tmp);
+	// Every channel, then the 6 GHz ones again, DWELL_6G on each. What the
+	// second pass hears on 6 GHz stands for what the first did.
+	let six = freqs_6g(), passes = [ "scan passive" ], heard = {};
+	if (length(six)) push(passes, `scan freq ${join(" ", six)} duration ${DWELL_6G} passive`);
+
+	function looked() {
 		iface_del(STA);
-		if (code != 0) {
-			note_error(`bss: scan exited ${code}: ${substr(text, 0, 120)}`);
-			done();
-			return;
-		}
-		let list = parse_iw_scan(text);
+		let list = values(heard);
 		for (let b in list) {
 			b.band = band_of(b.freq);
 			b.hidden = b.ssid == "" || match(b.ssid, /^(\\x00)+$/) != null;
@@ -557,7 +575,27 @@ function run_bss(done) {
 			return;
 		}
 		done();
-	});
+	}
+
+	function pass(i) {
+		if (i >= length(passes)) { looked(); return; }
+		uloop.process("/bin/sh", [ "-c", `exec iw dev ${STA} ${passes[i]} > ${tmp} 2>&1` ], {}, (code) => {
+			let text = fs.readfile(tmp) || "";
+			fs.unlink(tmp);
+			if (code != 0) {
+				note_error(`bss: scan exited ${code}: ${substr(text, 0, 120)}`);
+				// A failed 6 GHz pass leaves the look what the first heard.
+				if (i > 0) { looked(); return; }
+				iface_del(STA);
+				done();
+				return;
+			}
+			for (let b in parse_iw_scan(text))
+				if (i == 0 || b.freq >= 5950) heard[b.bssid] = b;
+			pass(i + 1);
+		});
+	}
+	pass(0);
 }
 
 // ---------------------------------------------------------------- clients
