@@ -1,11 +1,11 @@
 # Arista C-360
 
-A Wi-Fi 6E campus access point: a Qualcomm IPQ8074A with its own 2.4 and
-5 GHz radios, a QCN9074 card (the 6 GHz serving radio) and a QCN9072 card
-(its 2x2 sibling, the 2.4/5/6 GHz scan radio), two 10 GbE ports with PoE in,
-a Nordic nRF52833
-Bluetooth LE controller, an Infineon TPM 2.0 and a USB 3.0 port. Details in
-[HARDWARE.md](HARDWARE.md); installing in [INSTALL.md](INSTALL.md).
+A Wi-Fi 6E campus access point: a Qualcomm IPQ8076A (IPQ8074 family) with
+its own 2.4 and 5 GHz radios, a QCN9074 card (the 6 GHz serving radio) and a
+QCN9072 card (its 2x2 sibling, the 2.4/5/6 GHz scan radio), two 10 GbE ports
+with PoE in, a Nordic nRF52833 Bluetooth LE controller, an Infineon TPM 2.0
+and a USB 3.0 port. Details in [HARDWARE.md](HARDWARE.md); installing in
+[INSTALL.md](INSTALL.md).
 
 ## What works
 
@@ -77,8 +77,10 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
     `bluetoothctl`.
 - **The scan radio, airscan.** A service that only ever listens, and only on
   radio2, so the serving radios never scan or leave their channels. It runs:
-  - a spectrum survey (ath11k spectral scan; per 20 MHz, the share of samples
-    above -82 dBm);
+  - a spectrum survey (ath11k spectral scan; 20 MHz windows on 2.4 and 5 GHz,
+    80 MHz ones on 6 GHz with 40 MHz for channels 225-229 and 20 for 233;
+    per window, the share of samples above -82 dBm per 20 MHz, +3 dB per
+    doubling of its width);
   - a survey of every network on every 2.4, 5 and 6 GHz channel;
   - a survey of the clients on the channels that have networks, with those
     that connect to none (probing) counted apart, with their probe requests;
@@ -91,7 +93,8 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - wired rogues: a network relaying the AP's own wired ARP probes that isn't
     one of its own;
   - evil twins: one of its SSIDs on a network that never relays them;
-  - its own BSSID heard where it isn't;
+  - its own BSSID heard where it isn't (not its own beacon heard off its
+    channel, nor a channel it just moved from);
   - deauthentication floods.
 
   The wired probes go out on each of the AP's L2 domains (bridges, VLANs, a
@@ -118,10 +121,13 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
     after a try that did not. A look follows every sweep, and a whole round
     of client surveys with no beacon heard asks for one. `status` counts the
     tries in `heal`.
-    - This radio goes deaf within half a minute of being a client on a DFS
-      channel (seen six times of six, never off DFS; 2026-10-11). Why isn't
-      known. A borrower that had it there should bind the driver again
-      before it gives the radio back.
+    - On 2026-10-11 this radio went deaf at the sweep after it had been a
+      client on a DFS channel, six times of six, when airscan was stopped
+      for the test and started again after it. Lent instead (2026-10-15),
+      it joined on a DFS channel four times of four and heard as before at
+      the next sweep. A borrower need not bind the driver again; a radio
+      that does go deaf is still brought back as above. Why it went deaf
+      isn't known.
   - Settings: `/etc/config/airscan`, or the LuCI page. List your own SSIDs in
     `trusted_ssid`, or your other APs show up as wired rogues.
 - **Arista's PoE power policy** (`arista-c360-power`): on 802.3at (or af)
@@ -185,8 +191,10 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   zero after boot), so the TPM can't attest to what booted.
 - **Zigbee and Thread.** The nRF52833's radio can do 802.15.4, but Arista's
   firmware is Bluetooth LE only, and signed.
-- **The USB stick installer has not been run on a unit yet** (INSTALL.md,
-  section A). The manual install (section B) has.
+- **The USB stick has not been used to install a unit yet** (INSTALL.md,
+  section A: U-Boot loading the installer from it, and `c360-flash.py`). The
+  manual install (section B) has, and `arista-c360-install` has, from the
+  RAM system.
 
 ## Requirements
 
@@ -224,10 +232,12 @@ strongSwan can authenticate IKEv2 with one.
    ```
    apk add strongswan-swanctl strongswan-mod-tpm strongswan-mod-openssl \
    	strongswan-mod-x509 strongswan-mod-pem strongswan-mod-pkcs1 \
-   	strongswan-mod-pubkey strongswan-mod-constraints strongswan-mod-nonce \
+   	strongswan-mod-pubkey strongswan-mod-constraints \
    	strongswan-mod-random strongswan-mod-kernel-netlink \
    	strongswan-mod-socket-default
    ```
+
+   (The nonce plugin is in `strongswan` itself.)
 
 2. Point the plugin at the TPM, in `/etc/strongswan.d/charon/tpm.conf`:
 
@@ -302,7 +312,9 @@ strongSwan can authenticate IKEv2 with one.
   - the airscan package;
   - the PoE power policy (`arista-c360-power`) and the radio plan
     (`arista-c360-radio`);
-  - the TPM 2.0 software stack, `tpm2-tss` and `tpm2-tools`.
+  - the TPM 2.0 software stack, `tpm2-tss` and `tpm2-tools`;
+  - a fix to the Ethernet driver (`qca-nss-dp`): a received buffer is known
+    by its address, not by a word written in it.
 - `patches/feeds/packages/`: strongSwan's TPM plugin, with a fix that lets
   it sign with TPM keys that have no fixed signature scheme (as the factory
   identity keys).

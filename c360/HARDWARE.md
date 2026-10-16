@@ -6,10 +6,11 @@ has the detail, with comments saying how each part was worked out.
 
 ## SoC, memory, flash
 
-- **Qualcomm IPQ8074A, 2 GiB RAM.** Arista's own device tree calls it the
-  `IPQ807x/AP-HK09` reference design.
+- **Qualcomm IPQ8076A (IPQ8074 family), 2 GiB RAM.** Arista's own device
+  tree calls it the `IPQ807x/AP-HK09` reference design.
 - **32 MiB SPI NOR**, Qualcomm's usual layout:
-  - the boot chain: SBL1, QSEE, DEVCFG, RPM and CDT, in pairs;
+  - the boot chain: `0:SBL1` and `0:MIBIB` once; BOOTCONFIG, QSEE, DEVCFG,
+    APDP, RPM, CDT and APPSBL in pairs;
   - `0:APPSBL`: U-Boot. `0:APPSBLENV`: its environment (64 KiB, at 0x0);
   - `0:ART`: the unit's radio calibration and MAC addresses. It exists
     nowhere else, so back it up;
@@ -37,9 +38,12 @@ has the detail, with comments saying how each part was worked out.
 - **`bootipq` checks signatures** (signed MBN images, id 0x17, with the
   kernel FIT at 0x28).
 - **OpenWrt's boot is its own `bootcmd`:** U-Boot's `ubi` commands read
-  OpenWrt's kernel volume from slot 0, then `bootm`. If that fails, Arista's
-  own boot runs (`run ubootscript`), and the installer sets `pri=1`, so that
-  is slot 1.
+  OpenWrt's kernel volume from slot 0, then `bootm`. If that fails,
+  `arista_boot` puts back Arista's `bootargs` (`ba0` or `ba1`, by `pri`) and
+  `fdt_high` 0x4A400000, clears `mtdids` and `mtdparts`, and runs Arista's
+  own boot (`run ubootscript`): its `bootkernel` sets `bootargs` only when
+  `pri` changes, and saves the environment. The installer sets `pri=1`, so
+  that is slot 1.
 - **`fdt_high 0x4A3E0000` is needed:** Arista's 0x4A400000 puts the device
   tree on top of U-Boot's own.
 - **Console:** RJ-45, RS-232 levels, 115200 8N1, no flow control.
@@ -70,7 +74,10 @@ bytes. *In brackets: the dual 5 GHz radio plan (below).
   `/lib/boarddata/radio12` (IPQ8074), `radio3` (the card on pcie0) and
   `radio4` (pcie1), per radio plan and country group, under `user/<group>/`.
   The group follows the wireless country (FCC_CE, Arista's fallback, covers
-  the US and the EU, and any group without a file of its own). The stock
+  the US and the EU, any group without a file of its own, and a fresh install
+  with no country yet); when the country changes, OpenWrt copies the new
+  group's files in for the next boot (`/etc/init.d/arista-c360-board-data`).
+  The stock
   files in `WIFI_FW` (`bdwlan.b290`, `qcn9000/bdwlan.bab`, `bdwlan.baa`) are
   not what Arista runs; they are the fallback for an Arista system without
   `/lib/boarddata`. Calibration variants: `Arista-C360-pcie0`/`-pcie1`.

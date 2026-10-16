@@ -1,9 +1,15 @@
 # OpenWrt on the Arista C-360 — installation
 
-Status: the manual steps (TFTP, sections B1–B5) were verified on one unit on
-2026-10-07. The USB stick method (section A) is built and checked in
-simulation and against the real flash backups, but **it has not been run on a
-unit yet**.
+Status: the manual steps (TFTP, sections B1–B5) were run on two units
+(2026-10-07 and 2026-10-13); on the second, `arista-c360-install` did the
+backup and the writes from the RAM system, with the images copied to it. The
+boot command in B5, with its fallback `arista_boot`, was run at U-Boot on a
+unit in the form sent to OpenWrt, split into more variables (OpenWrt from
+slot 0, and the fallback into Arista); the C-260 runs it as here. Units
+installed with an earlier installer or guide have an earlier fallback (see
+B5). The USB stick method (section A: U-Boot loading the installer from the
+stick, and `c360-flash.py`) is built and checked in simulation, but **it has
+not been run on a unit yet**.
 
 ## What you get
 
@@ -11,11 +17,13 @@ unit yet**.
   serving radio) and the QCN9072 card (the 2.4/5/6 GHz multifunction radio,
   airscan).
 * OpenWrt lives in NAND slot 0. **Arista's system in slot 1 is kept**: it is
-  the fallback, and it is where OpenWrt gets the QCN9074 firmware from.
+  the fallback, and it is where OpenWrt gets the radios' firmware and board
+  data from.
 * The image contains no Arista or unit-specific files. When the radios first
   start, OpenWrt copies the Wi-Fi firmware and board files **unmodified from
   your unit's own Arista slot 1**; MAC addresses and calibration come from the
-  unit's ART partition. If slot 1 is erased, the QCN9074 radios stay off.
+  unit's ART partition. If slot 1 is erased, none of the radios start: the
+  board data of all three chips, and the QCN9074 firmware, come from it.
 
 ## Why it is installed this way
 
@@ -39,7 +47,7 @@ unit yet**.
 
 ### A1. Make the stick, once
 
-Write `c360-openwrt-installer-<build>.img` (or the smaller `.img.xz`; Rufus
+Write `c360-openwrt-installer.img` (or the smaller `.img.xz`; Rufus
 reads it directly) to the stick with Rufus: pick the stick under *Device*,
 choose the image with *SELECT*, then *START*. Rufus recognises it as a disk
 image and writes it as is (DD mode). Check the download against the
@@ -80,8 +88,10 @@ and runs `arista-c360-install`, which:
 
 1. **checks**: a C-360; running from RAM; the expected flash layout;
    `factory.ubi` against its checksum; slot 1 holds Arista's root filesystem
-   with the five Wi-Fi firmware and board files the first boot copies, and
-   NOR `0:HLOS_1` holds slot 1's kernel (the fallback). It prints slot 1's
+   with the QCN9074 firmware (`amss.bin`, `m3.bin`) and Arista's stock board
+   files (`bdwlan.b290`, `.bab`, `.baa`), NOR `0:HLOS_1` holds slot 1's
+   kernel, and the U-Boot environment has Arista's `ba0`, `ba1` and
+   `ubootscript` (all three for the fallback). It prints slot 1's
    QCN9074 firmware version and warns if it is not WLAN.HK.2.5.r4.
    OpenWrt always replaces slot 0 and always keeps slot 1. If Arista calls
    slot 0 its primary (`pri=0`, after Arista upgraded itself into slot 0)
@@ -91,15 +101,17 @@ and runs `arista-c360-install`, which:
    checked against the flash. **Keep these**: the ART partition holds that
    unit's radio calibration and MACs and exists nowhere else;
 3. asks for the last four hex digits of the unit's MAC (unless `--yes`);
-4. writes `factory.ubi` to slot 0 and reads the kernel and rootfs back;
-5. sets the U-Boot boot command and `pri=1` in one environment write, so the
-   fallback (`run ubootscript`) boots slot 1's Arista.
+4. sets the U-Boot boot command (B5) and `pri=1` in one environment write,
+   so the fallback (`arista_boot`) boots slot 1's Arista. This comes before
+   slot 0 is written: stopped at any point from here, the unit boots slot 1;
+5. writes `factory.ubi` to slot 0 and reads the kernel and rootfs back.
 
 Then it reboots the AP and confirms OpenWrt starts from NAND.
 `--dry-run` stops after the backup and writes nothing.
 
-A 2 GiB stick holds about eleven units' backups; copy them off and delete
-them from the stick when it fills.
+A 2 GiB stick holds about nine units' backups (the installer wants 512 MiB
+free before each); copy them off and delete them from the stick when it
+fills.
 
 Without `c360-flash.py`, the same by hand is in `c360/README.txt` on the stick:
 stop U-Boot (B1), paste its one U-Boot line, then run `arista-c360-install`.
@@ -162,25 +174,45 @@ ssh root@<AP>
 
 ### B5. Set the boot command
 
-From the installer, one U-Boot environment write. (Verified on one unit on
-2026-10-07 as three separate `fw_setenv` calls, without `pri`; this
-single-write form with `pri 1` is what `arista-c360-install` does and has not
-yet been run on a unit.)
+From the installer, one U-Boot environment write, the same one
+`arista-c360-install` makes:
 
 ```
 fw_setenv -s - <<'EOF'
 owrt_args console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat
 owrt_boot setenv fdt_high 0x4A3E0000; setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi); ubi part ubi && ubi read 0x44000000 kernel && bootm 0x44000000#config@1
-bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run ubootscript
+arista_boot setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000; if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi; run ubootscript
+bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot
 pri 1
 EOF
 reboot
 ```
 
-`fdt_high 0x4A3E0000` matters: Arista's default 0x4A400000 places the device
-tree on top of U-Boot's own control DTB. `pri 1` makes the fallback boot slot
-1. To boot Arista's firmware once: stop U-Boot and `run ubootscript`. To go
-back to Arista permanently: `fw_setenv bootcmd 'run ubootscript'`.
+* `owrt_boot` boots OpenWrt from slot 0. `fdt_high 0x4A3E0000` matters:
+  Arista's default 0x4A400000 places the device tree on top of U-Boot's own
+  control DTB.
+* `arista_boot` is Arista's own boot with Arista's settings put back first:
+  its `bootkernel` sets `bootargs` only when `pri` changes and then saves the
+  environment, so without this a fallback would boot, and save, OpenWrt's
+  `bootargs`, `fdt_high` and partition table.
+* `pri 1` makes Arista's boot use slot 1, the slot that is kept.
+
+To boot Arista's firmware once: stop U-Boot and `run arista_boot`. To go
+back to Arista for good: `fw_setenv bootcmd 'run ubootscript'` from OpenWrt
+(or `setenv bootcmd run ubootscript; saveenv` at U-Boot), then reboot.
+
+**Units installed with an earlier installer or guide** have an earlier boot
+command, whose fallback is a bare `run ubootscript`: if OpenWrt ever failed
+to load, Arista would start with OpenWrt's settings and save them.
+`fw_printenv bootcmd` shows which a unit has; from OpenWrt, one write brings
+an earlier one up to date:
+
+```
+fw_setenv -s - <<'EOF'
+arista_boot setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000; if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi; run ubootscript
+bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot
+EOF
+```
 
 ### Keeping your settings across the install (optional)
 
@@ -208,8 +240,8 @@ label.
 - **Ethernet 2 is free**, in no bridge, so a second cable to the same switch
   makes no loop. `arista-c360-net` puts it on the LAN, on a VLAN or a VXLAN,
   or bonds both ports (README.md).
-- **Before setting a root password,** Wi-Fi is off and SSH and LuCI have no
-  password: set one first.
+- **Wi-Fi is off** until you turn it on, and SSH and LuCI have no password:
+  set one first.
 - **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device. Enter it
   from the serial console: press `f` and Enter when the boot offers it.
 - **The reset pinhole:** a short press reboots (tested on a unit). As on any
@@ -220,6 +252,11 @@ Wi-Fi firmware and board data from the Arista slot as they start; nothing is
 restarted. If that fails, `logread` shows `ath11k-vendor-firmware` or
 `arista-c360-board-data`. Later updates are ordinary `sysupgrade`s, which keep
 the settings.
+
+**Set the Wi-Fi country, then reboot once.** The board data is chosen by the
+wireless country's group, and a fresh install has no country yet, so it
+starts with FCC_CE's. When the country is set, its group's files are copied
+in; the radios read them from the next boot.
 
 ## Known limitations
 

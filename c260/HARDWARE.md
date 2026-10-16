@@ -26,8 +26,9 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
   | 0x00000000 | 256 MiB | `rootfs` (slot 0) | OpenWrt (`ubi`) |
   | 0x10000000 | 256 MiB | `rootfs_1` (slot 1) | Arista, kept |
 
-- **No TPM.** The C-360's TPM bus is disabled in Arista's C-260 device tree,
-  and the pin the C-360 uses for it is the button here.
+- **No TPM.** The C-360's TPM bus (SPI, gpio50–53) is disabled in Arista's
+  C-260 device tree; here gpio51 is the Bluetooth enable and gpio52 the
+  button.
 
 ## Boot
 
@@ -55,9 +56,11 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 - **IPQ8074 (ath11k): 2.4 GHz and 5 GHz.** Calibration from ART 0x1000
   (128 KiB). Board data: Arista ships four, one per regulatory group
   (`/lib/boarddata/bdwlan.bin`, `_UK`, `_AU`, `_ICKR`) and copies the right
-  one into place at every boot. OpenWrt copies the one for the configured
+  one into place at every boot. OpenWrt copies the one for the wireless
   country from the unit's slot 1 the first time the radio starts
-  (`/etc/hotplug.d/firmware/13-arista-c260-board-data`). The public
+  (`/etc/hotplug.d/firmware/13-arista-c260-board-data`), Arista's default
+  while no country is set, and again when the country changes
+  (`/etc/init.d/arista-c260-board-data`), for the next boot. The public
   ath11k-firmware-ipq8074 runs it.
 - **QCA988x (ath10k, 168c:003c): the third radio**, on PCIe 0 (Gen1 x1,
   reset gpio58). Arista uses it to scan. Calibration: ART 0x33000, 2116
@@ -90,7 +93,9 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 ## LEDs
 
 - Two chained 74LV164 shift registers on gpio18 (clock) and gpio19 (data),
-  cleared by gpio20 (held high). Twelve of their sixteen outputs drive LEDs.
+  cleared by gpio20 (held high). Twelve of their sixteen outputs drive the
+  LEDs below, each lit in a walk on a unit; Arista's list also names output
+  14, which the walk did not try.
 - Output = 15 − the index in Arista's `qcom,ledc_blink_indices`, the same
   rule as the C-360's. Each LED is a green and an orange:
 
@@ -106,7 +111,9 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 ## Other
 
 - **Button:** gpio52, active low (Arista's device tree calls it `wps`).
-- **USB 3.0:** one port (`usb3@8A00000`).
+- **USB:** one USB 2.0 port (Arista's datasheet; a USB 3.0 stick
+  enumerates at 480 Mb/s), on the SoC's USB 3.0 controller
+  (`usb3@8A00000`).
 - **PoE:** Arista reads the class it negotiated on each input from gpio54,
   55 and 56 (PoE 1), 2, 66 and 27 (PoE 2) and 64, and on 802.3af/at power it
   lowers transmit power, turns the third radio down and turns USB and

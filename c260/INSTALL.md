@@ -1,15 +1,18 @@
 # OpenWrt on the Arista C-260 — installation
 
 Status: sections 1–5 were run on one unit on 2026-10-15: the RAM boot,
-`ubiformat`, the environment write, unattended boots from NAND, and
-`sysupgrade` keeping the settings. The fallback too: from the state a failed
+`ubiformat`, the environment write (the `fw_setenv` of section 5, made from
+OpenWrt booted from NAND by hand rather than from the RAM system),
+unattended boots from NAND, and `sysupgrade` keeping the settings. On
+2026-10-16 sections 1–4 ran again, installing this repo's images afresh (the
+environment was already set). The fallback too: from the state a failed
 OpenWrt load leaves, `arista_boot` booted Arista's slot 1 with Arista's own
 settings; after a power cycle OpenWrt came back by itself, and the U-Boot
 environment was as before.
 
 ## What you get
 
-* OpenWrt on the IPQ8074 (2.4 + 5 GHz), the QCA988x third radio and the
+* OpenWrt on the IPQ8074 (2.4 + 5 GHz), the QCA9882 third radio and the
   CSR8811 Bluetooth controller.
 * OpenWrt lives in NAND slot 0. **Arista's system in slot 1 is kept**: it is
   the fallback, and it is where OpenWrt gets the IPQ8074 board data and the
@@ -84,6 +87,13 @@ holds the unit's calibration and MACs and exists nowhere else.
 
 ## 4. Write OpenWrt to NAND slot 0
 
+First check that Arista runs from slot 1: on the AP, `fw_printenv pri` must
+print `pri=1`. With `pri=0`, the Arista system that runs is in slot 0 (Arista
+upgrades into its spare slot and switches to it), and slot 1 holds an older
+one, or none: writing slot 0 would erase the one that runs, and OpenWrt
+takes its board data, PS keys and fallback from slot 1. Go on only if that
+is what you want.
+
 ```
 scp -O …-squashfs-factory.ubi root@<AP>:/tmp/factory.ubi
 ssh root@<AP>
@@ -123,13 +133,17 @@ to Arista for good: `fw_setenv bootcmd 'run ubootscript'` from OpenWrt (or
   look for the AP in your DHCP server's leases. It uses the unit's base MAC,
   the one on its label. There is no WAN. Two cables to the same switch make
   a loop unless the switch or `br-lan` runs STP.
-* **Before setting a root password,** Wi-Fi is off and SSH and LuCI have no
-  password: set one first.
+* **Wi-Fi is off** until you turn it on, and SSH and LuCI have no password:
+  set one first.
 * **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device: press `f`
   and Enter on the console when the boot offers it.
 * On the first boot, and the first after each `sysupgrade`, the IPQ8074 radio
   takes its board data from the Arista slot as it starts, and the Bluetooth
   controller its PS keys. `logread` shows `arista-c260-board-data` and
   `arista-c260-bluetooth`.
+* **Set the Wi-Fi country, then reboot once.** The board data is chosen by
+  the wireless country, and a fresh install has none yet, so it starts with
+  Arista's default. When the country is set, the file for it is copied in;
+  the radio reads it from the next boot.
 
 Later updates are ordinary `sysupgrade`s, which keep the settings.

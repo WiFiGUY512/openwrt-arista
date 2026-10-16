@@ -11,8 +11,8 @@ first boot.
 
 | Model | SoC | OpenWrt | Status |
 |---|---|---|---|
-| [C-360](c360/README.md) | Qualcomm IPQ8074A + 2 × QCN9074 | 25.12 | Working: all radios, BLE, the scan radio, both 10 GbE ports |
-| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA988x | 25.12 | Working: all radios, Bluetooth, both 5 GbE ports, LEDs, button, USB, install and sysupgrade |
+| [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12 | Working: all radios, BLE, the scan radio, both 10 GbE ports |
+| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, Ethernet 1 (at 2.5 Gb/s; Ethernet 2 not yet linked on a unit), LEDs, button, USB, install and sysupgrade |
 
 ## Build
 
@@ -23,9 +23,10 @@ On Linux, with [OpenWrt's build prerequisites](https://openwrt.org/docs/guide-de
 ```
 
 It clones OpenWrt at the commit the model is pinned to, applies the model's
-patches and files, and builds. The images, a USB stick image for the
-installer, and a package feed with every kernel module and every package the
-build made end up in `out/<model>/<version>/`. A first build takes hours.
+patches and files, and builds. The images, a package feed with every kernel
+module and every package the build made, and for the C-360 a USB stick image
+for its installer end up in `out/<model>/<version>/`. A first build takes
+hours.
 
 **Kernel modules come from this build's feed, not OpenWrt's.** A kernel
 module installs only on the exact kernel it was built for, and these images'
