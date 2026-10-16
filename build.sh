@@ -49,6 +49,18 @@ OUT=$HERE/out/$MODEL/$VERSION
 
 say() { echo ">> $*"; }
 
+# restore DIR FILE: DIR/FILE back to its committed state in the git checkout
+# that holds it (OpenWrt's, or a feed's), or away if that has no such file
+restore() {
+	local d b
+	d=$(dirname "$1/$2") b=$(basename "$2")
+	if [ -d "$d" ] && git -C "$d" cat-file -e "HEAD:./$b" 2>/dev/null; then
+		git -C "$d" checkout -q HEAD -- "$b"
+	else
+		rm -f "$1/$2"
+	fi
+}
+
 # unpatch DIR PATCH...: the files the patches touch, back to their committed
 # state in the git checkout DIR (undoing these patches from an earlier build)
 unpatch() {
@@ -57,43 +69,40 @@ unpatch() {
 	for p in "$@"; do
 		[ -e "$p" ] || continue
 		for f in $(git -C "$dir" apply --numstat "$p" | cut -f3); do
-			if git -C "$dir" cat-file -e "HEAD:$f" 2>/dev/null; then
-				git -C "$dir" checkout -q HEAD -- "$f"
-			else
-				rm -f "$dir/$f"
-			fi
+			restore "$dir" "$f"
 		done
 	done
 }
 
-# apply_patches DIR PATCH...: the patches, onto the committed state of the
-# files they touch in the git checkout DIR
+# apply_patches DIR SAVED PATCH...: the patches, onto the committed state of
+# the files they touch in the git checkout DIR. SAVED keeps a copy of each
+# patch applied, so that the next build undoes what this one did, a patch the
+# model has changed or dropped since included.
 apply_patches() {
-	local dir=$1 p
-	shift
-	unpatch "$dir" "$@"
+	local dir=$1 saved=$2 p
+	shift 2
+	unpatch "$dir" "$saved"/*.patch "$@"
+	rm -rf "$saved"
+	mkdir -p "$saved"
 	for p in "$@"; do
 		[ -e "$p" ] || continue
 		git -C "$dir" apply --whitespace=nowarn "$p" || { echo "$(basename "$p") does not apply to $dir" >&2; exit 1; }
+		cp "$p" "$saved/"
 		say "applied $(basename "$p")"
 	done
 }
 
 # model_files SRC DIR LIST: the files under SRC, copied into DIR with their
 # modes and times. A file an earlier build copied (listed in LIST) that SRC no
-# longer has goes back to its committed state in DIR, or away, so a tree from
-# an earlier build carries nothing the model has dropped.
+# longer has goes back to its committed state, or away, so a tree from an
+# earlier build carries nothing the model has dropped.
 model_files() {
 	local src=$1 dir=$2 list=$3 f
 	[ -d "$src" ] || return 0
 	(cd "$src" && find . ! -type d | sed 's|^\./||' | LC_ALL=C sort) >"$list.new"
 	if [ -f "$list" ]; then
 		LC_ALL=C comm -23 "$list" "$list.new" | while IFS= read -r f; do
-			if git -C "$dir" cat-file -e "HEAD:$f" 2>/dev/null; then
-				git -C "$dir" checkout -q HEAD -- "$f"
-			else
-				rm -f "$dir/$f"
-			fi
+			restore "$dir" "$f"
 			say "removed $f (no longer in the model)"
 		done
 	fi
@@ -122,7 +131,7 @@ if [ ! -d "$W/.git" ]; then
 fi
 cd "$W"
 if [ "$(git rev-parse HEAD)" != "$OPENWRT_COMMIT" ]; then
-	unpatch . "$MODEL_DIR"/patches/openwrt/*.patch
+	unpatch . "$W/.model-patches/openwrt/"*.patch "$MODEL_DIR"/patches/openwrt/*.patch
 	git diff --quiet || { echo "$W has changes of its own and is not at $OPENWRT_COMMIT; build in a fresh directory" >&2; exit 1; }
 	git fetch -q origin
 	git checkout -q "$OPENWRT_COMMIT"
@@ -130,7 +139,7 @@ fi
 say "$MODEL_NAME on OpenWrt $(git log -1 --format='%h %cd %s' --date=short)"
 
 # 2. patches to OpenWrt's own files
-apply_patches . "$MODEL_DIR"/patches/openwrt/*.patch
+apply_patches . "$W/.model-patches/openwrt" "$MODEL_DIR"/patches/openwrt/*.patch
 
 # 3. the model's own files, with their modes, and their times: OpenWrt's
 # kernel stamp hashes the times of target/linux files, so a fresh time on an
@@ -145,8 +154,10 @@ for f in packages luci routing telephony video; do
 	[ -n "${!v:-}" ] && echo "src-git $f ${!v}" >>feeds.conf
 done
 ./scripts/feeds update -a >/dev/null
-for d in "$MODEL_DIR"/patches/feeds/*/; do
-	[ -d "$d" ] && apply_patches "feeds/$(basename "$d")" "$d"*.patch
+for f in feeds/*/; do
+	f=$(basename "$f")
+	[ -d "$MODEL_DIR/patches/feeds/$f" ] || [ -d "$W/.model-patches/feeds-$f" ] || continue
+	apply_patches "feeds/$f" "$W/.model-patches/feeds-$f" "$MODEL_DIR/patches/feeds/$f/"*.patch
 done
 ./scripts/feeds update -i >/dev/null
 ./scripts/feeds install $FEEDS_INSTALL >/dev/null
