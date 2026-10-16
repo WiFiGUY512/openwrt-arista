@@ -12,7 +12,7 @@ index f356bbb..c45cc83 100644
  TARGET_DEVICES += zyxel_nwa210ax
 +
 +# Arista C-360 (MODEL_STRING=C-360, VENDOR_NAME=ARISTA, PLATFORM_SUB_ID=1).
-+# Qualcomm IPQ8074A, 2 GiB, 32 MiB SPI NOR + 1 GiB NAND, IPQ8074 2.4/5 GHz plus
++# Qualcomm IPQ8076A, 2 GiB, 32 MiB SPI NOR + 1 GiB NAND, IPQ8074 2.4/5 GHz plus
 +# a QCN9074 (6 GHz serving radio) and a QCN9072 (2.4/5/6 GHz scan radio).
 +# OpenWrt lives in NAND slot 0 ("ubi"); Arista's slot 1 stays as fallback and
 +# as the source of the QCN9074 firmware and board data. U-Boot

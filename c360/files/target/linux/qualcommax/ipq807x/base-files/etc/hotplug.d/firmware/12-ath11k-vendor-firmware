@@ -5,7 +5,7 @@
 # the vendor system on its own flash. When the driver first asks for a file
 # that is missing, copy it from there, unmodified.
 
-[ -e /lib/firmware/$FIRMWARE ] && exit 0
+[ -e "/lib/firmware/$FIRMWARE" ] && exit 0
 
 . /lib/functions.sh
 

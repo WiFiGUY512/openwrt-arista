@@ -37,18 +37,18 @@
  * Its IRQ (GIC_SPI 308 == the vendor's 0x134) independently agrees with
  * mainline.
  *
- * msm_serial assigns ttyMSM<n> by probe order, not by node label, so all
- * three other BLSP1 UARTs are explicitly disabled. That leaves exactly one
- * serial probed, which makes it deterministically ttyMSM0 and matches the
- * vendor bootargs "console=ttyMSM0,115200n8". Note that mainline's label for
- * 0x78b3000 is blsp1_uart5, not blsp1_uart2: the BLSP1 index is not the
- * hardware UART number.
+ * msm_serial numbers a UART by its alias: serial0 is the console
+ * (blsp1_uart5, ttyMSM0, as the vendor bootargs "console=ttyMSM0,115200n8"
+ * have it) and serial1 the BLE module's UART (blsp1_uart3, ttyMSM1); the
+ * other BLSP1 UARTs stay disabled. Note that mainline's label for 0x78b3000
+ * is blsp1_uart5, not blsp1_uart2: the BLSP1 index is not the hardware UART
+ * number.
  *
- * Storage (W1-W6: deliberately disabled on all three flash paths, since
- * U-Boot's own bootcmd runs saveenv and the guarantee had to be on the kernel
- * side). W7 makes NAND and SPI NOR visible with EVERY partition read-only, for
- * read-path verification and backups before an install; see the storage block
- * below. SDHC stays disabled (both controllers are disabled in the vendor DT).
+ * Storage: NAND and SPI NOR with Arista's layout (see the flash block below).
+ * Only NAND slot 0 (OpenWrt's "ubi") and U-Boot's environment (0:APPSBLENV,
+ * for fw_setenv) can be written; every other partition is read-only, ART
+ * above all. SDHC stays disabled (both controllers are disabled in the vendor
+ * DT).
  *
  * reserved-memory: mainline ipq8074.dtsi already reserves bootloader@4a600000,
  * sbl@4aa00000, smem@4ab00000 and memory@4ac00000. The nodes below are the
@@ -58,19 +58,12 @@
  * running U-Boot has already loaded NSS and Wi-Fi firmware into them, so
  * letting Linux allocate over them would corrupt live state.
  *
- * Scope: serial console only. Ethernet and the radios are staged after this
- * boots. The vendor DT already speaks qcom,ess-switch-ipq807x,
- * qcom,ess-uniphy and qcom,edma, which are the same bindings OpenWrt's
- * ipq8074-ess.dtsi uses, and the external Aquantia PHYs sit on MDIO at
- * addresses 8 and 0; but none of that is wired up here yet.
- *
- * A consequence worth stating, since it limits what stage 1 can reveal about
- * the radios: the two PCIe radios hang off controllers this file does not enable,
- * and their MHI paths need working PCIe clocks, resets and PHY support. A kernel
- * without all of that enumerates no PCI devices, so absent devices on this boot
- * say nothing about which silicon the radios are. Identifying them requires
- * either enabling the full PCIe path or reading IDs out of the vendor firmware,
- * not inferring a part number from the vendor's node names.
+ * Here: the console, both 10 GbE ports (an Aquantia AQR113C each, on Uniphy
+ * 1 and 2), the IPQ8074's 2.4 and 5 GHz radios, the QCN9074 (pcie0, 6 GHz)
+ * and QCN9072 (pcie1, the scan radio) cards, the LEDs, the button, USB, the
+ * TPM (on SPI) and the BLE module's UART. The notes at each part say how it
+ * was worked out; some keep the order of the bring-up (stage 1 was the
+ * console alone).
  */
 
 /dts-v1/;
@@ -103,24 +96,13 @@
 	chosen {
 		stdout-path = "serial0:115200n8";
 		/*
-		 * panic=0 disables the kernel's own timed panic reboot. This is
-		 * NOT panic=-1, which reboots immediately and is the opposite of
-		 * what is wanted here: an unattended reboot runs this vendor
-		 * U-Boot's bootcmd, which does saveenv and boots vendor firmware.
-		 * With panic=0 the kernel halts and leaves the console intact.
-		 *
-		 * The watchdog is a SEPARATE mechanism and is not configured by
-		 * this parameter. The stage-1 boot ended in "Rebooting in 3
-		 * seconds..", which came from the kernel panic timeout; that does
-		 * not establish whether a watchdog is also armed. Left unset here
-		 * pending separate investigation.
+		 * U-Boot's bootargs replace any here, so what the kernel needs
+		 * however it is booted is appended. pcie_ports=compat stops PCIe
+		 * portdrv claiming a GICv2m SPI per root port for PME/AER, so both
+		 * cards can get 16 MSI vectors (without it, 0001:01:00.0 got 16
+		 * and 0000:01:00.0 got 1).
 		 */
-		/*
-		 * pcie_ports=compat (W4): stops PCIe portdrv claiming a GICv2m SPI per
-		 * root port for PME/AER, so both cards can get 16 MSI vectors
-		 * (without it, 0001:01:00.0 got 16 and 0000:01:00.0 got 1).
-		 */
-		bootargs = "console=ttyMSM0,115200n8 rootwait pcie_ports=compat";
+		bootargs-append = " pcie_ports=compat";
 	};
 
 	/* 2 GiB, base 0x40000000, read from the live device's /memory node. */
@@ -260,8 +242,8 @@
  * becomes OpenWrt's UBI and is labelled "ubi", so OpenWrt attaches it by name
  * (pending patch 490) and sysupgrade finds it (CI_UBIPART default). Arista's
  * active slot 1 ("rootfs_1") stays read-only and intact: it is the fallback
- * system, and the first-boot script copies the unit's own Wi-Fi firmware out of
- * it. LOGGING stays read-only. On NOR, only 0:APPSBLENV is writable (fw_setenv);
+ * system, and the firmware hotplug scripts copy the unit's own Wi-Fi firmware
+ * and board data out of it. LOGGING stays read-only. On NOR, only 0:APPSBLENV is writable (fw_setenv);
  * the bootloaders, ART (calibration, MACs) and the HLOS images are read-only.
  * MTD refuses writes and erases on read-only partitions. No nand-on-flash-bbt:
  * the bad-block table is built in RAM from the OOB markers.
@@ -551,8 +533,8 @@
  * these reg values and mactype 1, so the port datapaths are dp5_syn/dp6_syn,
  * not dp1..dp6. Both ship status = "disabled" and are enabled here.
  *
- * ipq8074-ess.dtsi already declares the MDIO bus at mdio@90000 as
- * qcom,ipq4019-mdio, but without any PHY child, so the PHY nodes have to be
+ * ipq8074.dtsi already declares the MDIO bus at mdio@90000 as
+ * "qcom,ipq8074-mdio", "qcom,ipq4019-mdio", but without any PHY child, so the PHY nodes have to be
  * added under it. phy-aquantia registers PHY_ID_AQR113C = 0x31c31c12, which is
  * the 0x31c3 / 0x1c12 pair this board's U-Boot reported -- so the driver should
  * bind. Matching IDs supports compatibility; it does NOT establish that probing
@@ -589,9 +571,8 @@
  * ESS switch: the ppe block the datapaths sit on. Ships disabled.
  *
  * ---------------------------------------------------------------------------
- * DIAGNOSTIC CANDIDATE -- NOT a complete configuration.
- *
- * Two additions, both traced to observed runtime behaviour on stage 2:
+ * Two additions, both traced to observed runtime behaviour on stage 2 of the
+ * bring-up, and kept since:
  *
  * 1. qcom,port_phyinfo. Without it, ssdk_dt_parse_phy_info() returns
  *    SW_NOT_FOUND and ssdk_dt_parse_mdio() falls through to a generic
@@ -631,8 +612,7 @@
  * keep the placeholder addresses 0..3 from qca_ssdk_phy_info_init()'s
  * "phy_address[j] = j - 1" default. Address 0 is a real PHY, so a port 1 in the
  * bitmap would resolve to it and re-create the same failure this node is meant
- * to remove. Restricting the bitmap to the two populated ports keeps the
- * diagnostic single-variable.
+ * to remove. So the bitmap holds the two populated ports only.
  *
  * Resulting active port set: port_bmp = 0x60 = ports 5 and 6 only.
  * switch_cpu_bmp = 0x1 (port 0) and switch_inner_bmp = 0x80 (port 7) are
@@ -646,16 +626,19 @@
  * work: qca-ssdk sets each Uniphy to USXGMII when its PHY reports it at
  * link-up. On 2026-10-07 eth0 linked at 10000 with a DHCP exchange both ways,
  * and eth1 at 10000 too, each with a lease. So the modes stay unset here.
- * Setting USXGMII from boot, as Arista does, is kept as an experiment in
- * arista_c360.dts.usxgmii (W17): the first link after boot once flapped ("uniphy
- * autoneg time out"). Both PHYs run the firmware Arista's U-Boot
+ * Setting USXGMII from boot, as Arista does, was tried: the first link after
+ * boot once flapped ("uniphy autoneg time out"). Both PHYs run the firmware Arista's U-Boot
  * loads into them (0:ETHPHYFW, "v5.5.6 Marvell Standard USX-All"): each
  * reports its temperature, which only the firmware provides.
  */
 &switch {
 	status = "okay";
 
-	/* Port 5 carries LAN; port 6 carries WAN. See note above. */
+	/*
+	 * qca-ssdk's own port groups (see the note above). They are not
+	 * OpenWrt's roles: both ports are plain netdevs, and OpenWrt has no
+	 * WAN on this board.
+	 */
 	switch_lan_bmp = <0x20>;  /* BIT(5) */
 	switch_wan_bmp = <0x40>;  /* BIT(6) */
 
@@ -718,8 +701,8 @@
 	nvmem-cell-names = "mac-address";
 	phy-handle = <&ethernet_phy_port6>;
 };
-/* wireless-candidate-W1: bring up both PCIe root ports so the endpoint IDs
- * can be confirmed against the preserved vendor logs (17cb:1104 on both).
+/* Both PCIe root ports, for the two cards (17cb:1104 on both, as the
+ * preserved vendor logs have it).
  * Labels resolved from ipq8074.dtsi, which this board file already includes:
  *   pcie_qmp0 = phy@84000 (gen3)   pcie0 = pcie@20000000 (domain 0)
  *   pcie_qmp1 = phy@8e000 (gen2)   pcie1 = pcie@10000000 (domain 1)
@@ -727,10 +710,9 @@
  * "perst-gpio = <tlmm 0x3a 0x01>" (domain 0) and "<tlmm 0x3d 0x01>" (domain 1)
  * -> GPIO 58 / GPIO 61, flags 1 = active low. Mainline's pcie-qcom driver
  * reads the plural property "perst-gpios".
- * num-lanes = 1 and max-link-speed (gen2/gen3) are already correct in the
- * candidate DTB and are deliberately NOT touched here.
- * This block deliberately does NOT enable the wifi node: W1 enumerates PCI
- * only, so no wireless driver probes.
+ * num-lanes = 1 and max-link-speed (gen2/gen3) are already correct in
+ * ipq8074.dtsi and are deliberately NOT touched here. The radios are enabled
+ * in the next block.
  */
 
 &pcie_qmp0 {
@@ -752,8 +734,7 @@
 
 	perst-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
 };
-/* wireless-candidate-W2: enable the integrated IPQ8074 radio node.
- * Appended AFTER dts_w1_pcie.dts.txt.
+/* The radios: the integrated IPQ8074's node, and the two cards.
  *
  * The node already carries everything ath11k-ahb requires except status:
  *   compatible = "qcom,ipq8074-wifi"
@@ -837,9 +818,9 @@
  * 0 power green, 1 power orange, 2 2.4G green, 3 5G green, 4 5/6G green,
  * 5 Ethernet 1 green, 6 Ethernet 1 orange, 8 Ethernet 2 green,
  * 9 Ethernet 2 orange; 7 and 10-15 light nothing visible. Ethernet 1 is eth0
- * (dp5, the 2.5G PoE port), Ethernet 2 is eth1 (dp6). The radio LEDs are tied
- * to their phys by /etc/hotplug.d/ieee80211 (the phy numbers of the two PCIe
- * cards change between boots).
+ * (dp5, a 10 GbE port with PoE in), Ethernet 2 is eth1 (dp6). The radio LEDs
+ * are tied to their phys by /etc/hotplug.d/ieee80211 (the phy numbers of the
+ * two PCIe cards change between boots).
  */
 &tlmm {
 	tpm_spi_pins: tpm-spi-state {

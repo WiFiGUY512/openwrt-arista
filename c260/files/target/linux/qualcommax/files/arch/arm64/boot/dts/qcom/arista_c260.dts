@@ -13,8 +13,8 @@
  * gpio18-20), the button (gpio52, active low), USB, and the UART of the
  * Bluetooth controller (a CSR8811, blsp1_uart3, gpio46-49; its enable,
  * gpio51, is driven by arista-c260-bluetooth). The board has no
- * TPM: the C-360's TPM bus is disabled in the vendor tree, and the pin the
- * C-360 uses for it is the button here.
+ * TPM: the C-360's TPM bus (SPI, gpio50-53) is disabled in the vendor tree;
+ * here gpio51 is the Bluetooth enable and gpio52 the button.
  *
  * Flash: OpenWrt lives in NAND slot 0 ("ubi": kernel, rootfs and rootfs_data
  * volumes, as sysupgrade writes them); Arista stays in slot 1 and in the SPI
@@ -50,9 +50,14 @@
 		led-upgrade = &led_power_orange;
 	};
 
+	/*
+	 * U-Boot's bootargs replace any here, so what the kernel needs however
+	 * it is booted is appended: one MSI vector per root port would leave a
+	 * card with one.
+	 */
 	chosen {
 		stdout-path = "serial0:115200n8";
-		bootargs = "console=ttyMSM0,115200n8 rootwait pcie_ports=compat";
+		bootargs-append = " pcie_ports=compat";
 	};
 
 	/* 1 GiB at 0x40000000. */
@@ -62,10 +67,12 @@
 	};
 
 	/*
-	 * The vendor tree's spans beyond what ipq8074.dtsi reserves (bootloader,
-	 * sbl, smem and tz): U-Boot has loaded NSS firmware into the first, and
-	 * the Wi-Fi spans belong to the radios' firmware. wifi_dump covers the
-	 * vendor's overlapping wigig_dump, and the QCN9000's vendor base-addr.
+	 * The vendor tree's reserved spans. ipq8074.dtsi already reserves the
+	 * same nss, tzapp, wcnss, q6_etr_dump and m3_dump spans (these nodes
+	 * merge with its own); only wifi_dump is new here. U-Boot has loaded
+	 * NSS firmware into the first, and the Wi-Fi spans belong to the
+	 * radios' firmware. wifi_dump covers the vendor's overlapping
+	 * wigig_dump, and the QCN9000's vendor base-addr.
 	 */
 	reserved-memory {
 		#address-cells = <2>;

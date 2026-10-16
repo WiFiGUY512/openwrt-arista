@@ -7,7 +7,7 @@
 #   dual5g  the IPQ8074 on 2.4 GHz and lower 5 GHz, the serving QCN9074 on
 #           upper 5 GHz.
 #
-# The multifunction QCN9074 (pcie1, airscan) is the same in both. A plan is
+# The multifunction QCN9072 (pcie1, airscan) is the same in both. A plan is
 # a level on gpio9 (/sys/class/gpio/dual-5g, low for 6g), the IPQ8074
 # calibration (ART 0x1000 or 0x71800, 11-ath11k-caldata) and the board data
 # of all three radios (13-arista-c360-board-data). The radios read

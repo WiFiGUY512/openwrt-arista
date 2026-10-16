@@ -1,9 +1,9 @@
 #!/bin/sh
 # Arista C-360: tie the radio LEDs to their phys by device path. The phy numbers
-# of the two QCN9074 cards change between boots, so phyN triggers cannot be
-# fixed in board.d. 2.4G and 5G are the IPQ8074 radios, 5/6G the 6 GHz card on
-# pcie0; the multifunction card on pcie1 has no LED. "phyNradio" lights while
-# the radio is enabled.
+# of the two cards (QCN9074, QCN9072) change between boots, so phyN triggers
+# cannot be fixed in board.d. 2.4G and 5G are the IPQ8074 radios, 5/6G the
+# 6 GHz card on pcie0; the multifunction card on pcie1 has no LED.
+# "phyNradio" lights while the radio is enabled.
 
 [ "$ACTION" = add ] || exit 0
 [ -n "$DEVICENAME" ] || exit 0
