@@ -89,8 +89,8 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 
 ## LEDs
 
-- A 74LV164 shift register on gpio18 (clock) and gpio19 (data), cleared by
-  gpio20 (held high). Twelve of its sixteen outputs drive LEDs.
+- Two chained 74LV164 shift registers on gpio18 (clock) and gpio19 (data),
+  cleared by gpio20 (held high). Twelve of their sixteen outputs drive LEDs.
 - Output = 15 − the index in Arista's `qcom,ledc_blink_indices`, the same
   rule as the C-360's. The power LED is outputs 12 and 13; U-Boot lights 13
   (`LED INIT with value 0x2000`). The others pair up: 8/9, 10/11, 4/5, 2/3

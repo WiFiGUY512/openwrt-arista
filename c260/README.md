@@ -12,11 +12,11 @@ Seen working on a unit unless marked otherwise.
 - **Installing and updating.** OpenWrt in NAND slot 0, booted by its own
   U-Boot `bootcmd`, with Arista's system in slot 1 as the fallback. Booting by
   itself and `sysupgrade` keeping settings, both on a unit.
-- **All three radios.** radio0 and radio1 on the IPQ8074 (ath11k, 2.4 and
-  5 GHz) with the unit's calibration from ART and Arista's board data for the
-  configured country, copied from slot 1 the first time; radio2 on the
-  QCA988x (ath10k-ct, 2.4/5 GHz), calibration from ART. Access points on the
-  IPQ8074's radios, and a scan on the QCA988x, on a unit.
+- **All three radios.** radio0 is the QCA988x (ath10k-ct, 2.4/5 GHz),
+  calibration from ART; radio1 (5 GHz) and radio2 (2.4 GHz) are the
+  IPQ8074's (ath11k), with the unit's calibration from ART and Arista's board
+  data for the configured country, copied from slot 1 the first time. On a
+  unit: access points on all three (the QCA988x at VHT80), and scans.
 - **Ethernet: two 5 GbE ports** (Aquantia AQR114C). eth0 is the first port
   (linked at 2.5 Gb/s on a unit), eth1 the second. Both are in `br-lan`, which
   takes its address by DHCP; there is no WAN. MACs from ART: eth0 has
