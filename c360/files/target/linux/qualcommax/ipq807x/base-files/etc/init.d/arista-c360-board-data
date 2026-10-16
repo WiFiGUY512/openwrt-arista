@@ -1,0 +1,29 @@
+#!/bin/sh /etc/rc.common
+# The radios' board data follows the wireless country: at boot, and when the
+# wireless configuration changes, /etc/hotplug.d/firmware/13-arista-c360-
+# board-data takes the files the country's group now wants, if they are not
+# the ones there. The radios read them at their next start (a reboot).
+
+START=99
+USE_PROCD=1
+
+refresh() {
+	REFRESH=1 FIRMWARE=ath11k/IPQ8074/hw2.0/board.bin \
+		sh /etc/hotplug.d/firmware/13-arista-c360-board-data
+}
+
+start_service() {
+	. /lib/functions.sh
+	[ "$(board_name)" = arista,c360 ] || return 0
+	refresh
+}
+
+service_triggers() {
+	procd_add_reload_trigger wireless
+}
+
+reload_service() {
+	. /lib/functions.sh
+	[ "$(board_name)" = arista,c360 ] || return 0
+	refresh
+}

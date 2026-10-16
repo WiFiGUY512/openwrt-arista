@@ -1,4 +1,5 @@
-# The Arista C-260, for ../build.sh. Sourced from inside the OpenWrt tree.
+# The Arista C-260, for ../build.sh, which sources it; its functions run inside
+# the OpenWrt tree.
 
 MODEL_NAME="Arista C-260"
 DEVICE=arista_c260
@@ -11,7 +12,8 @@ fix_modes() {
 	chmod 0644 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/13-arista-c260-board-data \
 		target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c260-leds
 	chmod 0755 package/utils/arista-c260-bluetooth/files/arista-c260-bluetooth \
-		package/utils/arista-c260-bluetooth/files/arista-c260-bluetooth.init
+		package/utils/arista-c260-bluetooth/files/arista-c260-bluetooth.init \
+		target/linux/qualcommax/ipq807x/base-files/etc/init.d/arista-c260-board-data
 }
 
 # after_build OUT: checks on the collected images
@@ -23,4 +25,7 @@ after_build() {
 	for p in kmod-ath10k-ct ath10k-firmware-qca988x-ct arista-c260-bluetooth airscan; do
 		grep -q "^$p " "$out"/*$DEVICE.manifest || { echo "$p is not in the image" >&2; exit 1; }
 	done
+	# modules an add-on may install (VXLAN, veth, bridge filtering) are in
+	# the feed, built for this kernel
+	modules_fit "$out" kmod-vxlan kmod-veth kmod-nft-bridge
 }

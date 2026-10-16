@@ -1,4 +1,5 @@
-# The Arista C-360, for ../build.sh. Sourced from inside the OpenWrt tree.
+# The Arista C-360, for ../build.sh, which sources it; its functions run inside
+# the OpenWrt tree.
 
 MODEL_NAME="Arista C-360"
 DEVICE=arista_c360
@@ -11,7 +12,8 @@ FEEDS_INSTALL="squashfs-tools luci bluez proto-bonding curl strongswan"
 fix_modes() {
 	local q=target/linux/qualcommax/ipq807x/base-files
 	chmod 0755 $q/usr/sbin/arista-c360-install $q/usr/sbin/arista-c360-net \
-		$q/etc/init.d/arista-c360-ble $q/etc/init.d/arista-c360-linkwatch
+		$q/etc/init.d/arista-c360-ble $q/etc/init.d/arista-c360-linkwatch \
+		$q/etc/init.d/arista-c360-board-data
 	chmod 0644 $q/etc/hotplug.d/ieee80211/12-arista-c360-leds \
 		$q/etc/hotplug.d/firmware/12-ath11k-vendor-firmware \
 		$q/etc/hotplug.d/firmware/13-arista-c360-board-data
