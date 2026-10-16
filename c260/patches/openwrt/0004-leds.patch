@@ -1,0 +1,21 @@
+Subject: qualcommax: ipq807x: Arista C-260 front-panel LEDs
+
+Steady link-speed colours on the two 5 GbE ports: green for a multi-gig link (2.5 or 5G), orange for 1G or slower, no activity blinking. Ethernet 1 is eth0. Power and the radios' LEDs are set in the device tree and by 12-arista-c260-leds.
+
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
+index ae941657f9..f84728b1de 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
+@@ -11,6 +11,12 @@ arcadyan,aw1000)
+ 	ucidef_set_led_netdev "wan" "WAN" "green:internet" "wan"
+ 	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:1c:green:wan" "wan" "tx rx link_10 link_100 link_1000 link_2500"
+ 	;;
++arista,c260)
++	ucidef_set_led_netdev "lan1-mgig" "LAN1-MGIG" "green:lan-1" "eth0" "link_2500 link_5000"
++	ucidef_set_led_netdev "lan1" "LAN1" "orange:lan-1" "eth0" "link_10 link_100 link_1000"
++	ucidef_set_led_netdev "lan2-mgig" "LAN2-MGIG" "green:lan-2" "eth1" "link_2500 link_5000"
++	ucidef_set_led_netdev "lan2" "LAN2" "orange:lan-2" "eth1" "link_10 link_100 link_1000"
++	;;
+ asus,rt-ax89x)
+ 	ucidef_set_led_netdev "aqr" "AQR" "white:aqr10g" "10g-copper"
+ 	ucidef_set_led_netdev "sfp" "SFP" "white:sfp" "10g-sfp"

@@ -92,9 +92,16 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 - Two chained 74LV164 shift registers on gpio18 (clock) and gpio19 (data),
   cleared by gpio20 (held high). Twelve of their sixteen outputs drive LEDs.
 - Output = 15 − the index in Arista's `qcom,ledc_blink_indices`, the same
-  rule as the C-360's. The power LED is outputs 12 and 13; U-Boot lights 13
-  (`LED INIT with value 0x2000`). The others pair up: 8/9, 10/11, 4/5, 2/3
-  and 0/1.
+  rule as the C-360's. Each LED is a green and an orange:
+
+  | LED | green | orange |
+  |---|---|---|
+  | Power | 12 | 13 (U-Boot lights it: `LED INIT with value 0x2000`) |
+  | Ethernet 1 (eth0) | 2 | 3 |
+  | Ethernet 2 (eth1) | 0 | 1 |
+  | Scanning radio (QCA988x) | 4 | 5 |
+  | 5 GHz | 8 | 9 |
+  | 2.4 GHz | 10 | 11 |
 
 ## Other
 

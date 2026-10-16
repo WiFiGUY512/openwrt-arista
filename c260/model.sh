@@ -8,7 +8,8 @@ FEEDS_INSTALL="squashfs-tools luci bluez"
 
 # fix_modes: modes for files/ that git on some hosts does not keep
 fix_modes() {
-	chmod 0644 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/13-arista-c260-board-data
+	chmod 0644 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/13-arista-c260-board-data \
+		target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c260-leds
 	chmod 0755 package/utils/arista-c260-bluetooth/files/arista-c260-bluetooth \
 		package/utils/arista-c260-bluetooth/files/arista-c260-bluetooth.init
 }

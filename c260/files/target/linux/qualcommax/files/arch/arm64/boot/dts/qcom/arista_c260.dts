@@ -30,6 +30,7 @@
 #include "ipq8074-ess.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
 
 / {
 	model = "Arista C-260";
@@ -43,6 +44,10 @@
 	aliases {
 		serial0 = &blsp1_uart5;
 		serial1 = &blsp1_uart3;
+		led-boot = &led_power_orange;
+		led-failsafe = &led_power_orange;
+		led-running = &led_power_green;
+		led-upgrade = &led_power_orange;
 	};
 
 	chosen {
@@ -479,13 +484,11 @@
 	};
 
 	/*
-	 * The LEDs hang off a 74LV164 chain clocked by gpio18 (clock) and gpio19
-	 * (data), as on the C-360. Arista's ledc channel n drives output
+	 * The LEDs hang off two chained 74LV164s clocked by gpio18 (clock) and
+	 * gpio19 (data), as on the C-360. Arista's ledc channel n drives output
 	 * 15 - qcom,ledc_blink_indices[n] (checked against every known C-360
-	 * LED). Its led daemon uses channels 11 and 8 for power (outputs 12 and
-	 * 13) and five pairs for its indicators: outputs 8/9, 10/11, 4/5, 2/3 and
-	 * 0/1. Which indicator is which, and the colours, are named once seen on
-	 * the panel: until then each is named by its output.
+	 * LED); one look at the panel named them: a green and an orange for
+	 * power, each Ethernet port and each radio.
 	 */
 	spi-leds {
 		compatible = "spi-gpio";
@@ -507,64 +510,87 @@
 	leds {
 		compatible = "gpio-leds";
 
+		/* power */
+		led_power_green: led-12 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&led_sr 12 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_power_orange: led-13 {
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&led_sr 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		/* Ethernet 2 (eth1) */
 		led-0 {
-			label = "c260:out0";
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
 			gpios = <&led_sr 0 GPIO_ACTIVE_HIGH>;
 		};
 
 		led-1 {
-			label = "c260:out1";
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
 			gpios = <&led_sr 1 GPIO_ACTIVE_HIGH>;
 		};
 
+		/* Ethernet 1 (eth0) */
 		led-2 {
-			label = "c260:out2";
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
 			gpios = <&led_sr 2 GPIO_ACTIVE_HIGH>;
 		};
 
 		led-3 {
-			label = "c260:out3";
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
 			gpios = <&led_sr 3 GPIO_ACTIVE_HIGH>;
 		};
 
+		/* the third radio, the QCA988x ("scanning radio" on the panel) */
 		led-4 {
-			label = "c260:out4";
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN;
 			gpios = <&led_sr 4 GPIO_ACTIVE_HIGH>;
 		};
 
 		led-5 {
-			label = "c260:out5";
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_WLAN;
 			gpios = <&led_sr 5 GPIO_ACTIVE_HIGH>;
 		};
 
+		/* 5 GHz */
 		led-8 {
-			label = "c260:out8";
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN_5GHZ;
 			gpios = <&led_sr 8 GPIO_ACTIVE_HIGH>;
 		};
 
 		led-9 {
-			label = "c260:out9";
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_WLAN_5GHZ;
 			gpios = <&led_sr 9 GPIO_ACTIVE_HIGH>;
 		};
 
+		/* 2.4 GHz */
 		led-10 {
-			label = "c260:out10";
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN_2GHZ;
 			gpios = <&led_sr 10 GPIO_ACTIVE_HIGH>;
 		};
 
 		led-11 {
-			label = "c260:out11";
+			color = <LED_COLOR_ID_ORANGE>;
+			function = LED_FUNCTION_WLAN_2GHZ;
 			gpios = <&led_sr 11 GPIO_ACTIVE_HIGH>;
 		};
-
-		led-12 {
-			label = "c260:out12";
-			gpios = <&led_sr 12 GPIO_ACTIVE_HIGH>;
-		};
-
-		led-13 {
-			label = "c260:out13";
-			gpios = <&led_sr 13 GPIO_ACTIVE_HIGH>;
-		};
 	};
+
 };
