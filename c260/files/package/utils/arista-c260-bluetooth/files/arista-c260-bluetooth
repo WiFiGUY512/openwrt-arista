@@ -14,6 +14,8 @@
 # the BD address is set at load time to Arista's choice, the base MAC (ART
 # 0x18) less 2. Run by /etc/init.d/arista-c260-bluetooth; ends by exec'ing
 # hciattach in the foreground, so the controller lives as long as it does.
+# Once attached the controller is powered on, as the C-360's is, but left
+# not advertising: that is the operator's choice (or a manager's).
 
 . /lib/functions.sh
 . /lib/functions/system.sh
@@ -117,4 +119,24 @@ kill $! 2> /dev/null
 sleep 1
 
 log "$((seq - 1)) PS keys loaded, BD address $bd, H4 on $tty"
+
+# Power it on once hciattach has registered it again (as H4), with LE on:
+# the CSR8811 is dual mode, and with no bluetoothd nothing else turns LE on
+# (the C-360's controller is LE only). btmgmt reads stdin, which must be a
+# pipe it can poll.
+( i=0
+  while [ $i -lt 20 ]; do
+	sleep 1
+	i=$((i + 1))
+	for h in /sys/class/bluetooth/hci*; do
+		[ "$(readlink -f "$h/device")" = "$(readlink -f /sys/class/tty/${tty#/dev/})" ] || continue
+		hciconfig "${h##*/}" up 2>/dev/null || continue
+		true | btmgmt --index "${h##*/hci}" le on >/dev/null 2>&1 ||
+			log "${h##*/}: LE could not be turned on"
+		log "${h##*/} powered on, LE on (not advertising)"
+		exit 0
+	done
+  done
+  log "the controller was not there to be powered on" ) &
+
 exec hciattach -n -s 115200 "$tty" any 115200 flow nosleep

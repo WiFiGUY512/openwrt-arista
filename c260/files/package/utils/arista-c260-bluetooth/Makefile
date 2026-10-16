@@ -3,7 +3,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=arista-c260-bluetooth
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=GPL-2.0-or-later
 
 include $(INCLUDE_DIR)/package.mk
@@ -12,7 +12,8 @@ define Package/arista-c260-bluetooth
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Arista C-260 Bluetooth controller (CSR8811) bring-up
-  DEPENDS:=@TARGET_qualcommax_ipq807x +bluez-utils +kmod-hci-uart +squashfs-tools-unsquashfs +ubi-utils
+  DEPENDS:=@TARGET_qualcommax_ipq807x +bluez-utils +bluez-utils-extra +kmod-hci-uart \
+	+squashfs-tools-unsquashfs +ubi-utils
   PKGARCH:=all
 endef
 

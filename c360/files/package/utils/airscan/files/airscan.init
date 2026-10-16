@@ -7,6 +7,7 @@ USE_PROCD=1
 start_service() {
 	. /lib/functions.sh
 	case "$(board_name)" in
+	arista,c260|\
 	arista,c360) ;;
 	*) return 0 ;;
 	esac

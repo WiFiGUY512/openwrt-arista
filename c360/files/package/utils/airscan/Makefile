@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=airscan
 PKG_VERSION:=0.2
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=GPL-2.0-only
 
 include $(INCLUDE_DIR)/package.mk
@@ -16,11 +16,12 @@ define Package/airscan
 endef
 
 define Package/airscan/description
- Runs spectral scans (ath11k), passive BSS scans and a monitor-mode client
+ Runs spectral scans (ath10k, ath11k), passive BSS scans and a monitor-mode client
  survey on a board's dedicated scan radio, never on a serving radio, plus a
  Bluetooth LE survey on the board's BLE controller (hci0), and
  publishes the results on ubus (object "airscan") and in /tmp/airscan.
  Arista C-360: the QCN9074 multifunction radio (PCI 0001:01:00.0).
+ Arista C-260: the QCA988x third radio (PCI 0000:01:00.0).
 endef
 
 define Package/airscan/conffiles

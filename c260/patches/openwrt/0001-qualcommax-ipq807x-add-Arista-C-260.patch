@@ -1,12 +1,12 @@
 Subject: qualcommax: ipq807x: add Arista C-260
 
-The device recipe: a FIT kernel in UBI (kernel, rootfs, rootfs_data) in NAND slot 0, and the initramfs as the RAM system it is installed from. In the image: the QCA988x third radio (ath10k-ct), the LEDs' shift register, and the Bluetooth controller's bring-up.
+The device recipe: a FIT kernel in UBI (kernel, rootfs, rootfs_data) in NAND slot 0, and the initramfs as the RAM system it is installed from. In the image: the QCA988x third radio (ath10k-ct) as the scan radio (airscan), the LEDs' shift registers, and the Bluetooth controller's bring-up.
 
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index f356bbbca5..aad0c73dcc 100644
+index f356bbbca5..9db96e483b 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
-@@ -67,6 +67,30 @@ define Device/arcadyan_aw1000
+@@ -67,6 +67,31 @@ define Device/arcadyan_aw1000
  endef
  TARGET_DEVICES += arcadyan_aw1000
  
@@ -17,7 +17,8 @@ index f356bbbca5..aad0c73dcc 100644
 +# and as the source of the IPQ8074 board data and the Bluetooth PS keys. U-Boot
 +# loads the "kernel" UBI volume with its own ubi commands, from a bootcmd the
 +# installation sets (INSTALL.md); the initramfs is the RAM system it is
-+# installed from.
++# installed from. The QCA988x is the scan radio (airscan), as the C-360's
++# QCN9072 is: the IPQ8074's radios serve clients, it does everything else.
 +define Device/arista_c260
 +	$(call Device/FitImage)
 +	$(call Device/UbiFit)
@@ -30,7 +31,7 @@ index f356bbbca5..aad0c73dcc 100644
 +	DEVICE_DTS_CONFIG := config@1
 +	DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca988x-ct \
 +		ubi-utils squashfs-tools-unsquashfs kmod-spi-gpio kmod-spi-bitbang \
-+		kmod-gpio-nxp-74hc164 kmod-leds-gpio arista-c260-bluetooth
++		kmod-gpio-nxp-74hc164 kmod-leds-gpio arista-c260-bluetooth airscan
 +endef
 +TARGET_DEVICES += arista_c260
 +

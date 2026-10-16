@@ -1,5 +1,8 @@
 #!/bin/sh /etc/rc.common
 # SPDX-License-Identifier: GPL-2.0-or-later
+#
+# The Arista C-260's Bluetooth controller (/usr/sbin/arista-c260-bluetooth):
+# started and powered on as the C-360's is, but left NOT advertising.
 
 START=60
 USE_PROCD=1

@@ -2,13 +2,15 @@
 // airscan: spectrum, BSS and client survey on a dedicated scan radio.
 //
 // Runs only on the board's dedicated scan radio (Arista C-360: the QCN9074
-// multifunction card, PCI 0001:01:00.0). Serving radios are never touched: no
+// multifunction card, PCI 0001:01:00.0, ath11k; Arista C-260: the QCA988x,
+// PCI 0000:01:00.0, ath10k). Serving radios are never touched: no
 // interface, scan, retune or spectral command is ever issued on another phy.
 // The radio is taken out of netifd's control (wifi-device disabled) so that a
 // "wifi reload" cannot tear down the interfaces airscan creates on it.
 //
 // Jobs, one at a time, all receive-only on the scan radio:
-//   spectral  ath11k spectral scan, 80 MHz windows on 5/6 GHz, 20 MHz on 2.4 GHz
+//   spectral  ath10k/ath11k spectral scan, 20 MHz windows on 2.4/5 GHz, 80 MHz
+//             on 6 GHz (where the radio has it)
 //   bss       passive scan of every channel the radio supports (2.4/5/6 GHz),
 //             then of the 6 GHz channels again, long enough on each for a beacon
 //   clients   monitor capture, one dwell per channel that has networks on it
@@ -39,7 +41,7 @@ import * as uci from 'uci';
 import * as struct from 'struct';
 import * as socket from 'socket';
 
-const BOARDS = { "arista,c360": "0001:01:00.0" };
+const BOARDS = { "arista,c260": "0000:01:00.0", "arista,c360": "0001:01:00.0" };
 const OUT = "/tmp/airscan";
 const MON = "as-mon0", STA = "as-sta0";
 const PIDFILE = "/var/run/airscan.pid";
@@ -161,7 +163,13 @@ function resolve_radio() {
 	radio.pci = pci;
 	radio.phy = find_phy(pci);
 	if (!radio.phy) return false;
-	radio.debugfs = `/sys/kernel/debug/ieee80211/${radio.phy}/ath11k`;
+	// ath10k takes at most 255 samples a trigger (spectral_count), ath11k more
+	radio.driver = "ath11k";
+	radio.per_trigger = 0;
+	for (let d in [ "ath11k", "ath10k" ])
+		if (fs.access(`/sys/kernel/debug/ieee80211/${radio.phy}/${d}`)) radio.driver = d;
+	if (radio.driver == "ath10k") radio.per_trigger = 255;
+	radio.debugfs = `/sys/kernel/debug/ieee80211/${radio.phy}/${radio.driver}`;
 	radio.spectral = !!fs.access(`${radio.debugfs}/spectral_scan_ctl`, "w");
 	return true;
 }
@@ -193,14 +201,29 @@ function spectral_write(file, val) {
 	return fs.writefile(`${radio.debugfs}/${file}`, `${val}\n`) != null;
 }
 
+// Whether the radio has 6 GHz channels at all (the C-260's QCA988x has none).
+// Its own test: freqs_6g, further down, is not yet declared here.
+function has_6g() {
+	let p = fs.popen(`iw phy ${radio.phy} channels 2>/dev/null`), yes = false;
+	if (!p) return false;
+	for (let line in split(p.read("all") || "", "\n")) {
+		let m = match(line, /^[ \t]*\* ([0-9]+) MHz/);
+		if (m && +m[1] >= 5950) yes = true;
+	}
+	p.close();
+	return yes;
+}
+
 // 2.4 GHz and 5 GHz: 20 MHz windows (the C-360 scan radio's 5 GHz band has no
-// 40/80 MHz support). 6 GHz: 80 MHz blocks plus channel 233.
+// 40/80 MHz support). 6 GHz: 80 MHz blocks plus channel 233, on a radio with
+// 6 GHz channels.
 function spectral_windows() {
 	let w = [];
 	let add20 = (band, f) => push(w, { band, ctrl: f, width: 20, center: f });
 	for (let f in [ 2412, 2432, 2452, 2462 ]) add20("2g", f);
 	for (let r in [ [5180, 5320], [5500, 5720], [5745, 5885] ])
 		for (let f = r[0]; f <= r[1]; f += 20) add20("5g", f);
+	if (!has_6g()) return w;
 	for (let k = 0; k < 14; k++)
 		push(w, { band: "6g", ctrl: 5955 + 80 * k, width: 80, center: 5985 + 80 * k });
 	add20("6g", 7115);
@@ -273,20 +296,30 @@ function run_spectral(done, only_band) {
 			uloop.timer(10, step);
 			return;
 		}
+		// One trigger for all the window's samples, or bursts of at most
+		// radio.per_trigger (ath10k: 255), each run out and disabled before
+		// the next: a trigger on top of a running one loses samples (C-260).
 		uloop.timer(300, () => {
-			spectral_write("spectral_scan_ctl", "manual");
-			spectral_write("spectral_count", cfg.spectral_samples);
-			spectral_write("spectral_scan_ctl", "trigger");
-			uloop.timer(int(cfg.spectral_samples * 0.23) + 250, () => {
-				spectral_write("spectral_scan_ctl", "disable");
-				let tmp = `${OUT}/.win.json`;
-				uloop.process("/bin/sh", [ "-c", `exec ${FFT} ${radio.debugfs}/spectral_scan0 > ${tmp}` ], {}, (code) => {
-					let got = code == 0 ? json(fs.readfile(tmp) || "[]") : [];
-					fs.unlink(tmp);
-					for (let wdw in got) { wdw.band = w.band; push(windows, wdw); total += wdw.samples; }
-					uloop.timer(10, step);
+			let want = +cfg.spectral_samples, per = radio.per_trigger || want;
+			function burst() {
+				let n = min(per, want);
+				want -= n;
+				spectral_write("spectral_scan_ctl", "manual");
+				spectral_write("spectral_count", n);
+				spectral_write("spectral_scan_ctl", "trigger");
+				uloop.timer(int(n * 0.23) + (radio.per_trigger ? 150 : 250), () => {
+					spectral_write("spectral_scan_ctl", "disable");
+					if (want > 0) { burst(); return; }
+					let tmp = `${OUT}/.win.json`;
+					uloop.process("/bin/sh", [ "-c", `exec ${FFT} ${radio.debugfs}/spectral_scan0 > ${tmp}` ], {}, (code) => {
+						let got = code == 0 ? json(fs.readfile(tmp) || "[]") : [];
+						fs.unlink(tmp);
+						for (let wdw in got) { wdw.band = w.band; push(windows, wdw); total += wdw.samples; }
+						uloop.timer(10, step);
+					});
 				});
-			});
+			}
+			burst();
 		});
 	}
 	step();
@@ -690,8 +723,8 @@ function on_frame(pkt) {
 	if (bssid && !(hex(substr(bssid, 0, 2)) & 1)) c.bssid = bssid;
 	if (tx_is_sta) {
 		let s = radiotap_signal(pkt);
-		// ath11k fills radiotap signal with its default noise floor (-95) on this radio: not a measurement
-		if (s != null && s < 0 && s != -95) c.signal = c.signal == null ? s : int(0.7 * c.signal + 0.3 * s - 0.5);
+		// ath11k fills radiotap signal with its default noise floor (-95) on the C-360's radio: not a measurement
+		if (s != null && s < 0 && !(s == -95 && radio.driver == "ath11k")) c.signal = c.signal == null ? s : int(0.7 * c.signal + 0.3 * s - 0.5);
 	}
 	// every probe request counts, wildcard ones too (most phones name no SSID):
 	// a client that only probes is looking for a network, connected to none

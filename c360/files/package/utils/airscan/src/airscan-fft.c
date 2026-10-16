@@ -1,12 +1,18 @@
 /*
- * airscan-fft: aggregate ath11k spectral-scan samples into per-window spectra.
+ * airscan-fft: aggregate ath10k and ath11k spectral-scan samples into
+ * per-window spectra.
  *
  * usage: airscan-fft <file>   (the debugfs relay file spectral_scan0, or a copy)
  *
- * Input is a stream of TLV samples (spectral_common.h, ATH_FFT_SAMPLE_ATH11K = 4):
- *   u8 type, be16 length, then u8 chan_width, s8 max_index, u8 max_exp,
+ * Input is a stream of TLV samples (spectral_common.h), u8 type, be16 length:
+ *   ATH_FFT_SAMPLE_ATH11K = 4: u8 chan_width, s8 max_index, u8 max_exp,
  *   be16 freq1, be16 freq2, be16 max_magnitude, be16 rssi, be32 tsf,
  *   be32 noise, u8 bins[length - 19].
+ *   ATH_FFT_SAMPLE_ATH10K = 3: u8 chan_width, be16 freq1, be16 freq2,
+ *   be16 noise, be16 max_magnitude, be16 total_gain_db, be16 base_pwr_db,
+ *   be64 tsf, s8 max_index, u8 rssi, u8 relpwr_db, u8 avgpwr_db, u8 max_exp,
+ *   u8 bins[length - 26]. The QCA988x says 22 for a 20 MHz window, so a
+ *   width is rounded to 20, 40, 80 or 160.
  *
  * Output is one JSON array, one object per (centre frequency, width, bins):
  *   centre, width, bins, samples, noise (median), pwr_lo, pwr_hist[], avg[], max[]
@@ -61,14 +67,35 @@ static int cmp_i(const void *a, const void *b)
 	return *(const int *)a - *(const int *)b;
 }
 
-static void add_sample(const uint8_t *s, int len)
+static int round_width(int mhz)
 {
-	int nbins = len - 19;
+	return mhz < 30 ? 20 : mhz < 60 ? 40 : mhz < 120 ? 80 : 160;
+}
+
+static void add_sample(int type, const uint8_t *s, int len)
+{
+	int nbins, width, max_exp, centre, rssi, noise;
+	const uint8_t *bins;
+
+	if (type == 4) {
+		nbins = len - 19;
+		width = s[0];
+		max_exp = s[2];
+		centre = be16(s + 3);
+		rssi = (int16_t)be16(s + 9);
+		noise = (int32_t)be32(s + 15);
+		bins = s + 19;
+	} else {
+		nbins = len - 26;
+		width = round_width(s[0]);
+		centre = be16(s + 1);
+		noise = (int16_t)be16(s + 5);
+		rssi = (int8_t)s[22];
+		max_exp = s[25];
+		bins = s + 26;
+	}
 	if (nbins < 1 || nbins > MAX_BINS)
 		return;
-	int width = s[0], max_exp = s[2], centre = be16(s + 3);
-	int rssi = (int16_t)be16(s + 9), noise = (int32_t)be32(s + 15);
-	const uint8_t *bins = s + 19;
 	struct win *w = get_win(centre, width, nbins);
 	if (!w)
 		return;
@@ -127,8 +154,8 @@ int main(int argc, char **argv)
 		int type = buf[off], l = be16(buf + off + 1);
 		if (off + 3 + l > len)
 			break;
-		if (type == 4 && l > 19)
-			add_sample(buf + off + 3, l);
+		if ((type == 4 && l > 19) || (type == 3 && l > 26))
+			add_sample(type, buf + off + 3, l);
 		off += 3 + l;
 	}
 
