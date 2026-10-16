@@ -688,13 +688,17 @@ function run_bss(done) {
 let cap = { sock: null, handle: null, freq: 0, ch_list: [], ch_i: 0, deauth: {}, heard: {}, hit: {}, probed: 0, round_heard: 0, round_dwells: 0 };
 const DEAUTH_FLOOD = 20;   // deauth + disassoc frames for one BSSID per second of dwell
 
-// radiotap flags (bit 1): 0x10 = frame carries its FCS
-function radiotap_fcs(pkt) {
+// radiotap flags (bit 1): 0x10 = frame carries its FCS, 0x40 = its FCS failed
+function radiotap_flags(pkt) {
 	let present = struct.unpack("<I", pkt, 4)[0], off = 8, p = present;
 	while (p & 0x80000000) { p = struct.unpack("<I", pkt, off)[0]; off += 4; }
-	if (!(present & 0x02)) return false;
+	if (!(present & 0x02)) return 0;
 	if (present & 0x01) off = int((off + 7) / 8) * 8 + 8;
-	return !!(ord(pkt, off) & 0x10);
+	return ord(pkt, off);
+}
+
+function radiotap_fcs(pkt) {
+	return !!(radiotap_flags(pkt) & 0x10);
 }
 
 function radiotap_signal(pkt) {
@@ -720,6 +724,10 @@ function on_frame(pkt) {
 	if (length(pkt) < 8) return;
 	let rlen = struct.unpack("<H", pkt, 2)[0];
 	if (length(pkt) < rlen + 24) return;
+	// A frame whose FCS failed reaches the monitor too (about 6% of them on
+	// a C-360), its addresses as damaged as the rest: each would be a new
+	// "client", or a BSSID a bit off a real one.
+	if (radiotap_flags(pkt) & 0x40) return;
 	let fc = struct.unpack("<H", pkt, rlen)[0];
 	let ftype = (fc >> 2) & 3, sub = (fc >> 4) & 15, to_ds = !!(fc & 0x100), from_ds = !!(fc & 0x200);
 	let sta = null, bssid = null, probe = null, tx_is_sta = false, probe_req = false;
