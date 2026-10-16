@@ -2,9 +2,10 @@
 
 Status: sections 1–5 were run on one unit on 2026-10-15: the RAM boot,
 `ubiformat`, the environment write, unattended boots from NAND, and
-`sysupgrade` keeping the settings. The fallback's restoring of Arista's
-settings was checked at U-Boot, but a full boot into Arista through it was not
-tried.
+`sysupgrade` keeping the settings. The fallback too: from the state a failed
+OpenWrt load leaves, `arista_boot` booted Arista's slot 1 with Arista's own
+settings; after a power cycle OpenWrt came back by itself, and the U-Boot
+environment was as before.
 
 ## What you get
 

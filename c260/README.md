@@ -11,7 +11,8 @@ Seen working on a unit unless marked otherwise.
 
 - **Installing and updating.** OpenWrt in NAND slot 0, booted by its own
   U-Boot `bootcmd`, with Arista's system in slot 1 as the fallback. Booting by
-  itself and `sysupgrade` keeping settings, both on a unit.
+  itself, `sysupgrade` keeping settings, and the fallback booting Arista, all
+  on a unit.
 - **All three radios.** radio0 is the QCA988x (ath10k-ct, 2.4/5 GHz),
   calibration from ART; radio1 (5 GHz) and radio2 (2.4 GHz) are the
   IPQ8074's (ath11k), with the unit's calibration from ART and Arista's board
@@ -37,8 +38,8 @@ Seen working on a unit unless marked otherwise.
 
 ## What doesn't (yet)
 
-- **Not yet tried on a unit:** a real boot into Arista's fallback, 5 Gb/s
-  links, and SuperSpeed on the USB port (a USB 3.0 stick ran at 480 Mb/s).
+- **Not yet tried on a unit:** 5 Gb/s links, and SuperSpeed on the USB port
+  (a USB 3.0 stick ran at 480 Mb/s).
 - **PoE power classes:** Arista turns things down on 802.3af/at; OpenWrt
   does not.
 
