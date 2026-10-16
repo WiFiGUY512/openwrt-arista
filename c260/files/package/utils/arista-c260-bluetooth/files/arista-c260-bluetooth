@@ -1,0 +1,120 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Arista C-260: its Bluetooth controller, a CSR8811 on blsp1_uart3, brought up
+# as Arista's own system does (bccmd psload, then hciattach), with the stock
+# BlueZ tools. The chip boots from ROM in BCSP at 115200 baud. Its PS keys
+# (ROM patches, H4 at 115200, the 26 MHz crystal, the BD address) go into its
+# RAM as CSR BCCMD vendor commands through the kernel's BCSP driver; a warm
+# reset restarts it as an H4 controller, attached with RTS/CTS flow control.
+# Nothing is written to the chip's or the AP's flash.
+#
+# The PS keys are Arista's (/sbin/csr8x11-a12-bt4.2-patch.psr), copied
+# unmodified from the unit's own Arista system in NAND slot 1 the first time;
+# the BD address is set at load time to Arista's choice, the base MAC (ART
+# 0x18) less 2. Run by /etc/init.d/arista-c260-bluetooth; ends by exec'ing
+# hciattach in the foreground, so the controller lives as long as it does.
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+PSR=/lib/firmware/csr8x11-a12-bt4.2-patch.psr
+log() { logger -t arista-c260-bluetooth "$*"; }
+hex() { printf '%02x %02x' $(( $1 & 255 )) $(( ($1 >> 8) & 255 )); }
+
+# The UART at 78b1000 (blsp1_uart3).
+tty=
+for t in /sys/class/tty/ttyMSM*; do
+	case "$(readlink -f "$t/device")" in
+	*/78b1000.serial*) tty=/dev/${t##*/} ;;
+	esac
+done
+[ -n "$tty" ] || { log "no UART at 78b1000"; exit 1; }
+
+# The PS keys, from the Arista system the first time.
+if [ ! -s "$PSR" ]; then
+	mtd=$(find_mtd_index rootfs_1)
+	[ -n "$mtd" ] || { log "no rootfs_1 (Arista slot 1)"; exit 1; }
+	ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+	[ -n "$ubi" ] || { log "cannot attach Arista slot 1"; exit 1; }
+	vol=
+	for v in /sys/class/ubi/ubi${ubi}_*; do
+		[ "$(cat "$v/name" 2>/dev/null)" = ubi_rootfs ] && vol=${v##*/}
+	done
+	tmp=$(mktemp -d)
+	if [ -n "$vol" ]; then
+		[ -c "/dev/$vol" ] || mknod "/dev/$vol" c $(sed 's/:/ /' /sys/class/ubi/$vol/dev)
+		unsquashfs -n -d "$tmp/fs" "/dev/$vol" sbin/csr8x11-a12-bt4.2-patch.psr > /dev/null 2>&1
+	fi
+	ubidetach -d "$ubi" > /dev/null 2>&1
+	if [ -s "$tmp/fs/sbin/csr8x11-a12-bt4.2-patch.psr" ]; then
+		mkdir -p /lib/firmware
+		cp "$tmp/fs/sbin/csr8x11-a12-bt4.2-patch.psr" "$PSR"
+		echo "Arista sbin/csr8x11-a12-bt4.2-patch.psr" > "$PSR.source"
+		log "PS keys copied from the Arista system"
+	fi
+	rm -rf "$tmp"
+	[ -s "$PSR" ] || { log "no sbin/csr8x11-a12-bt4.2-patch.psr in the Arista system"; exit 1; }
+fi
+
+# The BD address as its PS key wants it: 00:LAP-hi, LAP-lo, 00:UAP, NAP.
+base=$(mtd_get_mac_binary "0:ART" 0x18)
+bd=$(macaddr_add "$base" -2)
+set -- $(echo "$bd" | tr ':' ' ')
+bdwords="00$4 $5$6 00$3 $1$2"
+
+# A cold reset (gpio51, active high, as Arista's ble_ctrl_func) puts the chip
+# back in BCSP with empty PS RAM.
+chip=
+for c in /sys/class/gpio/gpiochip*; do
+	[ "$(cat "$c/label")" = 1000000.pinctrl ] && chip=$c
+done
+gpio=$(( $(cat "$chip/base") + 51 ))
+[ -d /sys/class/gpio/gpio$gpio ] || echo $gpio > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio$gpio/direction
+echo 0 > /sys/class/gpio/gpio$gpio/value
+sleep 1
+echo 1 > /sys/class/gpio/gpio$gpio/value
+sleep 1
+
+hciattach -s 115200 "$tty" bcsp 115200 noflow > /dev/null || { log "no BCSP answer on $tty"; exit 1; }
+sleep 1
+dev=
+for h in /sys/class/bluetooth/hci*; do
+	[ "$(readlink -f "$h/device")" = "$(readlink -f /sys/class/tty/${tty#/dev/})" ] && dev=${h##*/}
+done
+[ -n "$dev" ] || { log "no HCI device on $tty"; killall hciattach; exit 1; }
+hciconfig "$dev" up || { log "$dev did not come up in BCSP"; killall hciattach; exit 1; }
+
+# Each key: BCCMD SETREQ (type 2) of varid 0x7003 (PS) into PS RAM (stores 8),
+# behind the 0xc2 descriptor (BCCMD channel, one fragment); at least 9 words.
+seq=1 bad=0
+for line in $(sed 's,//.*,,' "$PSR" | tr -d '\r' | sed -n 's/^&\([0-9a-fA-F]*\) *= *\(.*\)$/\1=\2/p' | tr ' ' '_'); do
+	key=${line%%=*}
+	words=$(echo "${line#*=}" | tr '_' ' ')
+	[ "$key" = 0001 ] && words=$bdwords
+	n=$(echo $words | wc -w)
+	payload="$(hex 0x$key) $(hex $n) $(hex 8)"
+	for w in $words; do payload="$payload $(hex 0x$w)"; done
+	len=$(( 6 + 2 * n ))
+	size=$(( (len + 1) / 2 + 5 )); [ $size -lt 9 ] && size=9
+	pad=
+	i=$(( size * 2 - 10 - len ))
+	while [ $i -gt 0 ]; do pad="$pad 00"; i=$((i - 1)); done
+	# The reply: c2, GETRESP, size, seq, varid, then the status (0 is ok).
+	st=$(hcitool -i "$dev" cmd 0x3f 0x0000 c2 02 00 $(hex $size) $(hex $seq) 03 70 00 00 $payload $pad 2>&1 |
+		sed -n '/HCI Event: 0xff/,$p' | sed 1d | tr -s ' \n' ' ' | cut -d' ' -f11-12)
+	[ "$st" = "00 00" ] || { log "PS key &$key: status ${st:-none}"; bad=$((bad + 1)); }
+	seq=$((seq + 1))
+done
+[ $bad = 0 ] || { killall hciattach; exit 1; }
+
+# Warm reset (varid 0x4002, no reply): the chip restarts in H4.
+hcitool -i "$dev" cmd 0x3f 0x0000 c2 02 00 09 00 $(hex $seq) 02 40 00 00 00 00 00 00 00 00 00 00 > /dev/null 2>&1 &
+sleep 1
+killall hciattach
+kill $! 2> /dev/null
+sleep 1
+
+log "$((seq - 1)) PS keys loaded, BD address $bd, H4 on $tty"
+exec hciattach -n -s 115200 "$tty" any 115200 flow nosleep

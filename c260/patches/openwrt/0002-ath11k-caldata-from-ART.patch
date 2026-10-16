@@ -1,0 +1,18 @@
+Subject: qualcommax: ipq807x: Arista C-260 IPQ8074 calibration
+
+The IPQ8074's calibration is 128 KiB at 0x1000 in ART, as Arista's own read_caldata_to_fs.sh takes it for HK01 boards. The board data that goes with it comes from the unit's Arista system (13-arista-c260-board-data).
+
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+index df4907c517..0fada39aca 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -16,6 +16,9 @@ case "$FIRMWARE" in
+ 		ath11k_patch_mac $(macaddr_add $addr 8) 1
+ 		ath11k_set_macflag
+ 		;;
++	arista,c260)
++		caldata_extract "0:ART" 0x1000 0x20000
++		;;
+ 	asus,rt-ax89x)
+ 		CI_UBIPART="UBI_DEV"
+ 		caldata_extract_ubi "Factory" 0x1000 0x20000

@@ -1,0 +1,18 @@
+Subject: uboot-envtools: qualcommax: add Arista C-260
+
+The U-Boot environment is 0:APPSBLENV in SPI NOR, 64 KiB, one copy.
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
+index 46a7111c1b..8cfc9e5abf 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
+@@ -8,6 +8,9 @@ touch /etc/config/ubootenv
+ board=$(board_name)
+ 
+ case "$board" in
++arista,c260)
++	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
++	;;
+ aliyun,ap8220|\
+ compex,wpq873|\
+ edgecore,eap102|\

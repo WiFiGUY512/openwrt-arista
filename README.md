@@ -12,7 +12,7 @@ first boot.
 | Model | SoC | OpenWrt | Status |
 |---|---|---|---|
 | [C-360](c360/README.md) | Qualcomm IPQ8074A + 2 × QCN9074 | 25.12 | Working: all radios, BLE, the scan radio, both 10 GbE ports |
-| C-260 | | | Next |
+| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA988x | 25.12 | Working: all radios, Bluetooth, both 5 GbE ports, install and sysupgrade; LEDs next |
 
 ## Build
 
@@ -36,7 +36,7 @@ any OpenWrt device.
 
 ## Install
 
-Each model's `INSTALL.md`. For the C-360: [c360/INSTALL.md](c360/INSTALL.md).
+Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md](c260/INSTALL.md).
 
 ## Layout
 

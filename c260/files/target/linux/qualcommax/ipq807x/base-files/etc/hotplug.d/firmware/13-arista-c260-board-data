@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# Arista C-260 on OpenWrt 25.12: the IPQ8074's board data, from the Arista
+# system in NAND slot 1, when ath11k first asks for it. The calibration comes
+# from ART (11-ath11k-caldata); this is the board data that goes with it.
+#
+# Arista keeps it per country group in /lib/boarddata and copies the matching
+# file over the stock one at every boot (link_board_data in its
+# /etc/rc.d/platform_funcs, with the codes of /etc/country_map.cfg):
+# bdwlan_ICKR.bin for Canada and Korea, bdwlan_UK.bin, bdwlan_AU.bin for the
+# countries of its AU list, and bdwlan.bin for every other. This takes the
+# same file, by the country of the wireless configuration. The file written
+# gets a .source next to it.
+
+[ "$FIRMWARE" = "ath11k/IPQ8074/hw2.0/board.bin" ] || exit 0
+[ -e /lib/firmware/$FIRMWARE ] && exit 0
+
+. /lib/functions.sh
+[ "$(board_name)" = arista,c260 ] || exit 0
+
+country=$(uci -q show wireless | sed -n "s/^wireless\.[^.]*\.country='\([A-Z][A-Z]\)'$/\1/p" | head -n 1)
+case "$country" in
+CA|KR) file=bdwlan_ICKR.bin ;;
+GB) file=bdwlan_UK.bin ;;
+AU|AT|BE|BG|HR|CY|CZ|DK|EE|FI|FR|DE|GR|HU|IE|IT|LV|LT|LU|MT|NL|PL|PT|RO|SK|SI|ES|SE)
+	file=bdwlan_AU.bin ;;
+*) file=bdwlan.bin ;;
+esac
+
+mtd=$(find_mtd_index rootfs_1)
+[ -n "$mtd" ] || exit 0
+ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+[ -n "$ubi" ] || exit 0
+vol=
+for v in /sys/class/ubi/ubi${ubi}_*; do
+	[ "$(cat "$v/name" 2>/dev/null)" = ubi_rootfs ] && vol=${v##*/}
+done
+tmp=$(mktemp -d)
+if [ -n "$vol" ]; then
+	node=/dev/$vol
+	[ -c "$node" ] || mknod "$node" c $(sed 's/:/ /' /sys/class/ubi/$vol/dev)
+	unsquashfs -n -d "$tmp/fs" "$node" "lib/boarddata/$file" > /dev/null 2>&1
+fi
+ubidetach -d "$ubi" > /dev/null 2>&1
+if [ -s "$tmp/fs/lib/boarddata/$file" ]; then
+	mkdir -p /lib/firmware/ath11k/IPQ8074/hw2.0
+	cp "$tmp/fs/lib/boarddata/$file" /lib/firmware/$FIRMWARE
+	echo "Arista lib/boarddata/$file (country ${country:-unset})" > /lib/firmware/$FIRMWARE.source
+	logger -t arista-c260-board-data "IPQ8074 board data: Arista $file"
+else
+	logger -t arista-c260-board-data "no lib/boarddata/$file in the Arista system"
+fi
+rm -rf "$tmp"
