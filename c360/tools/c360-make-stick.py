@@ -10,7 +10,8 @@ installer) and ...-squashfs-factory.ubi.
 --img writes a disk image to put on a stick with Rufus (or dd, or balenaEtcher):
 an MBR with one FAT32 partition, the way Raspberry Pi images are made. It is
 N MiB (default 2048; the stick must be at least that big), and what the
-installer files leave free holds the units' flash backups, about 180 MiB each.
+installer files leave free holds the units' flash backups, about 180 MiB each
+(the installer starts one only while more than 512 MiB is free).
 --xz also writes <out.img>.xz, which Rufus writes directly. Each image gets a
 .sha256 beside it.
 
@@ -48,6 +49,14 @@ UBOOT_LINE = ("mw.l 0x0101D004 0x2; mw.l 0x0101D000 0x201; "
               "bootm 0xA0000000#config@1")
 LABEL = "C360OPENWRT"
 BACKUP_MIB = 180
+# arista-c360-install starts a backup only while more than this is free
+BACKUP_FREE_MIB = 512
+
+
+def backups_room(free_bytes):
+    """How many units' backups fit in free_bytes."""
+    free = free_bytes >> 20
+    return 0 if free <= BACKUP_FREE_MIB else (free - BACKUP_FREE_MIB - 1) // BACKUP_MIB + 1
 
 
 def sha256_file(path):
@@ -352,7 +361,7 @@ def main():
         try:
             free = shutil.disk_usage(a.stick).free
             print("stick ready: %s (%.1f GiB free, room for about %d units' backups)"
-                  % (dest, free / (1 << 30), free // (BACKUP_MIB << 20)))
+                  % (dest, free / (1 << 30), backups_room(free)))
         except OSError:
             print("stick ready: %s" % dest)
         return
@@ -383,7 +392,7 @@ def main():
             f.write("%s  %s\n" % (digest, os.path.basename(path)))
         print("%s: %d bytes, sha256 %s" % (path, os.path.getsize(path), digest))
     free = size - (PART_LBA * SECTOR) - sum(len(d) for _, d in files)
-    print("%s; about %d MiB free, room for about %d units' backups" % (info, free >> 20, (free >> 20) // BACKUP_MIB))
+    print("%s; about %d MiB free, room for about %d units' backups" % (info, free >> 20, backups_room(free)))
     print("Write it with Rufus (it detects a disk image and writes it in DD mode), then put the stick in the AP.")
 
 

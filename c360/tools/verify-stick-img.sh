@@ -29,7 +29,6 @@ ck "fsck.fat exit 0 and no corrections" "[ $rc = 0 ] && ! grep -qiE 'wrong|diffe
 echo "== mtools"
 mdir -i $T.img@@1M -/ :: 2>&1 | sed 's/^/  /'
 for f in initramfs.itb factory.ubi; do
-	src=$(ls $ART/*arista_c360-*${f##*.} | grep -E "initramfs-uImage.itb|squashfs-factory.ubi" | grep "${f%%.*}" | head -1)
 	[ "$f" = initramfs.itb ] && src=$(ls $ART/*initramfs-uImage.itb)
 	[ "$f" = factory.ubi ] && src=$(ls $ART/*squashfs-factory.ubi)
 	ck "mtools reads c360/$f identical to $(basename $src)" "[ \"\$(mtype -i $T.img@@1M ::c360/$f | sha256sum)\" = \"\$(sha256sum < $src)\" ]"

@@ -13,6 +13,7 @@ import importlib.util
 import io
 import os
 import sys
+import tempfile
 import time
 import contextlib
 
@@ -39,6 +40,7 @@ class FakeC360:
         self.state = "off"
         self.banner_at = None
         self.keybuf = ""
+        self.col = 0                # the shell's column, for its 80-column wrap
         self.after_reboot = False
         self.power_on(delay=0.3)
 
@@ -111,10 +113,17 @@ class FakeC360:
                 if ch == "\r":
                     cmd, self.line = self.line, ""
                     self.emit("\r\n")
+                    self.col = 0
                     self.shell_cmd(cmd)
                 else:
                     self.line += ch
                     self.emit(ch)
+                    # BusyBox on a console that reports no width: 80 columns,
+                    # and a line break in the echo at the last one
+                    self.col += 1
+                    if self.col >= 80:
+                        self.emit("\r\n")
+                        self.col = 0
             return len(data)
         return len(data)
 
@@ -144,10 +153,22 @@ class FakeC360:
             return
         self.emit("\r\n" + out + "IPQ807x# ")
 
+    def prompt(self):
+        self.emit("root@OpenWrt:/# ")
+        self.col = len("root@OpenWrt:/# ")
+
     def shell_cmd(self, cmd):
         if self.state == "activate":
             self.state = "shell"
-            self.emit("\r\n\r\nBusyBox v1.37.0 built-in shell (ash)\r\n\r\nroot@OpenWrt:/# ")
+            self.emit("\r\n\r\nBusyBox v1.37.0 built-in shell (ash)\r\n\r\n")
+            self.prompt()
+            return
+        head, tail = 'echo "@@""B"; ', '; echo "@@""E"'
+        if cmd.startswith(head) and cmd.endswith(tail):
+            self.emit("@@B\r\n")
+            self.shell_cmd(cmd[len(head):-len(tail)])
+            self.q[-1][1] = b"@@E\r\n"      # the prompt the inner command queued
+            self.prompt()
             return
         if cmd.startswith("cat /tmp/sysinfo/board_name"):
             self.emit("%s\r\n0\r\n00:11:22:33:44:55\r\n" % self.board)
@@ -172,7 +193,7 @@ class FakeC360:
             self.emit("[    0.000000] Kernel command line: console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat\r\n", 0.2)
             self.emit("\r\nPlease press Enter to activate this console.\r\n", 0.3)
             return
-        self.emit("root@OpenWrt:/# ")
+        self.prompt()
 
 
 def run(name, fake, argv, expect_exit, expect_text, inputs=()):
@@ -207,10 +228,8 @@ def run(name, fake, argv, expect_exit, expect_text, inputs=()):
 
 
 def main():
-    for f in os.listdir("."):
-        if f.startswith("c360-flash-") and f.endswith(".log"):
-            pass
-    os.chdir(os.environ.get("TMP", "."))
+    # the console logs c360-flash.py writes go to the temporary directory
+    os.chdir(tempfile.gettempdir())
     results = [
         run("install, confirmed by MAC digits", FakeC360(), [], 0, "OpenWrt is running from NAND", inputs=["4455"]),
         run("install, --yes", FakeC360(), ["--yes"], 0, "OpenWrt is running from NAND"),

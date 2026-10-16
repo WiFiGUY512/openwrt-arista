@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Minimal read-only UBI image parser.
 
 usage: python ubi_extract.py <image> [<volume_name> <out_file>]

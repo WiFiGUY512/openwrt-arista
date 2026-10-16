@@ -146,11 +146,15 @@ def uboot(c, cmd, timeout=60, check=None):
 
 
 def shell(c, cmd, timeout=60):
+    """What cmd prints at the shell. Its output is fenced by two markers the
+    echo of the typed line cannot hold (the echo shows "@@""B", the output
+    @@B), so a line the console wraps as it echoes it (BusyBox wraps at 80
+    columns on this console) does not get into it."""
     c.mark()
-    c.send(cmd)
-    c.wait(timeout, lambda c: SHELL.search(c.tail()) and len(c.buf) > len(cmd) + 2)
-    lines = c.buf.replace("\r", "").split("\n")
-    return "\n".join(lines[1:-1])    # without the echoed command and the prompt
+    c.send('echo "@@""B"; %s; echo "@@""E"' % cmd)
+    c.wait(timeout, lambda c: "\n@@E" in c.buf.replace("\r", "") and SHELL.search(c.tail()))
+    text = c.buf.replace("\r", "")
+    return text.split("\n@@B", 1)[1].split("\n@@E", 1)[0].lstrip("\n")
 
 
 def stop_uboot(c):
@@ -283,8 +287,9 @@ def main():
                   "power-cycle it to leave.")
         else:
             first_boot(c)
-            print("Done. Both ports are LAN (an LACP bond) and take an address by DHCP; "
-                  "Wi-Fi is off and there is no root password yet: set one.")
+            print("Done. Ethernet 1 is the LAN and takes an address by DHCP; Ethernet 2 is "
+                  "free (see arista-c360-net). Wi-Fi is off and there is no root password "
+                  "yet: set one.")
     except Stop as e:
         print("STOPPED: %s" % e)
         print("Nothing further was sent. The console log is %s." % log)

@@ -1,12 +1,13 @@
+#!/usr/bin/env python3
 """Inspect the rootfs inside an OpenWrt initramfs FIT and check it.
 
-usage: python3 check_initramfs.py <initramfs-uImage.itb> distributable|site
+usage: python3 check-initramfs.py <initramfs-uImage.itb> [distributable]
 
-distributable: must NOT contain Arista's QCN9074 firmware, any pre-staged
-calibration file, or any site configuration (uci-defaults 98-c360-vlan20 /
-99-c360-lan-off, a baked /etc/config/wireless). site: must contain the two
-site uci-defaults and otherwise pass the same firmware/calibration checks.
-Exit status 1 on any failure.
+Checks that the RAM installer can be given away and does its job: it must
+NOT contain Arista's QCN9074 firmware, board data, a pre-staged calibration
+file or a baked /etc/config/wireless, and it must hold the installer, the
+firmware hotplug scripts and the tools they use, and the modules that read
+the USB stick. Exit status 1 on any failure.
 """
 import gzip
 import hashlib
@@ -60,7 +61,9 @@ def cpio_files(blob):
 
 
 def main():
-    path, kind = sys.argv[1], sys.argv[2]
+    if len(sys.argv) not in (2, 3) or sys.argv[2:] not in ([], ["distributable"]):
+        sys.exit(__doc__)
+    path = sys.argv[1]
     kernel = gzip.decompress(fdt_data(open(path, "rb").read())["/images/kernel-1"])
     rootfs = None
     for m in re.finditer(re.escape(b"\x1f\x8b\x08"), kernel):
@@ -90,14 +93,8 @@ def main():
     cal = [n for n in rootfs if re.search(r"lib/firmware/ath11k/.*/(cal-|caldata)", n)]
     if cal:
         fails.append("pre-staged calibration files: %s" % cal)
-    site = [n for n in ("etc/uci-defaults/98-c360-vlan20", "etc/uci-defaults/99-c360-lan-off") if n in rootfs]
-    if kind == "distributable":
-        if site:
-            fails.append("site uci-defaults present: %s" % site)
-        if "etc/config/wireless" in rootfs:
-            fails.append("a baked /etc/config/wireless is present")
-    elif len(site) != 2:
-        fails.append("site uci-defaults missing (found %s)" % site)
+    if "etc/config/wireless" in rootfs:
+        fails.append("a baked /etc/config/wireless is present")
     for need in ("etc/hotplug.d/firmware/12-ath11k-vendor-firmware",
                  "etc/hotplug.d/firmware/13-arista-c360-board-data",
                  "usr/sbin/unsquashfs", "usr/sbin/ubiattach", "usr/sbin/fw_setenv",
@@ -116,8 +113,8 @@ def main():
                 "lib/preinit/81_arista_c360_wifi"):
         if old in rootfs:
             fails.append("the old extractor %s is still present" % old)
-    print("  %s: %d entries, amss.bin %s, cal files %d, site defaults %s"
-          % (kind, len(rootfs), (amss_sha or "absent")[:12], len(cal), site or "none"))
+    print("  %d entries, amss.bin %s, cal files %d"
+          % (len(rootfs), (amss_sha or "absent")[:12], len(cal)))
     for f in fails:
         print("  FAIL:", f)
     sys.exit(1 if fails else 0)
