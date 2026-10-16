@@ -14,7 +14,7 @@
 # is stable and unique per unit.
 #
 # The controller is powered on but left NOT advertising: what it advertises is
-# a policy decision (the operator's, or Aeolus'), not the base image's.
+# a policy decision (the operator's, or a manager's), not the base image's.
 #
 # C-360 only. Does nothing on any other board.
 
