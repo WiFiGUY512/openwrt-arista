@@ -377,6 +377,9 @@ function parse_iw_scan(text) {
 		let t = trim(line);
 		if ((m = match(t, /^freq: ([0-9.]+)/))) { cur.freq = int(+m[1]); cur.channel = chan_of(cur.freq); }
 		else if ((m = match(t, /^signal: (-?[0-9.]+) dBm/))) cur.signal = +m[1];
+		// the channel the beacon says it is on (DS parameter set, else HT operation)
+		else if ((m = match(t, /^DS Parameter set: channel ([0-9]+)/))) cur.says_channel = +m[1];
+		else if ((m = match(t, /^\* primary channel: ([0-9]+)/)) && !cur.says_channel) cur.says_channel = +m[1];
 		else if ((m = match(t, /^SSID: (.*)$/))) cur.ssid = m[1];
 		else if ((m = match(t, /^last seen: ([0-9]+) ms ago/))) cur.age_ms = +m[1];
 		else if (match(t, /^RSN:/)) sect = "rsn";
@@ -509,6 +512,12 @@ function wired_verdict(bssid) {
 // filter broadcast ARP on one band), evil_twin, wired_rogue, spoofed (own
 // BSSID on a foreign channel), unverified (ours, not enough evidence yet),
 // neighbor.
+//
+// An own BSSID heard on another frequency is spoofed unless its beacon says
+// the channel the AP really serves it on: that is the AP's own beacon,
+// heard off its channel by a scan radio a few centimetres from the serving
+// antennas (the C-260's: channel 11 heard on 6, 36 on 56), not a copy sent
+// on the channel it was heard on.
 function classify(list) {
 	let mine = local_macs();
 	let ssids = [ ...cfg.trusted_ssid, ...own_ssids() ];
@@ -516,8 +525,11 @@ function classify(list) {
 	for (let b in list) {
 		let w = wp.bss[b.bssid];
 		let ours = !b.hidden && index(ssids, b.ssid) >= 0;
-		b.own = mine[b.bssid] != null;
-		b.spoofed = b.own && type(mine[b.bssid]) == "int" && b.freq != mine[b.bssid];
+		let at = mine[b.bssid];
+		b.own = at != null;
+		b.off_channel = b.own && type(at) == "int" && b.freq != at && b.says_channel != null &&
+			band_of(b.freq) == band_of(at) && b.says_channel == chan_of(at);
+		b.spoofed = b.own && type(at) == "int" && b.freq != at && !b.off_channel;
 		b.wired = cfg.wired_probe ? wired_verdict(b.bssid) : null;
 		b.probe_windows = w?.windows || 0;
 		if (w?.vlans) b.wired_vlans = w.vlans;
