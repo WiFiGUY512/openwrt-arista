@@ -20,14 +20,17 @@
 #      c360/backup-<MAC>-<time>/: each partition's checksum is taken from the
 #      flash, and the file must decompress to exactly that. The ART partition
 #      holds this unit's calibration and MACs and exists nowhere else.
-#   3. (not with --dry-run) ubiformat of slot 0 with factory.ubi, and a read
-#      back of its kernel and rootfs volumes against the checksums.
-#   4. (not with --dry-run) The U-Boot environment, written once with
+#   3. (not with --dry-run) The U-Boot environment, written once with
 #      fw_setenv -s, and not at all when it is already right: the boot
 #      command, which boots OpenWrt from slot 0 and falls back to Arista's own
-#      boot (run ubootscript), and pri=1, so that fallback is slot 1's Arista.
+#      boot with Arista's own settings put back (arista_boot), and pri=1, so
+#      that fallback is slot 1's Arista. It is written before slot 0 is: from
+#      then on, whatever stops the install, the unit boots slot 1's Arista.
+#   4. (not with --dry-run) ubiformat of slot 0 with factory.ubi, and a read
+#      back of its kernel and rootfs volumes against the checksums.
 #
-# Nothing else is written: not NOR, not slot 1, not the LOGGING partition.
+# Nothing else is written: in NOR only the U-Boot environment (0:APPSBLENV),
+# and not slot 1 or the LOGGING partition.
 # Without --yes it asks for the last four hex digits of the unit's MAC before
 # writing. The last line is C360-INSTALL-RESULT: OK ... or FAILED: ...
 
@@ -39,7 +42,7 @@ while [ $# -gt 0 ]; do
 	case $1 in
 	--dry-run) DRY=1 ;;
 	--yes) YES=1 ;;
-	--stick) STICK=$2; shift ;;
+	--stick) [ $# -ge 2 ] || { echo "usage: --stick DIR" >&2; exit 2; }; STICK=$2; shift ;;
 	*) echo "usage: arista-c360-install [--dry-run] [--yes] [--stick DIR]" >&2; exit 2 ;;
 	esac
 	shift
@@ -47,7 +50,12 @@ done
 
 OWRT_ARGS='console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat'
 OWRT_BOOT='setenv fdt_high 0x4A3E0000; setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi); ubi part ubi && ubi read 0x44000000 kernel && bootm 0x44000000#config@1'
-BOOTCMD='setenv bootargs ${owrt_args}; run owrt_boot; run ubootscript'
+# Arista's own boot, with what OpenWrt's boot set put back first: its
+# bootkernel sets bootargs only when pri changes, and then saves the
+# environment, so without this a fallback would boot, and save, OpenWrt's
+# bootargs, fdt_high and partition table.
+ARISTA_BOOT='setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000; if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi; run ubootscript'
+BOOTCMD='setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot'
 
 say() { echo "c360-install: $*"; }
 fail() {
@@ -80,6 +88,10 @@ for p in ubi rootfs_1 LOGGING 0:ART 0:APPSBLENV; do
 done
 [ "$(mtd_size ubi)" = $((0x18000000)) ] || fail "slot 0 (\"ubi\") is $(mtd_size ubi) bytes, not 0x18000000"
 fw_printenv bootcmd >/dev/null 2>&1 || fail "cannot read the U-Boot environment (fw_printenv)"
+for v in ba0 ba1 ubootscript; do
+	[ -n "$(fw_printenv -n $v 2>/dev/null)" ] ||
+		fail "the U-Boot environment has no $v, which Arista's boot (the fallback) needs"
+done
 
 pri=$(fw_printenv -n pri 2>/dev/null)
 
@@ -114,11 +126,12 @@ WLAN.HK.2.5.r4*) ;;
 *) say "WARNING: the QCN9074 radios have only been proven with WLAN.HK.2.5.r4; slot 1 has ${fwver:-an unknown version}" ;;
 esac
 # The fallback also needs slot 1's Arista kernel, in NOR 0:HLOS_1: a signed
-# header (image id 0x17) with the kernel FIT after it at 0x28.
+# header (image id 0x17) with the kernel FIT after it at 0x28. (hexdump: the
+# image's BusyBox has no od.)
 H1=$(mtd_dev 0:HLOS_1)
 [ -n "$H1" ] || fail "no flash partition \"0:HLOS_1\" (slot 1's Arista kernel)"
-[ "$(head -c 4 /dev/$H1 | od -An -tx1 | tr -d ' \n')" = 17000000 ] &&
-[ "$(dd if=/dev/$H1 bs=8 skip=5 count=1 2>/dev/null | head -c 4 | od -An -tx1 | tr -d ' \n')" = d00dfeed ] ||
+[ "$(head -c 4 /dev/$H1 | hexdump -v -e '1/1 "%02x"')" = 17000000 ] &&
+[ "$(dd if=/dev/$H1 bs=8 skip=5 count=1 2>/dev/null | head -c 4 | hexdump -v -e '1/1 "%02x"')" = d00dfeed ] ||
 	fail "0:HLOS_1 holds no Arista kernel, so slot 1 could not boot as the fallback"
 [ "$pri" = 1 ] || say "WARNING: Arista calls slot ${pri:-?} its primary (pri=${pri:-unset}); installing replaces what is in slot 0, perhaps Arista's newest system. Slot 1's Arista stays as the fallback, and pri is set to 1"
 
@@ -192,7 +205,31 @@ if [ $YES != 1 ]; then
 	[ "$answer" = "$tail4" ] || fail "not confirmed; nothing was written"
 fi
 
-# --- 3. slot 0 ---------------------------------------------------------------
+# --- 3. boot command ---------------------------------------------------------
+
+# pri=1: Arista's own boot (arista_boot), the fallback, starts slot 1, the
+# Arista system the install keeps, not slot 0, which is about to be OpenWrt.
+# Written before slot 0: a unit stopped at any point from here (a failed
+# write, the power gone) tries OpenWrt, does not find it, and boots slot 1.
+if [ "$(fw_printenv -n owrt_args 2>/dev/null)" = "$OWRT_ARGS" ] &&
+   [ "$(fw_printenv -n owrt_boot 2>/dev/null)" = "$OWRT_BOOT" ] &&
+   [ "$(fw_printenv -n arista_boot 2>/dev/null)" = "$ARISTA_BOOT" ] &&
+   [ "$(fw_printenv -n bootcmd 2>/dev/null)" = "$BOOTCMD" ] &&
+   [ "$pri" = 1 ]; then
+	say "the U-Boot boot command is already set; the environment is not written"
+else
+	printf 'owrt_args %s\nowrt_boot %s\narista_boot %s\nbootcmd %s\npri 1\n' \
+		"$OWRT_ARGS" "$OWRT_BOOT" "$ARISTA_BOOT" "$BOOTCMD" >/tmp/c360-env.txt
+	say "setting the U-Boot boot command and pri=1 (one environment write)"
+	fw_setenv -s /tmp/c360-env.txt || fail "fw_setenv failed"
+	[ "$(fw_printenv -n bootcmd)" = "$BOOTCMD" ] && [ "$(fw_printenv -n owrt_boot)" = "$OWRT_BOOT" ] &&
+		[ "$(fw_printenv -n arista_boot)" = "$ARISTA_BOOT" ] &&
+		[ "$(fw_printenv -n owrt_args)" = "$OWRT_ARGS" ] && [ "$(fw_printenv -n pri)" = 1 ] ||
+		fail "the U-Boot environment does not read back as written"
+fi
+fw_printenv >"$BK/u-boot-env-after.txt" 2>&1
+
+# --- 4. slot 0 ---------------------------------------------------------------
 
 M=$(mtd_dev ubi)
 ubidetach -p /dev/$M >/dev/null 2>&1
@@ -214,25 +251,6 @@ for vol in kernel rootfs; do
 done
 ubidetach -d 0 >/dev/null 2>&1
 
-# --- 4. boot command ---------------------------------------------------------
-
-# pri=1: Arista's own boot (ubootscript), the fallback, starts slot 1, the
-# Arista system the install kept, not slot 0, which is now OpenWrt.
-if [ "$(fw_printenv -n owrt_args 2>/dev/null)" = "$OWRT_ARGS" ] &&
-   [ "$(fw_printenv -n owrt_boot 2>/dev/null)" = "$OWRT_BOOT" ] &&
-   [ "$(fw_printenv -n bootcmd 2>/dev/null)" = "$BOOTCMD" ] &&
-   [ "$pri" = 1 ]; then
-	say "the U-Boot boot command is already set; the environment is not written"
-else
-	printf 'owrt_args %s\nowrt_boot %s\nbootcmd %s\npri 1\n' "$OWRT_ARGS" "$OWRT_BOOT" "$BOOTCMD" >/tmp/c360-env.txt
-	say "setting the U-Boot boot command and pri=1 (one environment write)"
-	fw_setenv -s /tmp/c360-env.txt || fail "fw_setenv failed"
-	[ "$(fw_printenv -n bootcmd)" = "$BOOTCMD" ] && [ "$(fw_printenv -n owrt_boot)" = "$OWRT_BOOT" ] &&
-		[ "$(fw_printenv -n owrt_args)" = "$OWRT_ARGS" ] && [ "$(fw_printenv -n pri)" = 1 ] ||
-		fail "the U-Boot environment does not read back as written"
-fi
-fw_printenv >"$BK/u-boot-env-after.txt" 2>&1
-
 [ -n "$MNT_OURS" ] && { sync; umount "$MNT_OURS"; }
-say "done: reboot to start OpenWrt from NAND. To boot Arista once, stop U-Boot and run ubootscript."
+say "done: reboot to start OpenWrt from NAND. To boot Arista once, stop U-Boot and run arista_boot."
 echo "C360-INSTALL-RESULT: OK installed backup=${BK#$STICK/}"

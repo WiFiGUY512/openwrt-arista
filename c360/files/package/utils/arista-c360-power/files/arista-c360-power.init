@@ -10,6 +10,8 @@ USE_PROCD=1
 start_service() {
 	. /lib/functions.sh
 	[ "$(board_name)" = arista,c360 ] || return 0
+	# not in the RAM installer, which reads its image from the USB port
+	grep -q 'ubi.mtd=' /proc/cmdline || return 0
 	procd_open_instance
 	procd_set_param command /bin/sh -c '
 		for i in $(seq 1 60); do

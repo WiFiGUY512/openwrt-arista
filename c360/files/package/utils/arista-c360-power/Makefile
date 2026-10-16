@@ -3,7 +3,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=arista-c360-power
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_LICENSE:=GPL-2.0-or-later
 
 include $(INCLUDE_DIR)/package.mk
@@ -20,8 +20,10 @@ define Package/arista-c360-power/description
   Reads which PoE class each input of the Arista C-360 negotiated, and on
   802.3at (or af) power alone does as Arista's own system does: turns the
   USB port off, caps the serving radios' transmit power and runs the
-  2.4 GHz radio on 2 of its 4 chains. The power a switch allocates by
-  LLDP decides an input's class, and LLDP runs on both Ethernet ports.
+  2.4 GHz radio on 2 of its 4 chains. Arista's system also turns the scan
+  radio's power down; this leaves the scan radio alone. The power a switch
+  allocates by LLDP decides an input's class, and LLDP runs on both
+  Ethernet ports.
 endef
 
 define Package/arista-c360-power/conffiles

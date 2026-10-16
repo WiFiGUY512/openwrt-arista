@@ -24,11 +24,15 @@
 STATE=/var/run/arista-c360-power
 USB=8af8800.usb
 USBDRV=/sys/bus/platform/drivers/dwc3-qcom
-# uci writes go through a save directory of their own, so a commit here never
-# commits changes someone else has staged
+# uci writes are staged in a save directory of their own, so they never show
+# among anyone else's changes. A commit still takes what is staged in
+# /tmp/.uci too (uci reads both), so nothing is committed while someone has
+# changes to the same config staged there (others_staged).
 UCI="uci -q -t /var/run/arista-c360-power.uci"
 
 log() { logger -t arista-c360-power "$*"; }
+
+others_staged() { [ -n "$(uci -q changes $1)" ]; }
 
 opt() { uci -q get arista-c360-power.main.$1 || echo "$2"; }
 
@@ -165,9 +169,18 @@ radios_apply() {
 # that radio. What it had before is kept in this package's config (section
 # 'chains') and put back on full power, unless the antennas were changed in
 # the meantime. A radio with antennas of its own in the config is left alone.
-# Runs only from apply: a Wi-Fi restart does not bring it back.
+# Runs from apply, and again from monitor while it waits for changes someone
+# else has staged to wireless or this package's config to be committed or
+# reverted. A Wi-Fi restart does not bring it back.
 chains_apply() { # chains_apply limited|full
 	local level=$1 mask=$(opt chains_2g 3) scan=$(scan_section) sec saved tx rx wifi=0 own=0
+	if others_staged wireless || others_staged arista-c360-power; then
+		[ -e $STATE.chains-wait ] ||
+			log "changes to wireless or arista-c360-power are staged and not committed: the 2.4 GHz chains wait"
+		echo $level > $STATE.chains-wait
+		return 0
+	fi
+	rm -f $STATE.chains-wait
 	mkdir -p /var/run/arista-c360-power.uci
 	for sec in $(wifi_devices); do
 		[ "$sec" = "$scan" ] && continue
@@ -242,6 +255,7 @@ monitor() {
 	while :; do
 		sleep $(opt interval 30)
 		[ "$(opt enabled 1)" = 1 ] || { seen=; continue; }
+		[ -e $STATE.chains-wait ] && chains_apply "$(cat $STATE.chains-wait)"
 		read_inputs
 		applied=$(cat $STATE.level 2>/dev/null)
 		if [ "$LEVEL" = "$applied" ]; then
