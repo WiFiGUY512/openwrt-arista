@@ -1216,8 +1216,16 @@ release_from_netifd(pci);
 
 uloop.init();
 // ucode -S starts with its collector off: without it, what refers to itself
-// (a job's nested functions, and the sweeps and looks they hold) is never freed
-gc("start");
+// (a job's nested functions, and the sweeps and looks they hold) is never
+// freed. It runs once a minute from a timer of its own, never by itself:
+// started (gc "start"), it can run inside a callback of filter() or map()
+// and free the array they are building, and they answer null (ucode
+// 2026.01.16).
+function collect() {
+	gc("collect");
+	later(60000, collect);
+}
+later(60000, collect);
 // An error in a callback is said where it can be read; uloop then ends, and
 // procd starts airscan afresh.
 uloop.guard((e) => {
