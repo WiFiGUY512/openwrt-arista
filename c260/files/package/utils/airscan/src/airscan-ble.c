@@ -55,7 +55,7 @@ struct sockaddr_hci {
 struct dev {
 	uint8_t addr[6];                /* as received: little-endian */
 	uint8_t type;                   /* 1 LE public, 2 LE random */
-	int seen, rssi_last, rssi_max;
+	int seen, rssi_last, rssi_max, rssi_n;   /* rssi_n: reports with an RSSI */
 	long rssi_sum;
 	char name[64];
 	int name_len, name_complete;
@@ -246,6 +246,7 @@ static void on_device_found(const uint8_t *p, int len)
 	if (rssi != 127) {                      /* 127: RSSI not available */
 		d->rssi_last = rssi;
 		d->rssi_sum += rssi;
+		d->rssi_n++;
 		if (rssi > d->rssi_max)
 			d->rssi_max = rssi;
 	}
@@ -324,7 +325,7 @@ static void print_json(int index, int secs, int rounds, const char *err)
 			printf(",\"random\":\"%s\"", rnd);
 		printf(",\"seen\":%d", d->seen);
 		if (d->rssi_max > -128) {
-			int n = d->seen ? d->seen : 1;
+			int n = d->rssi_n ? d->rssi_n : 1;
 			printf(",\"rssi\":%d,\"rssi_avg\":%.1f,\"rssi_max\":%d", d->rssi_last,
 			       (double)d->rssi_sum / n, d->rssi_max);
 		}
@@ -438,12 +439,21 @@ int main(int argc, char **argv)
 		if ((ev == MGMT_EV_CMD_COMPLETE || ev == MGMT_EV_CMD_STATUS) && len >= 3 &&
 		    le16(p) == MGMT_OP_START_DISCOVERY && p[2] != 0) {
 			if (p[2] == 0x0a && !retried_busy) {    /* a previous run left it on */
+				/*
+				 * Stop it, and start again once the kernel says
+				 * discovery has stopped (MGMT_EV_DISCOVERING 0,
+				 * below): a start sent while it is still stopping
+				 * is busy too.
+				 */
 				retried_busy = 1;
+				rounds = 0;
 				send_cmd(fd, MGMT_OP_STOP_DISCOVERY, index, &dtype, 1);
-				send_cmd(fd, MGMT_OP_START_DISCOVERY, index, &dtype, 1);
 			} else {
 				err = status_str(p[2]);
 			}
+		} else if ((ev == MGMT_EV_CMD_COMPLETE || ev == MGMT_EV_CMD_STATUS) && len >= 3 &&
+			   le16(p) == MGMT_OP_STOP_DISCOVERY && p[2] != 0 && retried_busy && !rounds) {
+			err = status_str(0x0a);         /* what was left on could not be stopped */
 		} else if (ev == MGMT_EV_DISCOVERING && len >= 2) {
 			discovering = p[1];
 			if (!discovering && deadline - now_ms() > 1500) {

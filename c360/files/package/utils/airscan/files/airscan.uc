@@ -1,7 +1,7 @@
 #!/usr/bin/ucode -S
 // airscan: spectrum, BSS and client survey on a dedicated scan radio.
 //
-// Runs only on the board's dedicated scan radio (Arista C-360: the QCN9074
+// Runs only on the board's dedicated scan radio (Arista C-360: the QCN9072
 // multifunction card, PCI 0001:01:00.0, ath11k; Arista C-260: the QCA988x,
 // PCI 0000:01:00.0, ath10k). Serving radios are never touched: no
 // interface, scan, retune or spectral command is ever issued on another phy.
@@ -28,9 +28,10 @@
 // out. Its jobs keep their times, so a loan costs no scan or sweep of its own.
 //
 // A scan radio that hears nothing is deaf, and airscan binds its driver
-// again, which is what brings it back. The C-360's goes deaf at a sweep once
-// it has been a client on a DFS channel (2026-10-11), so a look follows
-// every sweep.
+// again, which is what brings it back. The C-360's went deaf at a sweep once
+// it had been a client on a DFS channel while airscan was stopped and started
+// around the test (2026-10-11); lent instead, it did not (four times of four,
+// 2026-10-15). A look still follows every sweep.
 
 'use strict';
 
@@ -67,6 +68,12 @@ function log(msg) {
 	system(["logger", "-t", "airscan", msg]);
 }
 
+// later: fn, once, in ms. A uloop timer that has fired is not freed until it
+// is cancelled, nor is all its callback holds; this one cancels itself.
+function later(ms, fn) {
+	return uloop.timer(ms, function() { this.cancel(); fn(); });
+}
+
 function note_error(msg) {
 	log(msg);
 	push(errors, { time: time(), msg });
@@ -91,6 +98,8 @@ function write_json(name, obj) {
 function add_event(ev) {
 	let key = `${ev.type}/${ev.bssid}`;
 	if (seen_events[key] && time() - seen_events[key] < 3600) return;
+	for (let k, t in seen_events)
+		if (time() - t >= 3600) delete seen_events[k];
 	seen_events[key] = time();
 	ev.time = time();
 	push(events, ev);
@@ -215,8 +224,8 @@ function has_6g() {
 }
 
 // 2.4 GHz and 5 GHz: 20 MHz windows (the C-360 scan radio's 5 GHz band has no
-// 40/80 MHz support). 6 GHz: 80 MHz blocks plus channel 233, on a radio with
-// 6 GHz channels.
+// 40/80 MHz support). 6 GHz, on a radio with 6 GHz channels: the fourteen
+// 80 MHz blocks of channels 1-221, the 40 MHz block of 225 and 229, and 233.
 function spectral_windows() {
 	let w = [];
 	let add20 = (band, f) => push(w, { band, ctrl: f, width: 20, center: f });
@@ -226,8 +235,14 @@ function spectral_windows() {
 	if (!has_6g()) return w;
 	for (let k = 0; k < 14; k++)
 		push(w, { band: "6g", ctrl: 5955 + 80 * k, width: 80, center: 5985 + 80 * k });
+	push(w, { band: "6g", ctrl: 7075, width: 40, center: 7085 });
 	add20("6g", 7115);
 	return w;
+}
+
+// The FFT size the radio takes: ath10k at most 256 bins.
+function fft_size() {
+	return radio.driver == "ath10k" ? min(cfg.spectral_fft, 256) : cfg.spectral_fft;
 }
 
 function set_freq(win) {
@@ -262,22 +277,30 @@ function run_spectral(done, only_band) {
 	if (!fs.access(FFT, "x")) { note_error(`spectral: ${FFT} missing`); done(); return; }
 	if (!iface_up(MON, "monitor")) { note_error("spectral: monitor interface failed"); done(); return; }
 	let wins = filter(spectral_windows(), (w) => !only_band || w.band == only_band);
-	let windows = [], i = 0, skipped = [], total = 0;
+	let windows = [], i = 0, skipped = [], total = 0, fft = fft_size();
 	spectral_write("spectral_scan_ctl", "disable");
-	spectral_write("spectral_bins", cfg.spectral_fft);
+	spectral_write("spectral_bins", fft);
 	fs.readfile(`${radio.debugfs}/spectral_scan0`);
 
 	function finish() {
 		spectral_write("spectral_scan_ctl", "disable");
 		apply_busy(windows);
+		for (let w in windows) w.time = time();
+		// A sweep of one band replaces only that band's windows.
+		let old = results.spectrum;
+		// (band_of is declared further down: the bands are worked out here)
+		if (only_band && old) {
+			windows = [ ...filter(old.windows, (w) => w.band != only_band), ...windows ];
+			skipped = [ ...filter(old.skipped || [], (f) => (f < 3000 ? "2g" : f < 5950 ? "5g" : "6g") != only_band), ...skipped ];
+		}
 		results.spectrum = {
-			time: time(), phy: radio.phy, fft: cfg.spectral_fft, samples_per_window: cfg.spectral_samples,
+			time: time(), phy: radio.phy, fft, samples_per_window: cfg.spectral_samples,
 			busy_dbm_20mhz: BUSY_DBM, skipped, windows: sort(windows, (a, b) => a.center - b.center),
 		};
 		last.spectral = time();
 		write_json("spectrum", results.spectrum);
-		log(`spectral sweep: ${length(wins) - length(skipped)} windows, ${total} samples`);
-		// A look after every sweep: it is at a sweep that this radio goes deaf.
+		log(`spectral sweep${only_band ? ` (${only_band})` : ""}: ${length(wins) - length(skipped)} windows, ${total} samples`);
+		// A look after every sweep: it was at a sweep that this radio went deaf.
 		pending.bss = true;
 		done();
 	}
@@ -287,19 +310,19 @@ function run_spectral(done, only_band) {
 		let w = wins[i++];
 		spectral_write("spectral_scan_ctl", "disable");
 		if (!set_freq(w)) {
-			// 80 MHz not allowed here (e.g. a disabled edge channel): fall back to 20 MHz
+			// 80 or 40 MHz not allowed here (e.g. a disabled edge channel): fall back to 20 MHz
 			if (w.width > 20) {
-				for (let k = 3; k >= 0; k--)
+				for (let k = w.width / 20 - 1; k >= 0; k--)
 					splice(wins, i, 0, { band: w.band, ctrl: w.ctrl + 20 * k, width: 20, center: w.ctrl + 20 * k });
 			}
 			else push(skipped, w.ctrl);
-			uloop.timer(10, step);
+			later(10, step);
 			return;
 		}
 		// One trigger for all the window's samples, or bursts of at most
 		// radio.per_trigger (ath10k: 255), each run out and disabled before
 		// the next: a trigger on top of a running one loses samples (C-260).
-		uloop.timer(300, () => {
+		later(300, () => {
 			let want = +cfg.spectral_samples, per = radio.per_trigger || want;
 			function burst() {
 				let n = min(per, want);
@@ -307,15 +330,18 @@ function run_spectral(done, only_band) {
 				spectral_write("spectral_scan_ctl", "manual");
 				spectral_write("spectral_count", n);
 				spectral_write("spectral_scan_ctl", "trigger");
-				uloop.timer(int(n * 0.23) + (radio.per_trigger ? 150 : 250), () => {
+				later(int(n * 0.23) + (radio.per_trigger ? 150 : 250), () => {
 					spectral_write("spectral_scan_ctl", "disable");
 					if (want > 0) { burst(); return; }
 					let tmp = `${OUT}/.win.json`;
 					uloop.process("/bin/sh", [ "-c", `exec ${FFT} ${radio.debugfs}/spectral_scan0 > ${tmp}` ], {}, (code) => {
-						let got = code == 0 ? json(fs.readfile(tmp) || "[]") : [];
+						let got = [];
+						if (code == 0)
+							try { got = json(fs.readfile(tmp) || "[]"); }
+							catch (e) { note_error(`spectral: ${FFT} wrote what is not JSON: ${e.message}`); }
 						fs.unlink(tmp);
 						for (let wdw in got) { wdw.band = w.band; push(windows, wdw); total += wdw.samples; }
-						uloop.timer(10, step);
+						later(10, step);
 					});
 				});
 			}
@@ -377,7 +403,9 @@ function parse_iw_scan(text) {
 		let t = trim(line);
 		if ((m = match(t, /^freq: ([0-9.]+)/))) { cur.freq = int(+m[1]); cur.channel = chan_of(cur.freq); }
 		else if ((m = match(t, /^signal: (-?[0-9.]+) dBm/))) cur.signal = +m[1];
-		// the channel the beacon says it is on (DS parameter set, else HT operation)
+		// the channel the beacon says it is on: its HT operation's primary
+		// channel (2.4 and 5 GHz; this image's iw does not print the DS
+		// parameter set, a fuller one does)
 		else if ((m = match(t, /^DS Parameter set: channel ([0-9]+)/))) cur.says_channel = +m[1];
 		else if ((m = match(t, /^\* primary channel: ([0-9]+)/)) && !cur.says_channel) cur.says_channel = +m[1];
 		else if ((m = match(t, /^SSID: (.*)$/))) cur.ssid = m[1];
@@ -513,11 +541,17 @@ function wired_verdict(bssid) {
 // BSSID on a foreign channel), unverified (ours, not enough evidence yet),
 // neighbor.
 //
-// An own BSSID heard on another frequency is spoofed unless its beacon says
-// the channel the AP really serves it on: that is the AP's own beacon,
-// heard off its channel by a scan radio a few centimetres from the serving
-// antennas (the C-260's: channel 11 heard on 6, 36 on 56), not a copy sent
-// on the channel it was heard on.
+// An own BSSID heard on another frequency is spoofed, but not:
+// - where its beacon says the channel the AP really serves it on: that is the
+//   AP's own beacon, heard off its channel by a scan radio a few centimetres
+//   from the serving antennas (the C-260's: channel 11 heard on 6, 36 on 56),
+//   not a copy sent on the channel it was heard on;
+// - on the frequency the AP had it on when the look began (look_mine): the
+//   AP moved that radio during the look (a channel switch);
+// - where the entry is older than the look: cfg80211 keeps what it heard for
+//   30 s, so a look just after a channel switch still lists the old one.
+let look_mine = {}, look_secs = 0;
+
 function classify(list) {
 	let mine = local_macs();
 	let ssids = [ ...cfg.trusted_ssid, ...own_ssids() ];
@@ -525,11 +559,13 @@ function classify(list) {
 	for (let b in list) {
 		let w = wp.bss[b.bssid];
 		let ours = !b.hidden && index(ssids, b.ssid) >= 0;
-		let at = mine[b.bssid];
-		b.own = at != null;
-		b.off_channel = b.own && type(at) == "int" && b.freq != at && b.says_channel != null &&
-			band_of(b.freq) == band_of(at) && b.says_channel == chan_of(at);
-		b.spoofed = b.own && type(at) == "int" && b.freq != at && !b.off_channel;
+		let at = mine[b.bssid], was = look_mine[b.bssid];
+		let freqs = filter([ at, was ], (f) => type(f) == "int");
+		let stale = b.age_ms != null && b.age_ms > (look_secs + 2) * 1000;
+		b.own = at != null || was != null;
+		b.off_channel = b.own && length(freqs) > 0 && !(b.freq in freqs) && b.says_channel != null &&
+			length(filter(freqs, (f) => band_of(b.freq) == band_of(f) && b.says_channel == chan_of(f))) > 0;
+		b.spoofed = b.own && length(freqs) > 0 && !(b.freq in freqs) && !b.off_channel && !stale;
 		b.wired = cfg.wired_probe ? wired_verdict(b.bssid) : null;
 		b.probe_windows = w?.windows || 0;
 		if (w?.vlans) b.wired_vlans = w.vlans;
@@ -586,9 +622,13 @@ function run_bss(done) {
 	// second pass hears on 6 GHz stands for what the first did.
 	let six = freqs_6g(), passes = [ "scan passive" ], heard = {};
 	if (length(six)) push(passes, `scan freq ${join(" ", six)} duration ${DWELL_6G} passive`);
+	// where the AP's own interfaces were as the look began (classify)
+	let began = time(), before = local_macs();
 
 	function looked() {
 		iface_del(STA);
+		look_mine = before;
+		look_secs = time() - began;
 		let list = values(heard);
 		for (let b in list) {
 			b.band = band_of(b.freq);
@@ -785,7 +825,8 @@ function clients_report() {
 	let list = values(results.clients);
 	let bssids = {};
 	for (let b in (results.bss?.list || [])) bssids[b.bssid] = b.ssid;
-	for (let c in list) if (c.bssid && bssids[c.bssid] != null) c.ssid = bssids[c.bssid];
+	// the network of the BSSID it was last seen with, or none the look knows
+	for (let c in list) c.ssid = c.bssid ? bssids[c.bssid] : null;
 	return { time: time(), phy: radio.phy, count: length(list),
 		probing: length(filter(list, (c) => !c.bssid)),
 		list: sort(list, (a, b) => b.last_seen - a.last_seen) };
@@ -797,7 +838,7 @@ function run_client_slice(done) {
 	if (cap.ch_i >= length(cap.ch_list)) { cap.ch_list = client_channels(); cap.ch_i = 0; cap.round_heard = 0; cap.round_dwells = 0; }
 	let f = cap.ch_list[cap.ch_i++];
 	if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
-	if (sh(`iw dev ${MON} set freq ${f}`) != 0) { uloop.timer(10, done); return; }
+	if (sh(`iw dev ${MON} set freq ${f}`) != 0) { later(10, done); return; }
 	cap.freq = f;
 	cap.deauth = {};
 	cap.heard = {};
@@ -805,8 +846,8 @@ function run_client_slice(done) {
 	cap.probed = 0;
 	if (cfg.wired_probe)
 		for (let t in [ 50, int(cfg.client_dwell / 2) ])
-			uloop.timer(t, () => { if (cap.freq == f) { send_probes(); cap.probed++; } });
-	uloop.timer(cfg.client_dwell, () => {
+			later(t, () => { if (cap.freq == f) { send_probes(); cap.probed++; } });
+	later(cfg.client_dwell, () => {
 		cap.freq = 0;
 		for (let b, d in cap.deauth) {
 			if (d.frames < DEAUTH_FLOOD * cfg.client_dwell / 1000.0) continue;
@@ -890,14 +931,14 @@ heal_radio = function(done) {
 		// its phy is there once the firmware has started, about ten seconds
 		if (find_phy(radio.pci) || ++tries > 40) {
 			pending.bss = true;
-			uloop.timer(2000, done);
+			later(2000, done);
 			return;
 		}
-		uloop.timer(1000, wait);
+		later(1000, wait);
 	}
-	uloop.timer(3000, () => {
+	later(3000, () => {
 		fs.writefile(`${dir}/bind`, radio.pci);
-		uloop.timer(1000, wait);
+		later(1000, wait);
 	});
 };
 
@@ -910,12 +951,19 @@ heal_radio = function(done) {
 // not heard for ble_expire seconds is dropped. Random resolvable addresses
 // rotate (about every 15 minutes on phones), so one phone can appear as
 // several entries over time.
-let ble = { running: false, timer: null, error: null, rounds: 0, duration: 0 };
+let ble = { running: false, timer: null, error: null, rounds: 0, duration: 0, hci: null };
+
+// The board's BLE controller: the lowest-numbered one there is (hci0 unless
+// another was there first).
+function ble_controller() {
+	let n = filter(map(fs.lsdir("/sys/class/bluetooth") || [], (h) => match(h, /^hci([0-9]+)$/)), (m) => m);
+	return length(n) ? "hci" + sort(map(n, (m) => +m[1]), (a, b) => a - b)[0] : null;
+}
 
 function ble_report() {
 	let list = values(results.ble);
 	return {
-		time: last.ble, controller: "hci0", error: ble.error, duration: ble.duration,
+		time: last.ble, controller: ble.hci, error: ble.error, duration: ble.duration,
 		count: length(list),
 		trackers: length(filter(list, (d) => d.tracker)),
 		list: sort(list, (a, b) => (b.rssi ?? -200) - (a.rssi ?? -200)),
@@ -933,16 +981,20 @@ function ble_schedule(ms) {
 run_ble = function() {
 	if (ble.running) return;
 	if (!cfg.ble_enabled) { ble.error = "disabled"; ble_schedule(60000); return; }
-	if (!fs.access("/sys/class/bluetooth/hci0") || !fs.access(BLE, "x")) {
+	ble.hci = ble_controller();
+	if (!ble.hci || !fs.access(BLE, "x")) {
 		ble.error = "no BLE controller";
 		ble_schedule(cfg.ble_interval * 1000);
 		return;
 	}
 	ble.running = true;
 	let tmp = `${OUT}/.ble.json`;
-	uloop.process("/bin/sh", [ "-c", `exec ${BLE} -i 0 -d ${cfg.ble_duration} > ${tmp} 2>/dev/null` ], {}, (code) => {
+	uloop.process("/bin/sh", [ "-c", `exec ${BLE} -i ${substr(ble.hci, 3)} -d ${cfg.ble_duration} > ${tmp} 2>/dev/null` ], {}, (code) => {
 		ble.running = false;
-		let r = code == 0 ? json(fs.readfile(tmp) || "null") : null;
+		let r = null;
+		if (code == 0)
+			try { r = json(fs.readfile(tmp) || "null"); }
+			catch (e) { note_error(`ble: ${BLE} wrote what is not JSON: ${e.message}`); }
 		fs.unlink(tmp);
 		let now = time();
 		if (!r) {
@@ -989,18 +1041,18 @@ function run_next() {
 				state = "lent";
 				log(`the scan radio is lent to ${loan.to}, for ${loan.until - time()} s at the most`);
 			}
-			uloop.timer(200, run_next);
+			later(200, run_next);
 			return;
 		}
 		loan_end("the loan ran out");
 	}
 	if (!resolve_radio()) {
 		state = "waiting for scan radio";
-		uloop.timer(5000, run_next);
+		later(5000, run_next);
 		return;
 	}
 	let now = time();
-	let done = (job) => () => { busy = false; state = "idle"; uloop.timer(20, run_next); };
+	let done = (job) => () => { busy = false; state = "idle"; later(20, run_next); };
 	busy = true;
 	if (pending.bss || now >= next.bss) {
 		pending.bss = false; next.bss = now + cfg.bss_interval; state = "bss";
@@ -1009,7 +1061,9 @@ function run_next() {
 	}
 	else if (pending.spectral != null || now >= next.spectral) {
 		let band = pending.spectral || null;
-		pending.spectral = null; next.spectral = now + cfg.spectral_interval; state = "spectral";
+		// a sweep of one band asked for leaves the time of the next full one
+		pending.spectral = null; state = "spectral";
+		if (!band) next.spectral = now + cfg.spectral_interval;
 		capture_close(); iface_del(STA);
 		run_spectral(done("spectral"), band);
 	}
@@ -1051,8 +1105,9 @@ function by_band(sp, band) {
 	return { ...sp, windows: filter(sp.windows, (w) => band_of(w.center) == band) };
 }
 
-// rpcd adds ubus_rpc_session to the arguments of every call it forwards (from
-// LuCI), and a ucode ubus method rejects an argument it does not declare
+// uhttpd's ubus handler adds ubus_rpc_session to the arguments of every call
+// it forwards (from LuCI), and a ucode ubus method rejects an argument it does
+// not declare
 const SESSION = { ubus_rpc_session: "" };
 
 const methods = {
@@ -1160,11 +1215,20 @@ fs.mkdir(OUT);
 release_from_netifd(pci);
 
 uloop.init();
+// ucode -S starts with its collector off: without it, what refers to itself
+// (a job's nested functions, and the sweeps and looks they hold) is never freed
+gc("start");
+// An error in a callback is said where it can be read; uloop then ends, and
+// procd starts airscan afresh.
+uloop.guard((e) => {
+	note_error(`stopped by an error: ${e?.message} ${e?.stacktrace?.[0]?.context ?? ""}`);
+	uloop.end();
+});
 conn = ubus.connect();
 if (!conn) { log("cannot connect to ubus"); exit(1); }
 conn.publish("airscan", methods);
 log(`started; scan radio ${pci}`);
-uloop.timer(2000, run_next);
+later(2000, run_next);
 ble_schedule(15000);
 uloop.run();
 cleanup();

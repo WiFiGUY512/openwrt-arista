@@ -41,7 +41,7 @@ return view.extend({
 
 	networksOn: function(w) {
 		return (this.bssData.list || []).filter(function(b) {
-			return Math.abs(b.freq - w.center) <= 10;
+			return Math.abs(b.freq - w.center) <= (w.width || 20) / 2;
 		});
 	},
 
@@ -81,7 +81,7 @@ return view.extend({
 		});
 		g = g.concat(this.axisLabels(slots, bot + 14));
 		g.push(common.svg('text', { x: PAD_L, y: H - 2, 'font-size': 10, fill: 'currentColor' },
-			_('share of samples above %d dBm, per 20 MHz channel').format(this.spec.busy_dbm_20mhz || -82)));
+			_('share of samples above %d dBm per 20 MHz (+3 dB per doubling of a window\'s width)').format(this.spec.busy_dbm_20mhz || -82)));
 		return common.svg('svg', { viewBox: '0 0 ' + W + ' ' + H, style: 'width:100%;height:auto' }, g);
 	},
 
@@ -112,8 +112,12 @@ return view.extend({
 			var y = bot - (d - DB_BOT) * dy;
 			g.push(common.svg('text', { x: PAD_L - 6, y: y + 3, 'font-size': 10, 'text-anchor': 'end', fill: 'currentColor' }, d));
 		}
-		var busy = this.spec.busy_dbm_20mhz || -82, by = bot - (busy - DB_BOT) * dy;
-		g.push(common.svg('line', { x1: PAD_L, x2: W - PAD_R, y1: by, y2: by, stroke: '#fff', 'stroke-dasharray': '4 3', 'stroke-opacity': 0.7 }));
+		/* the busy threshold of each window: +3 dB per doubling of its width */
+		var busy = this.spec.busy_dbm_20mhz || -82;
+		slots.forEach(function(s) {
+			var thr = busy + ({ 20: 0, 40: 3, 80: 6, 160: 9 }[s.w.width] || 0), by = bot - (thr - DB_BOT) * dy;
+			g.push(common.svg('line', { x1: s.x, x2: s.x + s.sw, y1: by, y2: by, stroke: '#fff', 'stroke-dasharray': '4 3', 'stroke-opacity': 0.7 }));
+		});
 		g = g.concat(this.axisLabels(slots, bot + 14));
 		g.push(common.svg('text', { x: PAD_L, y: H - 2, 'font-size': 10, fill: 'currentColor' },
 			_('power of each sample (dBm), coloured by how many samples; dashed: the busy threshold')));
@@ -231,7 +235,12 @@ return view.extend({
 		})));
 
 		var sweepBtn = E('button', { 'class': 'cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, function() {
-			return common.sweep(self.band == 'all' ? null : self.band).then(function() {
+			/* '' is every band: a null argument is refused */
+			return common.sweep(self.band == 'all' ? '' : self.band).then(function(r) {
+				if (!r || typeof(r) != 'object' || r.error) {
+					ui.addNotification(null, E('p', _('The sweep could not be started: %s').format(r && r.error ? r.error : r)), 'error');
+					return;
+				}
 				ui.addNotification(null, E('p', _('A sweep has started; the charts update when it finishes (about a minute per band).')), 'info');
 			});
 		}) }, _('Sweep now'));
@@ -243,7 +252,7 @@ return view.extend({
 			E('h2', _('Air Scan: Spectrum')),
 			common.unavailable(this.statusData),
 			E('div', { 'class': 'cbi-map-descr' },
-				_('The dedicated scan radio samples each 20 MHz channel with the spectral scan; the serving radios never leave their channels.')),
+				_('The dedicated scan radio samples each channel with the spectral scan (20 MHz windows on 2.4 and 5 GHz, wider ones on 6 GHz); the serving radios never leave their channels.')),
 			this.info,
 			E('div', { 'style': 'display:flex;gap:.5em;align-items:center;margin:.5em 0' }, [ bandSel, sweepBtn ]),
 			this.charts

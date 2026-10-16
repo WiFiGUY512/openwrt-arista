@@ -23,7 +23,7 @@ return view.extend({
 		o.datatype = 'range(60,86400)';
 		o.default = '900';
 
-		o = s.taboption('general', form.ListValue, 'spectral_fft', _('FFT size'), _('in-band bins are half of this'));
+		o = s.taboption('general', form.ListValue, 'spectral_fft', _('FFT size'), _('in-band bins are half of this; a QCA988x scan radio (ath10k, the C-260\'s) takes at most 256'));
 		[ '64', '128', '256', '512' ].forEach(function(v) { o.value(v); });
 		o.default = '256';
 

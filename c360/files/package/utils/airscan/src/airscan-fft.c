@@ -20,7 +20,9 @@
  *   P_i = noise + rssi + 20 log10(v_i) - 10 log10(sum v^2),  v = max(bin,1) << max_exp,
  * averaged in linear units. pwr_hist counts samples by in-band power
  * (noise + rssi, dBm) in 1 dB steps from pwr_lo; airscan derives busy time
- * from it against a floor shared by all windows of a band and width.
+ * from it against a fixed level (-82 dBm per 20 MHz, +3 dB per doubling of
+ * width). A sample whose noise or in-band power is out of all reason
+ * (corrupt) is dropped: its power would be no number at all.
  */
 #include <math.h>
 #include <stdint.h>
@@ -96,6 +98,8 @@ static void add_sample(int type, const uint8_t *s, int len)
 	}
 	if (nbins < 1 || nbins > MAX_BINS)
 		return;
+	if (noise < -150 || noise > 0 || noise + rssi < -150 || noise + rssi > 20 || max_exp > 15)
+		return;
 	struct win *w = get_win(centre, width, nbins);
 	if (!w)
 		return;
@@ -128,7 +132,7 @@ static void add_sample(int type, const uint8_t *s, int len)
 
 static double db(double v)
 {
-	return v > 0 ? 10.0 * log10(v) : -200.0;
+	return v > 0 && isfinite(v) ? 10.0 * log10(v) : -200.0;
 }
 
 int main(int argc, char **argv)
