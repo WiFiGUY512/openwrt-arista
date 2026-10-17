@@ -89,8 +89,9 @@ bd=$(macaddr_add "$base" -2)
 set -- $(echo "$bd" | tr ':' ' ')
 bdwords="00$4 $5$6 00$3 $1$2"
 
-# A cold reset (gpio51, active high, as Arista's ble_ctrl_func) puts the chip
-# back in BCSP with empty PS RAM. One from a run before goes first.
+# A cold reset (gpio51 is the chip's enable: low holds it in reset, high runs
+# it; low then high, as Arista's ble_ctrl_func) puts the chip back in BCSP
+# with empty PS RAM. One from a run before goes first.
 gone || exit 1
 chip=
 for c in /sys/class/gpio/gpiochip*; do
