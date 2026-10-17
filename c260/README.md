@@ -54,8 +54,8 @@ Seen working on a unit unless marked otherwise.
 - **The button** (gpio52), as OpenWrt's reset: a short press reboots, 5 s or
   more resets the settings (OpenWrt's own handler; on a unit, the presses
   and releases were seen).
-- **USB:** one USB 2.0 port; a USB stick enumerates at 480 Mb/s. To use it
-  for storage, add `kmod-usb-storage` (from this build's feed) and
+- **USB:** one USB 2.0 port, working at its full 480 Mb/s. To use it for
+  storage, add `kmod-usb-storage` (from this build's feed) and
   `block-mount`.
 - **The console** on its RJ-45 port, 115200 8N1.
 

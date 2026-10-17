@@ -111,9 +111,8 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 ## Other
 
 - **Button:** gpio52, active low (Arista's device tree calls it `wps`).
-- **USB:** one USB 2.0 port (Arista's datasheet; a USB 3.0 stick
-  enumerates at 480 Mb/s), on the SoC's USB 3.0 controller
-  (`usb3@8A00000`).
+- **USB:** one USB 2.0 port (480 Mb/s, as Arista's datasheet gives it), on
+  the SoC's USB 3.0 controller (`usb3@8A00000`).
 - **PoE:** Arista reads the class it negotiated on each input from gpio54,
   55 and 56 (PoE 1), 2, 66 and 27 (PoE 2) and 64, and on 802.3af/at power it
   lowers transmit power, turns the third radio down and turns USB and
