@@ -11,14 +11,15 @@ first boot.
 
 | Model | SoC | OpenWrt | Status |
 |---|---|---|---|
-| [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12 | Working: all radios, BLE, the scan radio, both 10 GbE ports |
+| [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12 | Working: all radios, Bluetooth LE, the scan radio, both 10 GbE ports |
 | [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, Ethernet 1 (at 2.5 Gb/s; Ethernet 2 not yet linked on a unit), LEDs, button, USB, PoE power policy, install and sysupgrade |
-| [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | Working: all radios, Bluetooth, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
+| [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 
 ## Download
 
 Built images are on the [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases),
-one release for all models, built from its tag with `build.sh`:
+one release for all models, each built from the release's tag with
+`build.sh` and gathered with `release.sh`:
 
 - `openwrt-…-initramfs-uImage.itb`: the RAM system each install starts from
 - `openwrt-…-squashfs-factory.ubi` (C-360, C-260): what the install writes
@@ -63,6 +64,7 @@ Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md]
 
 ```
 build.sh            builds one model: ./build.sh <model>
+release.sh          gathers the models' builds of a version: ./release.sh <version>
 <model>/
   README.md         what works, what doesn't
   INSTALL.md        installing and going back
