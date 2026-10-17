@@ -67,42 +67,16 @@
 	};
 
 	/*
-	 * The vendor tree's reserved spans. ipq8074.dtsi already reserves the
-	 * same nss, tzapp, wcnss, q6_etr_dump and m3_dump spans (these nodes
-	 * merge with its own); only wifi_dump is new here. U-Boot has loaded
-	 * NSS firmware into the first, and the Wi-Fi spans belong to the
-	 * radios' firmware. wifi_dump covers the vendor's overlapping
-	 * wigig_dump, and the QCN9000's vendor base-addr.
+	 * The vendor tree's reserved spans: ipq8074.dtsi already reserves its
+	 * nss, tzapp, wcnss, q6_etr_dump and m3_dump (U-Boot has loaded NSS
+	 * firmware into the first, and the Wi-Fi spans belong to the radios'
+	 * firmware); only wifi_dump is added here. It covers the vendor's
+	 * overlapping wigig_dump, and the QCN9000's vendor base-addr.
 	 */
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
-
-		nss@40000000 {
-			reg = <0x0 0x40000000 0x0 0x1000000>;
-			no-map;
-		};
-
-		tzapp@4a400000 {
-			reg = <0x0 0x4a400000 0x0 0x200000>;
-			no-map;
-		};
-
-		wcnss@4b000000 {
-			reg = <0x0 0x4b000000 0x0 0x5f00000>;
-			no-map;
-		};
-
-		q6_etr_dump@50f00000 {
-			reg = <0x0 0x50f00000 0x0 0x100000>;
-			no-map;
-		};
-
-		m3_dump@51000000 {
-			reg = <0x0 0x51000000 0x0 0x100000>;
-			no-map;
-		};
 
 		wifi_dump@51100000 {
 			reg = <0x0 0x51100000 0x0 0x600000>;
@@ -120,10 +94,11 @@
 	status = "disabled";
 };
 
-/* The Bluetooth controller, a CSR8811 (Arista ships its csr8x11 patch). */
+/*
+ * The Bluetooth controller, a CSR8811 (Arista ships its csr8x11 patch), on
+ * the UART's default pins (the dtsi's hsuart_pins).
+ */
 &blsp1_uart3 {
-	pinctrl-0 = <&ble_uart_pins>;
-	pinctrl-names = "default";
 	status = "okay";
 };
 
@@ -453,13 +428,6 @@
 };
 
 &tlmm {
-	ble_uart_pins: ble-uart-state {
-		pins = "gpio46", "gpio47", "gpio48", "gpio49";
-		function = "blsp2_uart";
-		drive-strength = <8>;
-		bias-disable;
-	};
-
 	button_pins: button-state {
 		pins = "gpio52";
 		function = "gpio";

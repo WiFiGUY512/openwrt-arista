@@ -50,13 +50,14 @@
  * above all. SDHC stays disabled (both controllers are disabled in the vendor
  * DT).
  *
- * reserved-memory: mainline ipq8074.dtsi already reserves bootloader@4a600000,
- * sbl@4aa00000, smem@4ab00000 and memory@4ac00000. The nodes below are the
- * remaining spans measured on the live device (fdt_reserved.report against
- * running_fdt.dtb), which total 292 MiB across 16 merged spans. Reserving the
- * NSS and WCNSS windows matters even though this kernel drives neither: the
- * running U-Boot has already loaded NSS and Wi-Fi firmware into them, so
- * letting Linux allocate over them would corrupt live state.
+ * reserved-memory: none of its own. ipq8074.dtsi, with OpenWrt's patch 0102,
+ * reserves the NSS and WCNSS windows, which matter even though this kernel
+ * drives neither: the running U-Boot has already loaded NSS and Wi-Fi
+ * firmware into them. The stock firmware's map (measured on the live device)
+ * also reserves two 24 MiB DMA pools, ramoops and a 16-byte timestamp, which
+ * nothing here uses: without them Linux has 57 MiB more. Checked on a unit
+ * (2026-10-17): all radios, BLE and the TPM, and RAM filled with data that
+ * read back intact.
  *
  * Here: the console, both 10 GbE ports (an Aquantia AQR113C each, on Uniphy
  * 1 and 2), the IPQ8074's 2.4 and 5 GHz radios, the QCN9074 (pcie0, 6 GHz)
@@ -111,73 +112,6 @@
 		reg = <0x0 0x40000000 0x0 0x80000000>;
 	};
 
-	reserved-memory {
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
-
-		/* 16 MiB. Live U-Boot loads NSS firmware here. */
-		nss_core: nss@40000000 {
-			reg = <0x0 0x40000000 0x0 0x1000000>;
-			no-map;
-		};
-
-		/* 2 MiB, immediately below mainline's bootloader reservation. */
-		tzapp: tzapp@4a400000 {
-			reg = <0x0 0x4a400000 0x0 0x200000>;
-			no-map;
-		};
-
-		/*
-		 * 95 MiB (0x05f00000). Wi-Fi firmware and WCNSS working memory.
-		 *
-		 * The vendor DTB reserves exactly this span: 0x4b000000 with size
-		 * 0x05f00000, ending at 0x50f00000 where q6_etr_dump begins.
-		 *
-		 * This was 0x50f00000 (1295 MiB) until 2026-10-05 -- a zero typed
-		 * into the wrong nibble. That silently shadowed every reservation
-		 * below this one (q6_etr_dump, m3_dump, both qcn9000 PCIe windows,
-		 * both DMA pools and ramoops) and cut the free-DRAM gap count from
-		 * 9 to 2. Fix it, and note the magnitude: the size field must be
-		 * 0x05f00000, not 0x50f00000.
-		 */
-		wcnss: wcnss@4b000000 {
-			reg = <0x0 0x4b000000 0x0 0x05f00000>;
-			no-map;
-		};
-
-		q6_etr_dump: q6_etr_dump@50f00000 {
-			reg = <0x0 0x50f00000 0x0 0x100000>;
-			no-map;
-		};
-
-		m3_dump: m3_dump@51000000 {
-			reg = <0x0 0x51000000 0x0 0x100000>;
-			no-map;
-		};
-
-		/* Two 24 MiB DMA pools. */
-		dma_pool0: dma_pool0@57f00000 {
-			reg = <0x0 0x57f00000 0x0 0x1800000>;
-			no-map;
-		};
-
-		dma_pool1: dma_pool1@59700000 {
-			reg = <0x0 0x59700000 0x0 0x1800000>;
-			no-map;
-		};
-
-		ramoops: ramoops@5f700000 {
-			reg = <0x0 0x5f700000 0x0 0x900000>;
-			no-map;
-		};
-
-		/* 16 bytes; kept for fidelity to the measured map. */
-		device_last_ts: device_last_ts@60800000 {
-			reg = <0x0 0x60800000 0x0 0x10>;
-			no-map;
-		};
-	};
 };
 
 /* The one UART we have proven is wired to the host: 0x78b3000. */
