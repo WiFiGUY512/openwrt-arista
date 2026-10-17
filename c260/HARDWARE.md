@@ -113,18 +113,20 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 - **Button:** gpio52, active low (Arista's device tree calls it `wps`).
 - **USB:** one USB 2.0 port (480 Mb/s, as Arista's datasheet gives it), on
   the SoC's USB 3.0 controller (`usb3@8A00000`).
-- **PoE:** the PoE controller reports the class Ethernet 1 negotiated on
-  gpio54, 55 and 56: 1 1 1 for 802.3af, 1 0 1 for 802.3at, gpio56 at 0 for
-  802.3bt (on a unit on an 802.3bt switch port: 0 1 0). gpio64 is 0 with a DC
-  supply. Arista's system (`/sbin/8023af.sh`, `/etc/poe_prof.cfg`) also
-  exports gpio2, 66 and 27 for Ethernet 2 but reads only Ethernet 1's (they
-  read 1 1 1 with nothing on Ethernet 2, and 0 1 0 on a unit with an
-  802.3bt switch port powering it, a class 5 device to the switch, as well as
-  Ethernet 1). On 802.3at without DC it lowers the
+- **PoE:** both ports take power, and the unit runs on either (on a unit,
+  Ethernet 1 pulled, it stayed up on Ethernet 2's). The PoE controller
+  reports the class each port negotiated, Ethernet 1 on gpio54, 55 and 56,
+  Ethernet 2 on gpio2, 66 and 27: 1 1 1 for 802.3af, 1 0 1 for 802.3at, the
+  last at 0 for 802.3bt (on a unit, each port on an 802.3bt switch port, a
+  class 5 device to the switch: 0 1 0). A port with nothing on it reads
+  1 1 1 too (seen on both). gpio64 is 0 with a DC supply. Arista's system
+  (`/sbin/8023af.sh`, `/etc/poe_prof.cfg`) exports Ethernet 2's pins but
+  reads only Ethernet 1's. On 802.3at without DC it lowers the
   2.4 and 5 GHz radios' power limit (from 26.5 and 28.5 dBm to 23.5 and
   25.5), turns the scan radio down (23 to 20 dBm, 2 chains to 1) and turns
   Bluetooth off (gpio51 low); its profile names USB too, but the function
   behind it is empty, and the chains of the serving radios stay. The power a
   switch allocates by LLDP overrides the pins (38.1 W and up 802.3bt, 25 W
   and up 802.3at). `arista-c260-power` does the same but for the scan
-  radio, which it leaves alone.
+  radio, which it leaves alone, and takes the better of the two ports'
+  classes.

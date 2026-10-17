@@ -46,19 +46,26 @@ Seen working on a unit unless marked otherwise.
   Ethernet 1 and eth1 Ethernet 2. Both are in `br-lan`, which takes its
   address by DHCP; there is no WAN. MACs from ART: eth0 has Arista's base
   MAC, the label MAC, and eth1 the one below it.
-  - On a unit, each at 2.5 Gb/s. Ethernet 2 on its own (out of `br-lan`, its
-    own DHCP client): an address from its own MAC, and 1.80 Gb/s up and
-    2.21 Gb/s down with iperf3 from the AP to a server two hops away. A
-    switch powers it as a class 5 device; its PoE pins then read as Ethernet
-    1's do on 802.3bt (HARDWARE.md).
+  - On a unit, each at 5 Gb/s and at 2.5 Gb/s, and Ethernet 2 at 1 Gb/s too.
+    Ethernet 2 on its own (out of `br-lan`, its own DHCP client): an address
+    from its own MAC, and traffic both ways.
+  - Traffic to and from the AP itself (iperf3, four streams, to a server on
+    10G): about 2.4 Gb/s each way. One core takes all of a port's receive
+    work; with receive packet steering on all four cores, 3.31 Gb/s sent,
+    and received still near 2.3 Gb/s, as the Ethernet driver's receive
+    interrupt is on one core. What it forwards between Wi-Fi and Ethernet is
+    not yet measured at these speeds.
+  - It runs on either port's power: on a unit on 802.3bt on both, Ethernet 1
+    pulled, it stayed up on Ethernet 2's, without a restart. A switch powers
+    either as a class 5 device.
 - **Bluetooth** (`arista-c260-bluetooth`): the CSR8811 starts as Arista
   starts it, with its PS keys copied from slot 1, and is `hci0` for BlueZ
   (HCI 4.2), powered on with LE on, not advertising, as the C-360's is. On a
   unit: airscan's LE survey heard 17 devices in 6 s.
 - **The LEDs.** Power is orange while booting, in failsafe and while
   upgrading, green when running. Each Ethernet port's LED is green for a 2.5
-  or 5 Gb/s link and orange for 1 Gb/s or slower (seen: Ethernet 1 green at
-  2.5 Gb/s; the rest of the Ethernet LEDs only driven by hand). Each radio's
+  or 5 Gb/s link and orange for 1 Gb/s or slower (seen on a unit: green at
+  2.5 and 5 Gb/s, orange at 1 Gb/s). Each radio's
   green LED (2.4 GHz, 5 GHz, scanning radio) is lit while the radio is on;
   the orange ones are left off.
 - **The button** (gpio52), as OpenWrt's reset: a short press reboots, 5 s or
@@ -69,20 +76,24 @@ Seen working on a unit unless marked otherwise.
   `block-mount`.
 - **The console** on its RJ-45 port, 115200 8N1.
 - **Arista's PoE power policy** (`arista-c260-power`): on 802.3at (or af)
-  power on Ethernet 1 with no DC supply, the serving radios' transmit power
+  power with no DC supply, the serving radios' transmit power
   is capped (23 dBm at 2.4 GHz, 25 dBm at 5 GHz: Arista's 23.5 and 25.5,
   in whole dBm) and the Bluetooth controller turned off, as Arista's own
   system does. Its USB and antenna chains stay as they are, as on Arista's;
-  the scan radio is left alone. The PoE class comes from the PoE
-  controller's pins (HARDWARE.md), or from the power a switch allocates by
-  LLDP. `arista-c260-power status` shows what it reads and what is applied;
+  the scan radio is left alone. The PoE class is the better of the two
+  ports', each from the PoE controller's pins (HARDWARE.md) or the power a
+  switch allocates on it by LLDP. Arista's system reads only Ethernet 1's,
+  which reads as 802.3af with nothing on it, and so would cap a C-260 that
+  runs on Ethernet 2's 802.3bt. `arista-c260-power status` shows what it
+  reads and what is applied;
   `/etc/config/arista-c260-power` turns it off or changes the caps. Tested
   on a unit on 802.3bt (full power), and the 802.3at path with a test
   override: caps applied and lifted, Bluetooth off and back.
 
 ## What doesn't (yet)
 
-- **Not yet tried on a unit:** 5 Gb/s links.
+- Nothing known not to work. Not yet measured: what it forwards at over
+  2.5 Gb/s (Ethernet, above).
 
 ## In this directory
 

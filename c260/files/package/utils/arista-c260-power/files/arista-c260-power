@@ -2,11 +2,15 @@
 # arista-c260-power: the Arista C-260's PoE power policy, as Arista's own
 # system applies it (/sbin/8023af.sh, /etc/poe_prof.cfg).
 #
-# The PoE controller reports the class Ethernet 1 negotiated on gpio54/55/56:
-# 1 1 1 for 802.3af, 1 0 1 for 802.3at, gpio56 at 0 for 802.3bt. gpio64 is 0
-# when a DC supply is plugged in. (Arista also exports gpio2/66/27 for
-# Ethernet 2, but reads only Ethernet 1's; so does this.) A DC supply or
-# 802.3bt is full power. On 802.3at (or af) without a DC supply, the serving
+# The PoE controller reports the class each port negotiated: Ethernet 1 on
+# gpio54/55/56, Ethernet 2 on gpio2/66/27: 1 1 1 for 802.3af, 1 0 1 for
+# 802.3at, the last at 0 for 802.3bt. A port with nothing on it reads 1 1 1
+# too. gpio64 is 0 when a DC supply is plugged in. The C-260 runs on either
+# port's power (on a unit, on Ethernet 2's alone with Ethernet 1 pulled), so
+# the better of the two ports' classes is the AP's: Arista's system reads
+# only Ethernet 1's, and would take a C-260 powered through Ethernet 2 for
+# 802.3af. A DC supply or 802.3bt is full power. On 802.3at (or af) without
+# a DC supply, the serving
 # radios' transmit power is capped (Arista's values, 23.5 dBm at 2.4 GHz and
 # 25.5 dBm at 5 GHz, to the whole dBm below: mac80211 takes no halves) and
 # the Bluetooth controller is turned off. Arista's
@@ -15,9 +19,9 @@
 # this leaves the scan radio alone, as on the C-360.
 #
 # Without a DC supply, the power a switch reports by LLDP that it allocated
-# on Ethernet 1 (lldpd, Power via MDI TLV) decides the class instead of the
-# pins, as on Arista's system: 38.1 W or more is 802.3bt, 25 W or more
-# 802.3at, less 802.3af.
+# on a port (lldpd, Power via MDI TLV) decides that port's class instead of
+# its pins, as on Arista's system for Ethernet 1: 38.1 W or more is 802.3bt,
+# 25 W or more 802.3at, less 802.3af.
 #
 #	arista-c260-power status	what the input reads, and what is applied
 #	arista-c260-power apply		read the input, apply the policy
@@ -64,12 +68,20 @@ class() {
 	esac
 }
 
-# Ethernet 1: eth0, or lan1 with DSA port names
-port1() {
+# port <n>: Ethernet n, eth<n-1>, or lan<n> with DSA port names
+port() {
 	local p
-	for p in eth0 lan1; do
+	for p in eth$(($1 - 1)) lan$1; do
 		[ -e /sys/class/net/$p ] && { echo $p; return; }
 	done
+}
+
+best() { # best <class>...: the one that gives the most power
+	local c
+	for c in 802.3bt 802.3at 802.3af; do
+		case " $* " in *" $c "*) echo $c; return ;; esac
+	done
+	echo none
 }
 
 lldp_mw() { # lldp_mw <port>: the power (mW) a switch allocated on it, by LLDP
@@ -95,14 +107,17 @@ mw_class() { # Arista's thresholds (8023af.sh)
 }
 
 read_inputs() {
-	PINS=$(class $(pin 54) $(pin 55) $(pin 56))
-	POE=$PINS LLDP=
+	PINS1="$(pin 54) $(pin 55) $(pin 56)" PINS2="$(pin 2) $(pin 66) $(pin 27)"
+	POE1=$(class $PINS1) POE2=$(class $PINS2) LLDP1= LLDP2=
 	DC=0
 	[ "$(pin 64)" = 0 ] && DC=1
 	if [ $DC = 0 ] && [ "$(opt lldp 1)" = 1 ]; then
-		LLDP=$(lldp_mw "$(port1)")
-		[ -n "$LLDP" ] && POE=$(mw_class $LLDP)
+		LLDP1=$(lldp_mw "$(port 1)")
+		[ -n "$LLDP1" ] && POE1=$(mw_class $LLDP1)
+		LLDP2=$(lldp_mw "$(port 2)")
+		[ -n "$LLDP2" ] && POE2=$(mw_class $LLDP2)
 	fi
+	POE=$(best $POE1 $POE2)
 	if [ $DC = 0 ] && { [ $POE = 802.3at ] || [ $POE = 802.3af ]; }; then
 		LEVEL=limited
 	else
@@ -172,16 +187,18 @@ apply() {
 		echo full > $STATE.level
 		bt_set on
 		radios_apply
-		log "disabled: full power regardless (Ethernet 1 $POE, DC $DC)"
+		log "disabled: full power regardless (Ethernet 1 $POE1, Ethernet 2 $POE2, DC $DC)"
 		return
 	fi
 	echo $LEVEL > $STATE.level
-	log "power: $LEVEL (Ethernet 1 $POE, DC $DC)"
+	log "power: $LEVEL (Ethernet 1 $POE1, Ethernet 2 $POE2, DC $DC)"
 	if [ $LEVEL = limited ] && [ "$(opt bluetooth 1)" = 1 ]; then bt_set off; else bt_set on; fi
 	radios_apply
 	{
 		echo "level=$LEVEL"
 		echo "poe=$POE"
+		echo "poe1=$POE1"
+		echo "poe2=$POE2"
 		echo "dc=$DC"
 	} > $STATE
 }
@@ -209,7 +226,9 @@ monitor() {
 
 status() {
 	read_inputs
-	echo "Ethernet 1: $POE (pins $PINS${LLDP:+, LLDP $LLDP mW allocated})"
+	echo "Ethernet 1: $POE1 (pins $PINS1${LLDP1:+, LLDP $LLDP1 mW allocated})"
+	echo "Ethernet 2: $POE2 (pins $PINS2${LLDP2:+, LLDP $LLDP2 mW allocated})"
+	echo "PoE: $POE, the better of the two"
 	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
 	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
 	echo "Bluetooth: $([ -e $STATE.bt-off ] && echo off || echo on)"
