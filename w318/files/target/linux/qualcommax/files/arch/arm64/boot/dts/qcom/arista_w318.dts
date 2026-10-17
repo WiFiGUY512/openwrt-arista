@@ -12,9 +12,10 @@
  * Here: the console, Ethernet (the 2.5 GbE uplink and three LAN ports), the
  * radios (the IPQ6010's own 2.4 and 5 GHz, and the QCN9072 on PCIe), the
  * nRF52833 Bluetooth module, the TPM, USB, the button and the LEDs; the MACs
- * from 0:ART, as Arista's system reads them. So far it is booted from RAM
- * only: every NOR partition is read-only, the environment included, until
- * the install is settled.
+ * from 0:ART, as Arista's system reads them. OpenWrt takes Arista's slot 0:
+ * its kernel in NOR 0:HLOS, its root in the eMMC partition "rootfs", its
+ * overlay in "rootfs_data"; Arista's slot 1 stays, the fallback. Of the NOR
+ * only 0:HLOS and U-Boot's environment (0:APPSBLENV) can be written.
  */
 
 /dts-v1/;
@@ -446,8 +447,7 @@
 			partition@4f0000 { label = "0:CDT"; reg = <0x4f0000 0x10000>; read-only; };
 			partition@500000 { label = "0:CDT_1"; reg = <0x500000 0x10000>; read-only; };
 
-			/* read-only while the W-318 is only RAM-booted */
-			partition@510000 { label = "0:APPSBLENV"; reg = <0x510000 0x10000>; read-only; };
+			partition@510000 { label = "0:APPSBLENV"; reg = <0x510000 0x10000>; };
 
 			partition@520000 { label = "0:APPSBL"; reg = <0x520000 0x100000>; read-only; };
 			partition@620000 { label = "0:APPSBL_1"; reg = <0x620000 0x100000>; read-only; };
@@ -487,7 +487,8 @@
 				};
 			};
 
-			partition@7a0000 { label = "0:HLOS"; reg = <0x7a0000 0x800000>; read-only; };
+			/* OpenWrt's kernel */
+			partition@7a0000 { label = "0:HLOS"; reg = <0x7a0000 0x800000>; };
 			partition@fa0000 { label = "0:HLOS_1"; reg = <0xfa0000 0x800000>; read-only; };
 			partition@17a0000 { label = "CONFIG"; reg = <0x17a0000 0x400000>; read-only; };
 			partition@1ba0000 { label = "DEVCERT"; reg = <0x1ba0000 0x20000>; read-only; };

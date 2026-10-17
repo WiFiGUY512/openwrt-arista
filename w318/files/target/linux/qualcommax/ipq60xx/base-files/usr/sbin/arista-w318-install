@@ -1,0 +1,224 @@
+#!/bin/sh
+# arista-w318-install: install OpenWrt to slot 0 of an Arista W-318, from the
+# RAM system (this repo's initramfs, booted from U-Boot).
+#
+#	arista-w318-install [--dry-run] [--yes] [--backup DIR] SYSUPGRADE.BIN
+#
+# SYSUPGRADE.BIN is this build's squashfs-sysupgrade.bin for the W-318. OpenWrt
+# takes Arista's slot 0 whole and keeps slot 1, Arista's system, as the
+# fallback. Steps, each refusing to go on if the one before failed:
+#
+#   1. Checks: a W-318; running from RAM, with nothing on the eMMC mounted;
+#      the expected NOR and eMMC layout; the image (a FIT kernel of at most
+#      8 MiB, a squashfs that fits "rootfs"); ART; and slot 1: its kernel in
+#      NOR 0:HLOS_1, and its root in "rootfs_1" with the Wi-Fi firmware and
+#      board data OpenWrt's first boot copies from it.
+#   2. With --backup DIR: every NOR partition, the GPT and the eMMC
+#      partitions "rootfs" and "rootfs_data", gzipped into DIR (on a USB
+#      stick), each checked against the flash. ART holds this unit's
+#      calibration and MACs and exists nowhere else.
+#   3. (not with --dry-run) The U-Boot environment, written once with
+#      fw_setenv -s, and not at all when it is already right: owrt_boot,
+#      which boots OpenWrt from NOR 0:HLOS; arista_boot, which puts Arista's
+#      settings back and runs Arista's own boot with pri=1 (slot 1); and a
+#      bootcmd running the one, then the other. It is written first: from
+#      then on, whatever stops the install, the unit boots slot 1's Arista.
+#   4. (not with --dry-run) The squashfs to "rootfs", the start of
+#      "rootfs_data" wiped (OpenWrt makes its overlay there at first boot),
+#      and the kernel to NOR 0:HLOS last, each read back and compared.
+#
+# Nothing else is written: in NOR only 0:HLOS and the U-Boot environment, on
+# the eMMC only "rootfs" and the start of "rootfs_data".
+# Without --yes it asks for the last four hex digits of the unit's MAC before
+# writing. The last line is W318-INSTALL-RESULT: OK ... or FAILED: ...
+
+# (no set -u: /lib/functions.sh reads optional arguments and unset variables)
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+DRY=0 YES=0 BACKUP= IMG=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--dry-run) DRY=1 ;;
+	--yes) YES=1 ;;
+	--backup) [ $# -ge 2 ] || { echo "usage: --backup DIR" >&2; exit 2; }; BACKUP=$2; shift ;;
+	-*) echo "usage: arista-w318-install [--dry-run] [--yes] [--backup DIR] SYSUPGRADE.BIN" >&2; exit 2 ;;
+	*) IMG=$1 ;;
+	esac
+	shift
+done
+
+OWRT_BOOT='sf probe && sf read 0x60000000 0x7a0000 0x800000 && setenv bootargs console=ttyMSM0,115200n8 root=/dev/mmcblk0p1 rootwait panic=10 && bootm 0x60000000#config@cp01-c3'
+# Arista's own boot (its bootcmd), slot 1, with its settings put back first:
+# its boot script saves the environment, which must not keep OpenWrt's
+# bootargs; sr=0, so its retry counter never switches to slot 0.
+ARISTA_BOOT='setenv bootargs console=ttyMSM0,115200n8 root=/dev/mmcblk0p2 rootwait rw; setenv pri 1; setenv sr 0; env default default_env_version; if test -n "${default_env_version}"; then run ubootscriptv2; else run ubootscript; fi'
+BOOTCMD='run owrt_boot; run arista_boot'
+
+say() { echo "w318-install: $*"; }
+fail() {
+	echo "w318-install: ERROR: $*" >&2
+	echo "W318-INSTALL-RESULT: FAILED: $*"
+	exit 1
+}
+
+mkdir /tmp/arista-w318-install.lock 2>/dev/null || fail "another arista-w318-install is running"
+TMP=/tmp/arista-w318-install.d
+trap 'rm -rf "$TMP"; rmdir /tmp/arista-w318-install.lock 2>/dev/null' EXIT
+rm -rf "$TMP"; mkdir -p "$TMP"
+
+. /lib/functions.sh
+
+mtd_dev() { # mtd_dev <name>: /dev/mtdN
+	local n=$(find_mtd_index "$1")
+	[ -n "$n" ] && echo /dev/mtd$n
+}
+
+mtd_size() { # mtd_size <name>: its size in bytes
+	local n=$(find_mtd_index "$1")
+	[ -n "$n" ] && printf '%d' 0x$(grep "^mtd$n:" /proc/mtd | cut -d' ' -f2)
+}
+
+blk_bytes() { # blk_bytes /dev/mmcblk0pN: its size in bytes
+	echo $(( $(cat /sys/class/block/${1#/dev/}/size) * 512 ))
+}
+
+# the first N bytes of a device, read from the flash itself
+head_md5() { # head_md5 <dev> <bytes>
+	sync
+	echo 3 > /proc/sys/vm/drop_caches
+	dd if="$1" bs=65536 2>/dev/null | head -c "$2" | md5sum | cut -d' ' -f1
+}
+
+# ------------------------------------------------------------ 1. checks
+
+[ -n "$IMG" ] || fail "no image given (SYSUPGRADE.BIN)"
+[ "$(board_name)" = arista,w318 ] || fail "not an Arista W-318 ($(board_name))"
+grep -qs 'root=/dev/mmcblk' /proc/cmdline && fail "not running from RAM (root on the eMMC): boot the initramfs"
+grep -q '^/dev/mmcblk' /proc/mounts && fail "something on the eMMC is mounted"
+
+ROOT=$(find_mmc_part rootfs)
+ROOT1=$(find_mmc_part rootfs_1)
+DATA=$(find_mmc_part rootfs_data)
+DATA1=$(find_mmc_part rootfs_data_1)
+[ "$ROOT" = /dev/mmcblk0p1 ] && [ "$ROOT1" = /dev/mmcblk0p2 ] &&
+	[ "$DATA" = /dev/mmcblk0p3 ] && [ "$DATA1" = /dev/mmcblk0p4 ] ||
+	fail "the eMMC is not laid out as Arista's (rootfs $ROOT, rootfs_1 $ROOT1, rootfs_data $DATA)"
+
+for p in 0:HLOS 0:HLOS_1 0:APPSBLENV 0:ART; do
+	[ -n "$(mtd_dev $p)" ] || fail "no NOR partition $p"
+done
+[ "$(mtd_size 0:HLOS)" = 8388608 ] || fail "0:HLOS is not 8 MiB"
+[ "$(mtd_size 0:APPSBLENV)" = 65536 ] || fail "0:APPSBLENV is not 64 KiB"
+for p in 0:HLOS 0:APPSBLENV; do
+	# MTD_WRITEABLE (0x400): not a read-only partition in this system's device tree
+	[ $(( $(cat /sys/class/mtd/mtd$(find_mtd_index $p)/flags) & 0x400 )) -ne 0 ] ||
+		fail "$p is read-only in this system: boot this build's initramfs"
+done
+
+# ART: the base MAC at 0, the IPQ6010's calibration at 0x1000
+MAC=$(hexdump -n 6 -e '6/1 "%02x:"' "$(mtd_dev 0:ART)" | sed 's/:$//')
+case "$MAC" in ""|ff:ff:ff:ff:ff:ff|00:00:00:00:00:00) fail "no MAC in ART ($MAC)" ;; esac
+[ "$(hexdump -s 4096 -n 16 -e '16/1 "%02x"' "$(mtd_dev 0:ART)")" != ffffffffffffffffffffffffffffffff ] ||
+	fail "no calibration in ART"
+say "unit $MAC"
+
+# slot 1: Arista's kernel and its root with the radios' files
+[ "$(hexdump -n 16 -e '16/1 "%02x"' "$(mtd_dev 0:HLOS_1)")" != ffffffffffffffffffffffffffffffff ] ||
+	fail "0:HLOS_1 is empty: no Arista kernel in slot 1 for the fallback"
+[ "$(head -c 4 "$ROOT1")" = hsqs ] || fail "rootfs_1 holds no squashfs: no Arista system in slot 1"
+unsquashfs -l -n "$ROOT1" 2>/dev/null > "$TMP/slot1.list"
+for f in lib/firmware/IPQ6018/WIFI_FW/qcn9000/amss.bin lib/firmware/IPQ6018/WIFI_FW/qcn9000/m3.bin \
+	lib/boarddata/radio12/FCC_CE/bdwlan.b13 lib/boarddata/radio3/bdwlan.ba7; do
+	grep -q "squashfs-root/$f\$" "$TMP/slot1.list" || fail "slot 1 lacks $f"
+done
+say "slot 1: Arista's kernel and system, with the radios' files"
+
+# the U-Boot environment: readable, and Arista's
+fw_printenv > "$TMP/env.before" 2>/dev/null || fail "cannot read the U-Boot environment (fw_printenv)"
+grep -q '^ubootscriptv2=' "$TMP/env.before" || fail "the U-Boot environment has no ubootscriptv2: not Arista's?"
+say "pri=$(sed -n 's/^pri=//p' "$TMP/env.before"), bootcmd: $(sed -n 's/^bootcmd=//p' "$TMP/env.before" | cut -c1-60)"
+
+# the image
+[ -s "$IMG" ] || fail "no image $IMG"
+dir=$(tar tf "$IMG" 2>/dev/null | grep -m 1 '^sysupgrade-.*/$')
+[ "$dir" = sysupgrade-arista_w318/ ] || fail "$IMG is not a W-318 sysupgrade image"
+tar xf "$IMG" -C "$TMP" "${dir}kernel" "${dir}root" 2>/dev/null || fail "cannot unpack $IMG"
+K=$TMP/${dir}kernel R=$TMP/${dir}root
+[ "$(hexdump -n 4 -e '4/1 "%02x"' "$K")" = d00dfeed ] || fail "the kernel is not a FIT"
+[ "$(head -c 4 "$R")" = hsqs ] || fail "the root is not a squashfs"
+KLEN=$(wc -c < "$K") RLEN=$(wc -c < "$R")
+[ "$KLEN" -le 8388608 ] || fail "the kernel ($KLEN bytes) does not fit 0:HLOS"
+[ "$RLEN" -le $(( $(blk_bytes "$ROOT") - 4194304 )) ] || fail "the root ($RLEN bytes) does not fit rootfs"
+KMD5=$(md5sum "$K" | cut -d' ' -f1) RMD5=$(md5sum "$R" | cut -d' ' -f1)
+say "image: kernel $KLEN bytes, root $RLEN bytes"
+
+# ------------------------------------------------------------ 2. backup
+
+if [ -n "$BACKUP" ]; then
+	B=$BACKUP/w318-backup-$(echo $MAC | tr -d :)-$(date +%Y%m%d%H%M%S)
+	mkdir -p "$B" || fail "cannot make $B"
+	while read -r dev size erase name; do
+		case $dev in mtd*) ;; *) continue ;; esac
+		name=$(echo $name | tr -d '"')
+		f=$B/${dev%:}-$(echo $name | tr ':' '_').bin.gz
+		dd if=/dev/${dev%:} bs=65536 2>/dev/null | gzip > "$f" || fail "backup of $name"
+		[ "$(gunzip -c "$f" | md5sum | cut -d' ' -f1)" = "$(dd if=/dev/${dev%:} bs=65536 2>/dev/null | md5sum | cut -d' ' -f1)" ] ||
+			fail "backup of $name does not match the flash"
+	done < /proc/mtd
+	dd if=/dev/mmcblk0 bs=512 count=34 2>/dev/null > "$B/mmcblk0-gpt.bin" || fail "backup of the GPT"
+	for p in "$ROOT" "$DATA"; do
+		f=$B/${p#/dev/}.bin.gz
+		gzip -c "$p" > "$f" || fail "backup of $p"
+		[ "$(gunzip -c "$f" | md5sum | cut -d' ' -f1)" = "$(md5sum < "$p" | cut -d' ' -f1)" ] ||
+			fail "backup of $p does not match the eMMC"
+	done
+	sync
+	say "backup in $B"
+fi
+
+[ $DRY = 1 ] && { echo "W318-INSTALL-RESULT: OK (dry run, nothing written)"; exit 0; }
+
+if [ $YES != 1 ]; then
+	printf 'This writes OpenWrt to slot 0 of the W-318 %s. Type the last four hex digits of its MAC to go on: ' "$MAC"
+	read -r a
+	[ "$a" = "$(echo $MAC | tr -d : | tail -c 5)" ] || fail "not confirmed"
+fi
+
+# ------------------------------------------------------------ 3. environment
+
+{
+	echo "owrt_boot $OWRT_BOOT"
+	echo "arista_boot $ARISTA_BOOT"
+	echo "bootcmd $BOOTCMD"
+	echo "pri 1"
+} > "$TMP/env.script"
+want_ok() {
+	[ "$(fw_printenv -n owrt_boot 2>/dev/null)" = "$OWRT_BOOT" ] &&
+	[ "$(fw_printenv -n arista_boot 2>/dev/null)" = "$ARISTA_BOOT" ] &&
+	[ "$(fw_printenv -n bootcmd 2>/dev/null)" = "$BOOTCMD" ] &&
+	[ "$(fw_printenv -n pri 2>/dev/null)" = 1 ]
+}
+if want_ok; then
+	say "U-Boot environment already set"
+else
+	fw_setenv -s "$TMP/env.script" || fail "fw_setenv"
+	want_ok || fail "the U-Boot environment does not read back as written"
+	say "U-Boot environment written (once): bootcmd runs owrt_boot, then arista_boot; pri=1"
+fi
+
+# ------------------------------------------------------------ 4. slot 0
+
+dd if="$R" of="$ROOT" bs=65536 2>/dev/null || fail "writing rootfs"
+[ "$(head_md5 "$ROOT" $RLEN)" = "$RMD5" ] || fail "rootfs does not read back as written"
+say "rootfs written and read back"
+
+dd if=/dev/zero of="$DATA" bs=65536 count=64 2>/dev/null || fail "wiping rootfs_data"
+sync
+say "rootfs_data's first 4 MiB wiped"
+
+# by its device path: mtd takes "0:HLOS" for two devices, "0" and "HLOS"
+mtd write "$K" "$(mtd_dev 0:HLOS)" || fail "writing 0:HLOS"
+[ "$(head_md5 "$(mtd_dev 0:HLOS)" $KLEN)" = "$KMD5" ] || fail "0:HLOS does not read back as written"
+say "kernel written to 0:HLOS and read back"
+
+echo "W318-INSTALL-RESULT: OK: OpenWrt is in slot 0; reboot to start it"

@@ -1,0 +1,41 @@
+Subject: qualcommax: ipq60xx: Arista W-318 sysupgrade
+
+sysupgrade writes the kernel to NOR 0:HLOS and the squashfs to the eMMC partition named "rootfs" (Arista's slot 0), and keeps the settings in the one named "rootfs_data" (emmc_copy_config). Arista's slot 1 is not touched: it is the fallback. The kernel is erased first and written last, so a write cut short boots the fallback.
+
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
+index d31363521f..179979d3f4 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
+@@ -111,6 +111,20 @@ platform_do_upgrade() {
+ 		alfa_bootconfig_rootfs_rotate "0:BOOTCONFIG" "148"
+ 		nand_do_upgrade "$1"
+ 		;;
++	arista,w318)
++		# the kernel in NOR 0:HLOS, the squashfs in the eMMC partition
++		# "rootfs", the overlay on "rootfs_data"; Arista's system in slot 1
++		# is left alone. The kernel is erased first and written last, so a
++		# write cut short boots Arista's fallback, not half a system.
++		CI_ROOTPART="rootfs"
++		CI_DATAPART="rootfs_data"
++		# (mtd takes "0:HLOS" for two devices: its device path instead)
++		local dir=$(tar tf "$1" | grep -m 1 '^sysupgrade-.*/$')
++		local hlos=/dev/mtd$(find_mtd_index 0:HLOS)
++		mtd erase "$hlos"
++		emmc_do_upgrade "$1"
++		tar xf "$1" "${dir}kernel" -O | mtd write - "$hlos"
++		;;
+ 	cambiumnetworks,xe3-4)
+ 		fw_setenv bootcount 0
+ 		nand_do_upgrade "$1"
+@@ -164,3 +178,11 @@ platform_do_upgrade() {
+ 		;;
+ 	esac
+ }
++
++platform_copy_config() {
++	case "$(board_name)" in
++	arista,w318)
++		emmc_copy_config
++		;;
++	esac
++}

@@ -1,0 +1,16 @@
+Subject: uboot-envtools: qualcommax: add Arista W-318
+
+The U-Boot environment is 0:APPSBLENV in SPI NOR, one copy of 64 KiB.
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
+index a06ffc1f36..b880e61f8a 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
+@@ -10,6 +10,7 @@ board=$(board_name)
+ case "$board" in
+ 8devices,mango-dvk|\
+ 8devices,mango-dvk-sfp|\
++arista,w318|\
+ cambiumnetworks,xe3-4)
+ 	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
+ 	;;

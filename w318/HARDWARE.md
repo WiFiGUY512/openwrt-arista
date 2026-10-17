@@ -138,13 +138,29 @@ key) at gpio19, which no button outside drives.
   (38.1 W and up 802.3bt, 25 W and up 802.3at). `arista-w318-power` does the
   same.
 
-## Installing (designed, not built or run)
+## How OpenWrt is installed
 
-OpenWrt would take Arista's slot 0 whole, slot 1 staying Arista's, the
-fallback: the kernel FIT (about 5.5 MB) in NOR `0:HLOS`, the squashfs in p1
-`rootfs`, the overlay on p3 `rootfs_data` (OpenWrt's fstools finds it by
-name on the root's disk; its start wiped first, or Arista's ext4 would be
-mounted as it is). U-Boot, one environment write: `owrt_boot` reads
-`0:HLOS` and boots it with root=/dev/mmcblk0p1; `arista_boot` puts Arista's
-`bootargs` back, `pri=1`, and runs Arista's own boot (whose `saveenv` must
-not keep OpenWrt's settings); `bootcmd` runs the one, then the other.
+OpenWrt takes Arista's slot 0 whole, slot 1 staying Arista's, the fallback:
+the kernel FIT (about 5.7 MB) in NOR `0:HLOS`, the squashfs in p1 `rootfs`,
+the overlay on p3 `rootfs_data` (OpenWrt's fstools finds it by name on the
+root's disk and makes it f2fs at the first boot; the installer wipes its
+start first, or Arista's ext4 would be mounted as it is).
+
+- **U-Boot, one environment write** (`arista-w318-install`): `owrt_boot`
+  reads `0:HLOS` (`sf read 0x60000000 0x7a0000 0x800000`) and boots it with
+  root=/dev/mmcblk0p1; `arista_boot` puts Arista's `bootargs` back, sets
+  `pri=1` and `sr=0`, and runs Arista's own boot command (whose `saveenv`
+  must not keep OpenWrt's settings, and whose retry counter must not switch
+  to slot 0); `bootcmd` runs the one, then the other; `pri=1`. Arista's
+  `bootcmd` resets only `default_env_version` each boot, so this one stays.
+  Arista's `bootipq` takes the slot from `pri` (`0:HLOS_1` and `rootfs_1`
+  for 1) and checks its signature, which OpenWrt's kernel lacks: hence the
+  boot of its own.
+- **sysupgrade** (platform.sh): `0:HLOS` erased, the squashfs written to
+  `rootfs`, the kernel written to `0:HLOS` last, the settings into
+  `rootfs_data` (emmc_copy_config). OpenWrt's `mtd` tool reads `0:HLOS` as two
+  devices ("0" and "HLOS"), so the partition goes by its `/dev/mtdN` path.
+- At the first boot, `mkfs.f2fs` discards all of `rootfs_data`, and the eMMC
+  took longer than the kernel waits: `mmc_erase: erase error -110` and
+  `cache flush error -110` once, then the f2fs mounted and worked; not seen
+  again in later boots.

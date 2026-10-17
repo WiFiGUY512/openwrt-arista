@@ -13,7 +13,7 @@ first boot.
 |---|---|---|---|
 | [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12 | Working: all radios, BLE, the scan radio, both 10 GbE ports |
 | [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, Ethernet 1 (at 2.5 Gb/s; Ethernet 2 not yet linked on a unit), LEDs, button, USB, PoE power policy, install and sysupgrade |
-| [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | In progress, booted from RAM: all radios, Bluetooth, the TPM, Ethernet, LEDs, button, USB, PoE power policy; not installable yet |
+| [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | Working: all radios, Bluetooth, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 
 ## Build
 
@@ -38,7 +38,7 @@ any OpenWrt device.
 
 ## Install
 
-Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md](c260/INSTALL.md), [w318/INSTALL.md](w318/INSTALL.md) (a RAM boot so far).
+Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md](c260/INSTALL.md), [w318/INSTALL.md](w318/INSTALL.md).
 
 ## Layout
 

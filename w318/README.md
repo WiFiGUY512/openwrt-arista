@@ -4,15 +4,18 @@ A Wi-Fi 6E wall-plate access point: a Qualcomm IPQ6010 with its own 2.4 and
 5 GHz radios, a QCN9072 6 GHz card on PCIe, a 2.5 GbE uplink with PoE in,
 three 1 GbE LAN ports (Network 1 also a PoE output), an nRF52833 Bluetooth LE
 module, a TPM and a USB 3.0 port. No scan radio. Details in
-[HARDWARE.md](HARDWARE.md); booting it in [INSTALL.md](INSTALL.md).
-
-**Status: in progress.** Everything below runs on a unit **booted from
-RAM**; OpenWrt is not installed to its flash yet (the install is designed,
-in HARDWARE.md, but not built or run).
+[HARDWARE.md](HARDWARE.md); installing in [INSTALL.md](INSTALL.md).
 
 ## What works
 
-Seen working on a unit, from RAM, unless marked otherwise.
+Seen working on a unit unless marked otherwise.
+
+- **Installing and updating.** OpenWrt in Arista's slot 0 (its kernel in
+  NOR `0:HLOS`, its root in the eMMC partition `rootfs`, its settings on
+  `rootfs_data`, f2fs), booted by its own U-Boot `bootcmd`, with Arista's
+  system in slot 1 as the fallback (INSTALL.md). On a unit: the install,
+  booting by itself, `sysupgrade` keeping the settings, and the settings
+  kept across reboots. The fallback into Arista's slot 1 not yet run.
 
 - **All three radios.** radio1 (2.4 GHz) and radio0 (5 GHz) are the
   IPQ6010's (ath11k, OpenWrt's own IPQ6018 firmware), radio2 (6 GHz) the
@@ -60,7 +63,6 @@ Seen working on a unit, from RAM, unless marked otherwise.
 
 ## What doesn't (yet)
 
-- **Installing.** Only the RAM boot (INSTALL.md).
 - **No spanning tree** on `br-lan`: a LAN port added to it and cabled to the
   uplink's switch makes a loop (seen on a lab switch, whose spanning tree
   blocked the uplink).
@@ -72,10 +74,12 @@ Seen working on a unit, from RAM, unless marked otherwise.
 ```
 README.md, INSTALL.md, HARDWARE.md
 model.sh, openwrt.lock, config/      for ../build.sh
-patches/openwrt/                     the device, calibration, kmod-tpm-tis
+patches/openwrt/                     the device, calibration, kmod-tpm-tis,
+                                     sysupgrade, fw_setenv
 files/                               the device tree, the radio firmware and
                                      board-data hotplugs, the board data's
                                      country refresh, the radio-LED hotplug,
+                                     the installer (arista-w318-install),
                                      the Bluetooth bring-up, the Network LED,
                                      the arista-w318-power package, and the
                                      Ethernet driver's fix (qca-nss-dp, the

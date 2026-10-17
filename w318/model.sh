@@ -15,6 +15,7 @@ fix_modes() {
 		$q/etc/hotplug.d/ieee80211/12-arista-w318-leds
 	chmod 0755 $q/etc/init.d/arista-w318-ble $q/etc/init.d/arista-w318-board-data \
 		$q/etc/init.d/arista-w318-lanled $q/usr/libexec/arista-w318-lanled \
+		$q/usr/sbin/arista-w318-install \
 		package/utils/arista-w318-power/files/arista-w318-power \
 		package/utils/arista-w318-power/files/arista-w318-power.init
 }
@@ -22,7 +23,7 @@ fix_modes() {
 # after_build OUT: checks on the collected images
 after_build() {
 	local out=$1 p
-	ls -l "$out"/*$DEVICE-initramfs-uImage.itb
+	ls -l "$out"/*$DEVICE-initramfs-uImage.itb "$out"/*$DEVICE-squashfs-sysupgrade.bin
 	# the QCN9072 card's driver, Bluetooth, the TPM and the power policy
 	for p in kmod-ath11k-pci kmod-hci-uart bluez-utils-extra kmod-tpm-tis-spi \
 		squashfs-tools-unsquashfs arista-w318-power; do
