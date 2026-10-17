@@ -14,8 +14,10 @@ Seen working on a unit unless marked otherwise.
   NOR `0:HLOS`, its root in the eMMC partition `rootfs`, its settings on
   `rootfs_data`, f2fs), booted by its own U-Boot `bootcmd`, with Arista's
   system in slot 1 as the fallback (INSTALL.md). On a unit: the install,
-  booting by itself, `sysupgrade` keeping the settings, and the settings
-  kept across reboots. The fallback into Arista's slot 1 not yet run.
+  booting by itself, `sysupgrade` keeping the settings, the settings kept
+  across reboots, and the fallback (`run arista_boot`) booting Arista's
+  slot 1, after which a power cycle brought OpenWrt back by itself; the
+  environment then differed only in `bootargs`, set to Arista's slot 1.
 
 - **All three radios.** radio1 (2.4 GHz) and radio0 (5 GHz) are the
   IPQ6010's (ath11k, OpenWrt's own IPQ6018 firmware), radio2 (6 GHz) the
