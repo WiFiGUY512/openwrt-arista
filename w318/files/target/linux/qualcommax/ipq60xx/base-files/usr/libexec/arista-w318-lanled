@@ -1,0 +1,29 @@
+#!/bin/sh
+# The W-318's "Network 1/2/3" LED from the links of lan1-3 (see
+# /etc/init.d/arista-w318-lanled): a look every 2 s, a write only on a change.
+
+L=/sys/class/leds
+for c in green amber; do
+	echo none > $L/$c:lan/trigger
+	echo 0 > $L/$c:lan/brightness
+done
+
+last=
+while :; do
+	now=off
+	for p in lan1 lan2 lan3; do
+		[ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" = 1 ] || continue
+		speed=$(cat /sys/class/net/$p/speed 2>/dev/null)
+		if [ "${speed:-0}" -ge 1000 ] 2>/dev/null; then
+			now=green
+			break
+		fi
+		now=amber
+	done
+	if [ "$now" != "$last" ]; then
+		[ $now = green ] && echo 1 > $L/green:lan/brightness || echo 0 > $L/green:lan/brightness
+		[ $now = amber ] && echo 1 > $L/amber:lan/brightness || echo 0 > $L/amber:lan/brightness
+		last=$now
+	fi
+	sleep 2
+done

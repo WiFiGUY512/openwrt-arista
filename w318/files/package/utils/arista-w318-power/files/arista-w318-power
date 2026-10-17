@@ -1,0 +1,235 @@
+#!/bin/sh
+# arista-w318-power: the Arista W-318's PoE power policy, as Arista's own
+# system applies it (/sbin/ap_power.sh, /etc/poe_prof.cfg).
+#
+# The PoE controller reports the class the uplink negotiated on gpio9 and
+# gpio53: 1 1 for 802.3af, 0 1 for 802.3at, 1 0 for 802.3bt. gpio35 is 0
+# when a DC supply is plugged in. A DC supply or 802.3bt is full power. On
+# 802.3at (or af) without a DC supply the USB port's power is cut (gpio73
+# low) and the radios' transmit power capped (Arista's values: 18 dBm at
+# 2.4 GHz, 17 dBm at 5 and 6 GHz); their chains stay as they are, and so does
+# Bluetooth, as on Arista's. Network 1 is a PoE output (PSE, enabled by gpio48
+# low): on only on 802.3bt, never on 802.3at or a DC supply, as the datasheet
+# has it.
+#
+# Without a DC supply, the power a switch reports by LLDP that it allocated
+# on the uplink (lldpd, Power via MDI TLV) decides the class instead of the
+# pins, as on Arista's system: 38.1 W or more is 802.3bt, 25 W or more
+# 802.3at, less 802.3af.
+#
+#	arista-w318-power status	what the input reads, and what is applied
+#	arista-w318-power apply		read the input, apply the policy
+#	arista-w318-power radios	apply the radio caps again (after Wi-Fi restarts)
+#	arista-w318-power monitor	apply again whenever the input changes
+
+STATE=/var/run/arista-w318-power
+
+log() { logger -t arista-w318-power "$*"; }
+
+opt() { uci -q get arista-w318-power.main.$1 || echo "$2"; }
+
+wifi_devices() { uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"; }
+
+tlmm_base() {
+	local c
+	for c in /sys/class/gpio/gpiochip*; do
+		[ "$(cat $c/label 2>/dev/null)" = 1000000.pinctrl ] && { cat $c/base; return; }
+	done
+}
+
+gpio() { # gpio <tlmm gpio>: its number in /sys/class/gpio, exported
+	local n=$(( $(tlmm_base) + $1 ))
+	[ -e /sys/class/gpio/gpio$n ] || echo $n > /sys/class/gpio/export 2>/dev/null
+	echo $n
+}
+
+pin() { # pin <tlmm gpio>: its level, as an input
+	local n=$(gpio $1)
+	[ "$(cat /sys/class/gpio/gpio$n/direction 2>/dev/null)" = in ] ||
+		echo in > /sys/class/gpio/gpio$n/direction 2>/dev/null
+	cat /sys/class/gpio/gpio$n/value 2>/dev/null
+}
+
+drive() { # drive <tlmm gpio> 0|1|in: an output at that level, or let go
+	local n=$(gpio $1)
+	case $2 in
+	in) echo in > /sys/class/gpio/gpio$n/direction ;;
+	0) echo low > /sys/class/gpio/gpio$n/direction ;;
+	1) echo high > /sys/class/gpio/gpio$n/direction ;;
+	esac
+}
+
+class() {
+	case "$1$2" in
+	11) echo 802.3af ;;
+	01) echo 802.3at ;;
+	10) echo 802.3bt ;;
+	*) echo none ;;
+	esac
+}
+
+lldp_mw() { # lldp_mw <port>: the power (mW) a switch allocated on it, by LLDP
+	local kv mw
+	if [ -n "$W318_POWER_LLDP" ]; then
+		# test hook: W318_POWER_LLDP=25000
+		mw=$W318_POWER_LLDP
+	else
+		command -v lldpcli > /dev/null || return 0
+		kv=$(lldpcli -f keyvalue show neighbors ports "$1" details 2>/dev/null)
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.device-type=PSE$" || return 0
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.enabled=yes$" || return 0
+		mw=$(echo "$kv" | sed -n "s/^lldp\.$1\.port\.power\.allocated=\([0-9]*\)$/\1/p" | head -1)
+	fi
+	[ "${mw:-0}" -gt 0 ] 2>/dev/null && echo $mw
+}
+
+mw_class() { # Arista's thresholds (ap_power.sh)
+	if [ $1 -ge 38100 ]; then echo 802.3bt
+	elif [ $1 -ge 25000 ]; then echo 802.3at
+	else echo 802.3af
+	fi
+}
+
+read_inputs() {
+	PINS=$(class $(pin 9) $(pin 53))
+	POE=$PINS LLDP=
+	DC=0
+	[ "$(pin 35)" = 0 ] && DC=1
+	if [ $DC = 0 ] && [ "$(opt lldp 1)" = 1 ]; then
+		LLDP=$(lldp_mw uplink)
+		[ -n "$LLDP" ] && POE=$(mw_class $LLDP)
+	fi
+	if [ $DC = 0 ] && { [ $POE = 802.3at ] || [ $POE = 802.3af ]; }; then
+		LEVEL=limited
+	else
+		LEVEL=full    # DC, 802.3bt, or nothing readable: never degrade on a guess
+	fi
+	# test hook: act as on another supply (W318_POWER_LEVEL=limited|full)
+	[ -n "$W318_POWER_LEVEL" ] && LEVEL=$W318_POWER_LEVEL
+	# turned off: full power whatever the supply
+	[ "$(opt enabled 1)" = 1 ] || LEVEL=full
+}
+
+# The USB port's power: gpio73 low cuts it, let go it is on (Arista's
+# usb_ctrl_func).
+usb_set() { # on|off
+	if [ $1 = off ] && [ ! -e $STATE.usb-off ]; then
+		drive 73 0
+		touch $STATE.usb-off
+		log "USB port off"
+	elif [ $1 = on ] && [ -e $STATE.usb-off ]; then
+		drive 73 in
+		rm -f $STATE.usb-off
+		log "USB port on"
+	fi
+}
+
+# Network 1's PoE output: gpio48 low enables it, high disables it (Arista's
+# enable_pse_functionality).
+pse_set() { # on|off
+	if [ $1 = on ] && [ ! -e $STATE.pse-on ]; then
+		drive 48 0
+		touch $STATE.pse-on
+		log "PoE output on Network 1 on"
+	elif [ $1 = off ] && [ -e $STATE.pse-on ]; then
+		drive 48 1
+		rm -f $STATE.pse-on
+		log "PoE output on Network 1 off"
+	fi
+}
+
+band_cap() { # band_cap <phy>: the cap in dBm for the phy's band
+	local info=$(iw phy $1 info 2>/dev/null)
+	if echo "$info" | grep -q "Band 4:"; then opt txpower_6g 17
+	elif echo "$info" | grep -q "Band 2:"; then opt txpower_5g 17
+	else opt txpower_2g 18
+	fi
+}
+
+# The caps, on every radio; a lower txpower set in uci is kept. mac80211.sh
+# sets each radio's power again when Wi-Fi restarts, so this runs again then
+# (hotplug).
+radios_apply() {
+	local level=$(cat $STATE.level 2>/dev/null || echo full)
+	local sec phy cap user
+	rm -f $STATE.caps.new
+	for sec in $(wifi_devices); do
+		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
+		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
+		user=$(uci -q get wireless.$sec.txpower)
+		if [ $level = limited ] && [ "$(opt radios 1)" = 1 ]; then
+			cap=$(band_cap $phy)
+			[ -n "$user" ] && [ "$user" -le "$cap" ] 2>/dev/null && continue
+			iw phy $phy set txpower limit $((cap * 100)) && echo "$sec $phy $cap" >> $STATE.caps.new
+		elif grep -q "^$sec " $STATE.caps 2>/dev/null; then
+			# was capped: back to what the config says
+			if [ -n "$user" ]; then iw phy $phy set txpower fixed $((user * 100))
+			else iw phy $phy set txpower auto
+			fi
+		fi
+	done
+	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
+}
+
+apply() {
+	read_inputs
+	echo $LEVEL > $STATE.level
+	if [ "$(opt enabled 1)" = 1 ]; then
+		log "power: $LEVEL (uplink $POE, DC $DC)"
+	else
+		log "disabled: full power regardless (uplink $POE, DC $DC)"
+	fi
+	if [ $LEVEL = limited ] && [ "$(opt usb 1)" = 1 ]; then usb_set off; else usb_set on; fi
+	radios_apply
+	# the PoE output wants 802.3bt itself
+	if [ "$(opt pse 1)" = 1 ] && [ $DC = 0 ] && [ $POE = 802.3bt ] && [ $LEVEL = full ]; then
+		pse_set on
+	else
+		pse_set off
+	fi
+	{
+		echo "level=$LEVEL"
+		echo "poe=$POE"
+		echo "dc=$DC"
+	} > $STATE
+}
+
+# Read the input every 30 s; apply again once a new reading has been seen
+# twice in a row, so LLDP that arrives after boot, or a supply that changes,
+# takes effect without a flap on one odd reading.
+monitor() {
+	local seen= applied now
+	while :; do
+		sleep $(opt interval 30)
+		read_inputs
+		now="$LEVEL $POE $DC"
+		applied="$(sed -n 's/^level=//p' $STATE) $(sed -n 's/^poe=//p' $STATE) $(sed -n 's/^dc=//p' $STATE)"
+		if [ "$now" = "$applied" ]; then
+			seen=
+		elif [ "$now" = "$seen" ]; then
+			apply
+			seen=
+		else
+			seen=$now
+		fi
+	done
+}
+
+status() {
+	read_inputs
+	echo "uplink: $POE (pins $PINS${LLDP:+, LLDP $LLDP mW allocated})"
+	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
+	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
+	echo "USB port: $([ -e $STATE.usb-off ] && echo off || echo on)"
+	echo "PoE output on Network 1: $([ -e $STATE.pse-on ] && echo on || echo off)"
+	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
+	return 0
+}
+
+case "$1" in
+apply) apply ;;
+radios) radios_apply ;;
+monitor) monitor ;;
+status|"") status ;;
+*) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

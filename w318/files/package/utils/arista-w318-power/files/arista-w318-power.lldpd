@@ -1,0 +1,27 @@
+#!/bin/sh
+# Arista W-318: LLDP on the uplink, sent and received, as on Arista's system.
+# The power policy reads from it the power the switch allocated on the
+# port. CDP, FDP, EDP and SONMP stay off. An lldpd configuration changed from
+# the package's default is left alone.
+
+. /lib/functions.sh
+
+[ "$(board_name)" = arista,w318 ] || exit 0
+[ "$(uci -q get lldpd.config)" = lldpd ] || exit 0
+[ "$(uci -q get lldpd.config.interface)" = "loopback lan" ] || exit 0
+
+uci -q delete lldpd.config.interface
+uci add_list lldpd.config.interface=uplink
+for p in enable_cdp enable_fdp enable_edp enable_sonmp; do
+	uci set lldpd.config.$p=0
+done
+uci set lldpd.config.enable_lldp=1
+# the switch shows the port as "uplink" rather than by MAC
+uci set lldpd.config.lldp_portidsubtype=ifname
+uci -q delete lldpd.config.readonly_mode
+uci -q delete lldpd.config.lldp_location
+uci commit lldpd
+
+# installed into a running system: start over with the new configuration
+[ -n "$IPKG_INSTROOT" ] || ! /etc/init.d/lldpd running 2>/dev/null || /etc/init.d/lldpd restart
+exit 0

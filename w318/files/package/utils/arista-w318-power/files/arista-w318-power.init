@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+# Apply the W-318's PoE power policy once the uplink has link: the PoE
+# controller's class pins are only settled then (Arista reads them likewise).
+# Then keep watching: the power a switch allocates by LLDP arrives later, and
+# a supply can change while the AP runs.
+
+START=99
+USE_PROCD=1
+
+start_service() {
+	. /lib/functions.sh
+	[ "$(board_name)" = arista,w318 ] || return 0
+	procd_open_instance
+	procd_set_param command /bin/sh -c '
+		for i in $(seq 1 60); do
+			[ "$(cat /sys/class/net/uplink/carrier 2>/dev/null)" = 1 ] && break
+			sleep 2
+		done
+		/usr/sbin/arista-w318-power apply
+		exec /usr/sbin/arista-w318-power monitor'
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger arista-w318-power
+}
+
+reload_service() {
+	/usr/sbin/arista-w318-power apply
+}

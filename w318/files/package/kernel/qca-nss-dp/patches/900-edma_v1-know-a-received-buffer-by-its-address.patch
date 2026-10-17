@@ -1,0 +1,394 @@
+From: WiFiGUY512 <339406050+WiFiGUY512@users.noreply.github.com>
+Date: Fri, 16 Oct 2026 20:00:00 +0000
+Subject: [PATCH] edma_v1: know a received buffer by its address, and say what
+ was wrong with one that is not as expected
+
+A buffer given to the hardware has its place in the rx store written in
+the first word of its preheader, and when the hardware hands a buffer
+back, that word alone was taken to say which buffer it is: read from the
+address the descriptor names and used as an index into rx_skb_store with
+no check of any kind.
+
+On the Arista C-360 that word has been found holding 0x495e4aba (the
+driver then read rx_skb_store far outside the array and the kernel
+stopped in edma_napi), and holding the place of a buffer that had come
+back already ("WARN: empty skb reference in rx_store", after which
+nothing more was received until a reboot: the buffer that had really come
+back was never taken out of the store, and the fill ring stops for good
+at a place whose buffer is still in it).
+
+The address each buffer is given to the hardware at is now kept beside
+it, and a buffer that comes back is known by the address in its
+descriptor; nothing at an address that names no buffer of the store is
+read. The preheader's word is checked against the place the buffer was
+found at. A buffer's place in the store is any free one, not its place
+in the fill ring, so a buffer that does not come back holds one place of
+the store instead of stopping the fill ring for good. Each place in the
+RxDesc ring is cleared once read, so that one read again before the
+hardware has written it names no buffer, rather than one given out again
+at the same address since. A descriptor that names no buffer out with
+the hardware is read again a few times, in case it was read before the
+hardware wrote it, and then passed over with nothing of the store
+touched, nothing unmapped and nothing read. A buffer whose first word was
+written over is dropped. A length no buffer holds is dropped, where
+skb_put() would have stopped the kernel. Each of these says what it saw:
+the descriptor and those beside it, what each place held a lap of the
+ring ago, and the start of the buffer.
+
+A completion on the tx side that names a place outside the tx store is
+passed over too.
+---
+--- a/hal/dp_ops/edma_dp/edma_v1/edma_data_plane.h
++++ b/hal/dp_ops/edma_dp/edma_v1/edma_data_plane.h
+@@ -205,6 +205,21 @@
+ 	struct sk_buff *rx_skb_store[EDMA_RING_SIZE];
+ 	struct sk_buff *tx_skb_store[EDMA_RING_SIZE];
+ 
++	/*
++	 * The address each buffer in the rx store was given to the hardware
++	 * at, by which a buffer that comes back is known; the address each
++	 * place in the RxDesc ring last held; where in the store the next
++	 * free place, and the next buffer to come back, are looked for first;
++	 * how many descriptors have been received, and how many were not as
++	 * expected.
++	 */
++	uint32_t rx_addr_store[EDMA_RING_SIZE];
++	uint32_t rx_last_addr[EDMA_RING_SIZE];
++	uint32_t rx_store_next;
++	uint32_t rx_find_next;
++	uint64_t rx_seen;
++	uint32_t rx_odd;
++
+ 	struct edma_rxfill_ring *rxfill_ring;
+ 			/* Rx Fill Ring, SW is producer */
+ 	struct edma_rxdesc_ring *rxdesc_ring;
+--- a/hal/dp_ops/edma_dp/edma_v1/edma_tx_rx.c
++++ b/hal/dp_ops/edma_dp/edma_v1/edma_tx_rx.c
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include <linux/debugfs.h>
++#include <linux/delay.h>
+ #include <linux/interrupt.h>
+ #include <linux/netdevice.h>
+ #include <linux/phy.h>
+@@ -25,6 +26,30 @@
+ #include "nss_dp_dev.h"
+ 
+ /*
++ * edma_rx_store_free()
++ *	A free place in the rx store, looked for from the one after the last
++ *	taken; EDMA_RING_SIZE where there is none
++ *
++ * A buffer's place in the store is not its place in the fill ring: a buffer
++ * that never comes back then holds one place of the store, and the fill
++ * ring goes on, where it would have stopped for good at that place.
++ */
++static uint32_t edma_rx_store_free(struct edma_hw *ehw)
++{
++	uint32_t i, s;
++
++	for (i = 0; i < EDMA_RING_SIZE; i++) {
++		s = (ehw->rx_store_next + i) % EDMA_RING_SIZE;
++		if (!ehw->rx_skb_store[s]) {
++			ehw->rx_store_next = (s + 1) % EDMA_RING_SIZE;
++			return s;
++		}
++	}
++
++	return EDMA_RING_SIZE;
++}
++
++/*
+  * edma_alloc_rx_buffer()
+  *	Alloc Rx buffers for one RxFill ring
+  */
+@@ -80,10 +105,10 @@
+ 			skb_push(skb, EDMA_RX_PREHDR_SIZE);
+ 
+ 		/*
+-		 * Store the skb in the rx store
++		 * Store the skb in the rx store, at a free place
+ 		 */
+-		store_index = next;
+-		if (ehw->rx_skb_store[store_index] != NULL) {
++		store_index = edma_rx_store_free(ehw);
++		if (unlikely(store_index >= EDMA_RING_SIZE)) {
+ 			dev_kfree_skb_any(skb);
+ 			break;
+ 		}
+@@ -110,6 +135,13 @@
+ 			break;
+ 		}
+ 
++		/*
++		 * The address it is given to the hardware at: what the
++		 * hardware will name it by when it comes back.
++		 */
++		ehw->rx_addr_store[store_index] =
++				le32_to_cpu(rxfill_desc->buffer_addr);
++
+ 		num_alloc++;
+ 		next = counter;
+ 	}
+@@ -173,6 +205,17 @@
+ 		 * buffer address (opaque) of txcmpl
+ 		 */
+ 		store_index = txcmpl->buffer_addr;
++		if (unlikely(store_index < 0 || store_index >= EDMA_RING_SIZE)) {
++			/*
++			 * Not a place in the tx store: followed, it would be
++			 * read from, and written to, memory that is not the
++			 * store's.
++			 */
++			pr_warn_ratelimited("edma tx: a completion names place %d, of %d: cons_idx:%u prod_idx:%u status %x\n",
++				  store_index, EDMA_RING_SIZE, cons_idx,
++				  prod_idx, txcmpl->status);
++			goto next_txcmpl_desc;
++		}
+ 		skb = ehw->tx_skb_store[store_index];
+ 		ehw->tx_skb_store[store_index] = NULL;
+ 
+@@ -266,6 +309,94 @@
+ EXPORT_SYMBOL(nss_phy_tstamp_tx_buf);
+ 
+ /*
++ * How many odd descriptors are said in full; after them, one in a thousand.
++ */
++#define EDMA_RX_REPORTS		60
++
++/*
++ * How many times a place in the ring that names no buffer is read again,
++ * and how long is waited between, in case the hardware had not written it
++ * yet.
++ */
++#define EDMA_RX_READ_AGAIN	5
++#define EDMA_RX_READ_AGAIN_US	10
++
++/*
++ * edma_rx_find()
++ *	Which buffer out with the hardware has this address
++ *
++ * A buffer given to the hardware has its place in the rx store written in
++ * the first word of its preheader, and until now that word alone said which
++ * buffer had come back: read from wherever the descriptor pointed and
++ * followed blindly, as a place in the store, whatever it held. A buffer is
++ * now known by the address it was given to the hardware at, which is what
++ * the descriptor names it by, and nothing at an address that is not one of
++ * those is read. Buffers come back in the order they were given out, the
++ * order of their places in the store, so the place after the last found is
++ * looked at first.
++ */
++static int edma_rx_find(struct edma_hw *ehw, uint32_t baddr)
++{
++	uint32_t i, s;
++
++	if (unlikely(!baddr))
++		return -1;
++
++	for (i = 0; i < EDMA_RING_SIZE; i++) {
++		s = (ehw->rx_find_next + i) % EDMA_RING_SIZE;
++		if (ehw->rx_addr_store[s] == baddr && ehw->rx_skb_store[s]) {
++			ehw->rx_find_next = (s + 1) % EDMA_RING_SIZE;
++			return s;
++		}
++	}
++
++	return -1;
++}
++
++/*
++ * edma_rx_odd()
++ *	Say all that is known of a descriptor that was not as expected. The
++ *	buffer's first word, and its start, only where it is a buffer of the
++ *	store (found): an address that names none is not read.
++ */
++static void edma_rx_odd(struct edma_hw *ehw, struct edma_rxdesc_ring *ring,
++			const char *what, uint16_t cons_idx, uint16_t prod_idx,
++			uint32_t baddr, uint32_t status, uint32_t first,
++			uint32_t baddr0, uint32_t status0, int found, int reads)
++{
++	struct edma_rxdesc_desc *b, *a;
++	uint16_t before = cons_idx ? cons_idx - 1 : ring->count - 1;
++	uint16_t after = (cons_idx + 1 == ring->count) ? 0 : cons_idx + 1;
++	int i, out = 0;
++
++	ehw->rx_odd++;
++	if (ehw->rx_odd > EDMA_RX_REPORTS && (ehw->rx_odd % 1000))
++		return;
++
++	for (i = 0; i < EDMA_RING_SIZE; i++)
++		if (ehw->rx_skb_store[i])
++			out++;
++
++	b = EDMA_RXDESC_DESC(ring, before);
++	a = EDMA_RXDESC_DESC(ring, after);
++	pr_warn("edma rx: %s (%u so far, %llu received): place %u of %u, prod %u now %u\n",
++		what, ehw->rx_odd, (unsigned long long)ehw->rx_seen, cons_idx,
++		ring->count, prod_idx,
++		edma_reg_read(EDMA_REG_RXDESC_PROD_IDX(ring->id)) &
++			EDMA_RXDESC_PROD_IDX_MASK);
++	pr_warn("edma rx:   addr %08x status %08x first word %08x; as first read: addr %08x status %08x; read %d times; found in store place %d; %d buffers out\n",
++		baddr, status, first, baddr0, status0, reads, found, out);
++	pr_warn("edma rx:   this place last held %08x; before it [%u] %08x %08x (held %08x); after it [%u] %08x %08x (held %08x)\n",
++		ehw->rx_last_addr[cons_idx],
++		before, b->buffer_addr, b->status, ehw->rx_last_addr[before],
++		after, a->buffer_addr, a->status, ehw->rx_last_addr[after]);
++	if (found >= 0)
++		print_hex_dump(KERN_WARNING, "edma rx:   buffer ",
++			       DUMP_PREFIX_OFFSET, 16, 1,
++			       phys_to_virt(baddr), 96, true);
++}
++
++/*
+  * edma_clean_rx()
+  *	Reap Rx descriptors
+  */
+@@ -284,6 +415,8 @@
+ 	uint16_t cons_idx = 0;
+ 	uint32_t work_done = 0;
+ 	int store_index;
++	uint32_t baddr, status, baddr0, status0;
++	int reads;
+ 
+ 	/*
+ 	 * Read Rx ring consumer index
+@@ -306,27 +439,87 @@
+ 			break;
+ 
+ 		rxdesc_desc = EDMA_RXDESC_DESC(rxdesc_ring, cons_idx);
++		ehw->rx_seen++;
++
++		/*
++		 * The buffer the hardware says has come back: its address,
++		 * and how long what is in it is. Read once, and gone by from
++		 * then on.
++		 */
++		baddr0 = baddr = le32_to_cpu(rxdesc_desc->buffer_addr);
++		status0 = status = le32_to_cpu(rxdesc_desc->status);
++
++		/*
++		 * Which of the buffers out with the hardware it is. Where it
++		 * is none of them, the place is read again a few times: read
++		 * before the hardware had written it, it holds 0 (each place
++		 * is cleared once read, at next_rx_desc).
++		 */
++		store_index = edma_rx_find(ehw, baddr);
++		reads = 1;
++		while (unlikely(store_index < 0) &&
++		       reads <= EDMA_RX_READ_AGAIN) {
++			udelay(EDMA_RX_READ_AGAIN_US);
++			baddr = le32_to_cpu(rxdesc_desc->buffer_addr);
++			status = le32_to_cpu(rxdesc_desc->status);
++			store_index = edma_rx_find(ehw, baddr);
++			reads++;
++		}
++
++		if (unlikely(store_index < 0)) {
++			/*
++			 * No buffer out with the hardware has this address.
++			 * Nothing of the store is touched for it, nothing is
++			 * unmapped, and nothing there is read: the memory is
++			 * not this driver's to speak for. The buffer the
++			 * hardware did use, if any, keeps its place in the
++			 * store (edma_rx_store_free).
++			 */
++			edma_rx_odd(ehw, rxdesc_ring,
++				    "no buffer out has this address",
++				    cons_idx, prod_idx, baddr, status, ~0U,
++				    baddr0, status0, store_index, reads);
++			goto next_rx_desc;
++		}
++
++		if (unlikely(reads > 1))
++			edma_rx_odd(ehw, rxdesc_ring,
++				    "a place read before it was written",
++				    cons_idx, prod_idx, baddr, status, ~0U,
++				    baddr0, status0, store_index, reads);
++
++		ehw->rx_last_addr[cons_idx] = baddr;
+ 
+ 		/*
+ 		 * Get Rx preheader
+ 		 */
+-		rxph = (struct edma_rx_preheader *)
+-			phys_to_virt(rxdesc_desc->buffer_addr);
++		rxph = (struct edma_rx_preheader *)phys_to_virt(baddr);
++
++		skb = ehw->rx_skb_store[store_index];
++		ehw->rx_skb_store[store_index] = NULL;
++		ehw->rx_addr_store[store_index] = 0;
+ 
+ 		/*
+ 		 * DMA unmap Rx buffer
+ 		 */
+ 		dma_unmap_single(&pdev->dev,
+-				 rxdesc_desc->buffer_addr,
++				 baddr,
+ 				 ehw->rx_alloc_size,
+ 				 DMA_FROM_DEVICE);
+ 
+-		store_index = rxph->opaque;
+-		skb = ehw->rx_skb_store[store_index];
+-		ehw->rx_skb_store[store_index] = NULL;
+-		if (unlikely(!skb)) {
+-			pr_warn("WARN: empty skb reference in rx_store:%d\n",
+-					cons_idx);
++		/*
++		 * What the hardware left where the buffer's place was
++		 * written. A buffer whose own word of its place was written
++		 * over has been written to by something that should not
++		 * have: what is in it is not passed on.
++		 */
++		if (unlikely(rxph->opaque != store_index)) {
++			edma_rx_odd(ehw, rxdesc_ring,
++				    "a buffer's first word was written over",
++				    cons_idx, prod_idx, baddr, status,
++				    rxph->opaque, baddr0, status0,
++				    store_index, reads);
++			dev_kfree_skb_any(skb);
+ 			goto next_rx_desc;
+ 		}
+ 
+@@ -347,7 +540,23 @@
+ 		/*
+ 		 * Get packet length
+ 		 */
+-		pkt_length = rxdesc_desc->status & EDMA_RXDESC_PACKET_LEN_MASK;
++		pkt_length = status & EDMA_RXDESC_PACKET_LEN_MASK;
++
++		/*
++		 * A length the buffer cannot hold: of a frame longer than a
++		 * buffer, which this driver does not put together, or of a
++		 * descriptor that is not right. skb_put() would stop the
++		 * kernel on it.
++		 */
++		if (unlikely(pkt_length > ehw->rx_alloc_size - EDMA_RX_PREHDR_SIZE)) {
++			edma_rx_odd(ehw, rxdesc_ring,
++				    "a length no buffer holds",
++				    cons_idx, prod_idx, baddr, status,
++				    rxph->opaque, baddr0, status0,
++				    store_index, reads);
++			dev_kfree_skb_any(skb);
++			goto next_rx_desc;
++		}
+ 
+ 		if (unlikely((src_port_num < EDMA_START_GMACS) ||
+ 			(src_port_num > EDMA_MAX_GMACS))) {
+@@ -419,6 +628,16 @@
+ 
+ next_rx_desc:
+ 		/*
++		 * The place is read, and what it names is cleared: read again a
++		 * lap from now before the hardware has written it, it names no
++		 * buffer, rather than the one it named this lap, whose address
++		 * may by then be a new buffer's that the hardware still has.
++		 * The hardware writes a place only once it is given back (the
++		 * consumer index, below).
++		 */
++		rxdesc_desc->buffer_addr = 0;
++
++		/*
+ 		 * Update consumer index
+ 		 */
+ 		if (++cons_idx == rxdesc_ring->count)

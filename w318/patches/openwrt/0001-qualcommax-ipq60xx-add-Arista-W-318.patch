@@ -1,0 +1,69 @@
+Subject: qualcommax: ipq60xx: add Arista W-318
+
+The device recipe (for now a FIT kernel and the initramfs, booted from RAM), the network roles (the uplink is the LAN, a DHCP client, with the unit's MAC from 0:ART; the three LAN ports stay in no bridge, so a LAN port cabled to the uplink's switch makes no loop) and the uplink LED's two colours (green at 2.5 Gb/s, orange slower). In the image: the QCN9072 card (ath11k-pci), the Bluetooth controller (H4), the TPM on SPI and USB storage.
+
+diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
+index 7e38d384a8..633c6f1b10 100644
+--- a/target/linux/qualcommax/image/ipq60xx.mk
++++ b/target/linux/qualcommax/image/ipq60xx.mk
+@@ -35,6 +35,20 @@ define Device/alfa-network_ap120c-ax
+ endef
+ TARGET_DEVICES += alfa-network_ap120c-ax
+ 
++define Device/arista_w318
++	$(call Device/FitImage)
++	DEVICE_VENDOR := Arista
++	DEVICE_MODEL := W-318
++	SOC := ipq6010
++	DEVICE_DTS := arista_w318
++	DEVICE_DTS_CONFIG := config@cp01-c3
++	DEVICE_PACKAGES := kmod-ath11k-pci squashfs-tools-unsquashfs \
++		kmod-bluetooth kmod-hci-uart bluez-utils bluez-utils-extra \
++		kmod-tpm-tis-spi kmod-usb-storage kmod-usb-storage-uas kmod-fs-vfat \
++		kmod-nls-cp437 kmod-nls-iso8859-1
++endef
++TARGET_DEVICES += arista_w318
++
+ define Device/cambiumnetworks_xe3-4
+ 	$(call Device/FitImage)
+ 	$(call Device/UbiFit)
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
+index 2f39503695..c9366539a2 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
+@@ -7,6 +7,10 @@ board_config_update
+ board=$(board_name)
+ 
+ case "$board" in
++arista,w318)
++	ucidef_set_led_netdev "uplink-2g5" "Uplink 2.5G" "green:uplink" "uplink" "link_2500"
++	ucidef_set_led_netdev "uplink" "Uplink" "orange:uplink" "uplink" "link_10 link_100 link_1000"
++	;;
+ linksys,mr7350)
+ 	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:00:green:lan" "lan1" "link_10 link_100 link_1000"
+ 	ucidef_set_led_netdev "lan1-port-traffic" "LAN1-PORT-TRAFFIC" "90000.mdio-1:00:orange:lan" "lan1" "tx rx link_10 link_100 link_1000"
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
+index b8b22bcffe..358a21ffa6 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
+@@ -18,6 +18,9 @@ ipq60xx_setup_interfaces()
+ 	alfa-network,ap120c-ax)
+ 		ucidef_set_interfaces_lan_wan "lan" "wan"
+ 		;;
++	arista,w318)
++		ucidef_set_interface_lan "uplink" "dhcp"
++		;;
+ 	cambiumnetworks,xe3-4)
+ 		ucidef_set_interface_lan "lan1 lan2" "dhcp"
+ 		;;
+@@ -57,6 +60,10 @@ ipq60xx_setup_macs()
+ 	alfa-network,ap120c-ax)
+ 		label_mac=$(mtd_get_mac_binary 0:ART 12)
+ 		;;
++	arista,w318)
++		label_mac=$(mtd_get_mac_binary 0:ART 0x0)
++		lan_mac=$label_mac
++		;;
+ 	qihoo,360v6)
+ 		lan_mac=$(mtd_get_mac_ascii factory lanMac)
+ 		wan_mac=$(macaddr_add "$lan_mac" 1)

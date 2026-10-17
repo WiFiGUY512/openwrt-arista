@@ -1,0 +1,94 @@
+#!/bin/sh
+#
+# Arista W-318: the board data of the IPQ6010's radios and of the QCN9072
+# card (ath11k's QCN9074), from the Arista system in eMMC slot 1, when ath11k
+# first asks for it. The firmware of the card comes from
+# 12-ath11k-vendor-firmware.
+#
+# Arista keeps a set of board data per country group in /lib/boarddata/
+# radio12/<group>/ (the IPQ6010) and radio3/ (the card: its own file, and
+# one per group for the few groups that have one), and copies the matching
+# set in at every boot (link_board_data in its /etc/country_map.cfg). This
+# takes the same files, the group from the country of the wireless
+# configuration; FCC_CE where the country has no group of its own, as Arista
+# does (whose system then also turns its 6 GHz radio off; here the
+# regulatory database decides). Each file written gets a .source next to it.
+#
+# A fresh install has no country yet, so its first boot takes FCC_CE's.
+# Run with REFRESH=1 (by /etc/init.d/arista-w318-board-data, at boot and
+# whenever the wireless configuration changes) it replaces both files when
+# the country now wants another group's; the radios read them at their next
+# start (a reboot). Where the new files cannot be had, the ones there stay.
+
+case "$FIRMWARE" in
+"ath11k/IPQ6018/hw1.0/board.bin"|\
+"ath11k/QCN9074/hw1.0/board.bin") ;;
+*) exit 0 ;;
+esac
+[ -e "/lib/firmware/$FIRMWARE" ] && [ -z "$REFRESH" ] && exit 0
+
+. /lib/functions.sh
+
+[ "$(board_name)" = arista,w318 ] || exit 0
+
+BD=lib/boarddata
+IPQ=/lib/firmware/ath11k/IPQ6018/hw1.0
+QCN=/lib/firmware/ath11k/QCN9074/hw1.0
+
+# Arista's country groups (ISO 3166 numeric codes in its country_map.cfg)
+country_group() {
+	case "$1" in
+	AU) echo AU ;;
+	CA) echo IC ;;
+	GB) echo UK ;;
+	KR) echo KCC ;;
+	BR) echo BZ ;;
+	JP) echo JP ;;
+	SA|SG|JM|TH|MX|QA|TW|ZA|IL) echo SA_SG_JM ;;
+	*) echo FCC_CE ;;
+	esac
+}
+
+country=$(uci -q show wireless | sed -n "s/^wireless\.[^.]*\.country='\([A-Z][A-Z]\)'$/\1/p" | head -n 1)
+group=$(country_group "$country")
+# the card's file: its own, except for the groups that have one
+case $group in
+KCC|BZ|SA_SG_JM|JP) g3=$group/ ;;
+*) g3= ;;
+esac
+
+# refreshed: nothing to do where both files are already this group's
+if [ -n "$REFRESH" ] &&
+   [ "$(cut -d' ' -f1 $IPQ/board.bin.source 2>/dev/null)" = "$group" ] &&
+   [ "$(cut -d' ' -f1 $QCN/board.bin.source 2>/dev/null)" = "$group" ]; then
+	exit 0
+fi
+
+dev=$(find_mmc_part rootfs_1)
+[ -n "$dev" ] || exit 0
+tmp=$(mktemp -d)
+unsquashfs -n -d "$tmp" "$dev" $BD/radio12/$group/bdwlan.b13 \
+	$BD/radio3/${g3}bdwlan.ba7 > /dev/null 2>&1
+
+b12=$tmp/$BD/radio12/$group/bdwlan.b13
+b3=$tmp/$BD/radio3/${g3}bdwlan.ba7
+
+if [ -s "$b12" ] && { [ -n "$REFRESH" ] || [ ! -e $IPQ/board.bin ]; }; then
+	mkdir -p $IPQ
+	cp "$b12" $IPQ/board.bin.tmp && mv $IPQ/board.bin.tmp $IPQ/board.bin &&
+		echo "$group ${b12#$tmp/}" > $IPQ/board.bin.source
+fi
+if [ -s "$b3" ] && { [ -n "$REFRESH" ] || [ ! -e $QCN/board.bin ]; }; then
+	mkdir -p $QCN
+	cp "$b3" $QCN/board.bin.tmp && mv $QCN/board.bin.tmp $QCN/board.bin &&
+		echo "$group ${b3#$tmp/}" > $QCN/board.bin.source
+fi
+rm -rf "$tmp"
+
+if [ -n "$REFRESH" ]; then
+	logger -t arista-w318-board-data "board data now $(cat $IPQ/board.bin.source 2>/dev/null) / $(cat $QCN/board.bin.source 2>/dev/null), for country ${country:-unset}, from the radios' next start (reboot)"
+elif [ -s "/lib/firmware/$FIRMWARE" ]; then
+	logger -t arista-w318-board-data "$FIRMWARE: $group board data"
+else
+	logger -t arista-w318-board-data "no board data for $FIRMWARE in the Arista system"
+fi

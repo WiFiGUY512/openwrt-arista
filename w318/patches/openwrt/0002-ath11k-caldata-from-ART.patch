@@ -1,0 +1,24 @@
+Subject: qualcommax: ipq60xx: Arista W-318 calibration from ART
+
+Each radio's calibration comes from the unit's own 0:ART partition, at the same offsets as the Cambium XE3-4 (the same IPQ6018 reference design): the IPQ6010's at 0x1000, the QCN9072 card's at 0x26800, as Arista's read_caldata_to_fs.sh reads them. Both carry the radios' MACs.
+
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+index 8d323563bf..503f6156fe 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -19,6 +19,7 @@ case "$FIRMWARE" in
+ 		ath11k_patch_mac $(macaddr_add $label_mac 1) 0
+ 		ath11k_set_macflag
+ 		;;
++	arista,w318|\
+ 	cambiumnetworks,xe3-4)
+ 		caldata_extract "0:ART" 0x1000 0x10000
+ 		;;
+@@ -73,6 +74,7 @@ case "$FIRMWARE" in
+ 	;;
+ "ath11k/QCN9074/hw1.0/cal-pci-0000:01:00.0.bin")
+ 	case "$board" in
++	arista,w318|\
+ 	cambiumnetworks,xe3-4)
+ 		caldata_extract "0:ART" 0x26800 0x20000
+ 		;;
