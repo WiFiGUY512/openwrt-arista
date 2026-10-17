@@ -1,4 +1,4 @@
-# Arista W-318 — hardware notes
+# Arista W-318: hardware
 
 What the port is built on: read from a unit (its console, Arista's device
 tree as U-Boot prints it, Arista's own system read from its slots, and

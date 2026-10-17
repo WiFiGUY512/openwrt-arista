@@ -125,7 +125,8 @@ usb_set() { # on|off
 }
 
 # Network 1's PoE output: gpio48 low enables it, high disables it (Arista's
-# enable_pse_functionality).
+# enable_pse_functionality). Until driven it is an input that reads high (off),
+# so it is only driven once the policy turns the output on.
 pse_set() { # on|off
 	if [ $1 = on ] && [ ! -e $STATE.pse-on ]; then
 		drive 48 0

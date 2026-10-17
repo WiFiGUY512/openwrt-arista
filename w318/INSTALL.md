@@ -2,7 +2,7 @@
 
 OpenWrt takes Arista's slot 0 and keeps slot 1, Arista's system, as the
 fallback. Installing is: boot this repo's initramfs from RAM (section 2),
-then run `arista-w318-install` in it (section 3).
+then run `arista-w318-install` in it (sections 3 and 4).
 
 ## What you get
 
@@ -24,15 +24,17 @@ kernel from `0:HLOS` and boots it, and if that fails runs Arista's boot with
 `pri=1`, which is slot 1. Arista's boot saves the environment on every boot,
 so the fallback first puts Arista's own settings back.
 
-## What you need
+## You need
 
-* The console: the RJ-45 console port, 115200 8N1, no flow control.
-* A TFTP server on the W-318's network with
-  `openwrt-qualcommax-ipq60xx-arista_w318-initramfs-uImage.itb`, and
-  `openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin` where the
-  W-318 can fetch it (or `scp` it over), both from `out/w318/<version>/`.
+* The console cable: RJ-45 rollover (RS-232, not TTL) to the W-318's console
+  port, 115200 8N1, no flow control.
+* A TFTP server reachable on the uplink's network, holding
+  `openwrt-qualcommax-ipq60xx-arista_w318-initramfs-uImage.itb`.
+* `openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin` on the PC.
+* Both from the [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases)
+  or your own build's `out/w318/<version>/`.
 * The uplink port cabled to that network (it takes PoE).
-* For a backup: a USB stick (FAT32), or a PC to copy partitions to.
+* For the backup: a USB stick (FAT32), or the PC.
 
 ## 1. Stop U-Boot
 
@@ -67,41 +69,65 @@ console (`ip -4 addr show br-lan`) or in your DHCP server's leases. SSH as
 root, no password. This alone writes nothing: a power cycle brings Arista
 back.
 
-## 3. Install
+Copy the sysupgrade image over from the PC:
 
-Copy the sysupgrade image to `/tmp` of the RAM system, then:
+```
+scp -O openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin root@<AP>:/tmp/
+```
+
+## 3. Check, and back up the flash (strongly recommended)
 
 ```
 arista-w318-install --dry-run /tmp/openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin
 ```
 
-It checks the unit, the flash layout, the image, ART and slot 1, and writes
-nothing. With a USB stick mounted (say at `/mnt`), `--backup /mnt` saves
-every NOR partition, the GPT and the two eMMC partitions it will write
-(gzipped, each checked against the flash); **ART holds this unit's
-calibration and MACs and exists nowhere else**. Then without `--dry-run`:
+checks the unit, the flash layout, the image, ART and slot 1, and writes
+nothing. With a USB stick in the W-318's USB port, mount it and add
+`--backup`:
+
+```
+mount /dev/sda1 /mnt
+arista-w318-install --dry-run --backup /mnt /tmp/openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin
+```
+
+It saves every NOR partition, the GPT and the two eMMC partitions the
+install writes, gzipped, each checked against the flash, in a directory named
+after the unit. Copy that directory to the PC. **`0:ART` holds this unit's
+calibration and MACs and exists nowhere else.**
+
+## 4. Install
 
 ```
 arista-w318-install /tmp/openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin
 ```
 
-It asks for the last four hex digits of the unit's MAC, then writes, in this
-order: the U-Boot environment (once: `owrt_boot`, `arista_boot`, `bootcmd`,
-`pri=1`), the root to `rootfs`, the first 4 MiB of `rootfs_data` wiped, and
-the kernel to `0:HLOS`, each read back. Should it stop part way, the unit
-boots Arista's slot 1. The last line says `W318-INSTALL-RESULT: OK` or what
-failed. Then `reboot`.
+It runs the checks again, asks for the last four hex digits of the unit's
+MAC (as on its label), then writes, in this order:
 
-## 4. After
+1. the U-Boot environment, once: `owrt_boot`, `arista_boot`, `bootcmd`,
+   `pri=1` (read back);
+2. `0:HLOS` erased (read back blank), so that from here until the kernel is
+   written U-Boot finds no OpenWrt kernel and boots Arista's slot 1;
+3. the root to `rootfs` (read back);
+4. the first 4 MiB of `rootfs_data` wiped;
+5. the kernel to `0:HLOS` (read back).
 
-OpenWrt boots from flash by itself; its first boot makes the overlay on
-`rootfs_data`. Wi-Fi starts off, as OpenWrt's default. The radios take
-Arista's FCC_CE board data (the US and the EU) until a country is set; then
-the country's group's, from the radios' next start (a reboot).
+Should it stop part way, the unit boots Arista's slot 1, and the install can
+be run again from section 2. The last line says `W318-INSTALL-RESULT: OK` or
+what failed. Then `reboot`.
 
-Updates: `sysupgrade` with a newer `squashfs-sysupgrade.bin` (LuCI or the
-command line); it keeps the settings unless told not to. Slot 1 is never
-touched.
+## First boot
+
+* OpenWrt boots from flash by itself; its first boot makes the overlay on
+  `rootfs_data`. It takes an address by DHCP on the uplink, as in section 2.
+* **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device: press `f`
+  and Enter on the console when the boot offers it.
+* Wi-Fi starts off, as OpenWrt's default. The radios take Arista's FCC_CE
+  board data (the US and the EU) until a country is set; then the country's
+  group's, from the radios' next start (a reboot).
+* Updates: `sysupgrade` with a newer `squashfs-sysupgrade.bin` (LuCI or the
+  command line); it keeps the settings unless told not to. Slot 1 is never
+  touched.
 
 ## Back to Arista
 

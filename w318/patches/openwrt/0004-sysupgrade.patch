@@ -3,7 +3,7 @@ Subject: qualcommax: ipq60xx: Arista W-318 sysupgrade
 sysupgrade writes the kernel to NOR 0:HLOS and the squashfs to the eMMC partition named "rootfs" (Arista's slot 0), and keeps the settings in the one named "rootfs_data" (emmc_copy_config). Arista's slot 1 is not touched: it is the fallback. The kernel is erased first and written last, so a write cut short boots the fallback.
 
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
-index d31363521f..179979d3f4 100644
+index d31363521f..4d28b3dcef 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
 @@ -111,6 +111,20 @@ platform_do_upgrade() {
@@ -20,7 +20,7 @@ index d31363521f..179979d3f4 100644
 +		# (mtd takes "0:HLOS" for two devices: its device path instead)
 +		local dir=$(tar tf "$1" | grep -m 1 '^sysupgrade-.*/$')
 +		local hlos=/dev/mtd$(find_mtd_index 0:HLOS)
-+		mtd erase "$hlos"
++		[ -c "$hlos" ] && mtd erase "$hlos" || return 1
 +		emmc_do_upgrade "$1"
 +		tar xf "$1" "${dir}kernel" -O | mtd write - "$hlos"
 +		;;

@@ -21,16 +21,20 @@
 #      fw_setenv -s, and not at all when it is already right: owrt_boot,
 #      which boots OpenWrt from NOR 0:HLOS; arista_boot, which puts Arista's
 #      settings back and runs Arista's own boot with pri=1 (slot 1); and a
-#      bootcmd running the one, then the other. It is written first: from
-#      then on, whatever stops the install, the unit boots slot 1's Arista.
-#   4. (not with --dry-run) The squashfs to "rootfs", the start of
-#      "rootfs_data" wiped (OpenWrt makes its overlay there at first boot),
-#      and the kernel to NOR 0:HLOS last, each read back and compared.
+#      bootcmd running the one, then the other. Then NOR 0:HLOS is erased
+#      and checked blank, so owrt_boot finds no kernel there: from then on,
+#      whatever stops the install, the unit boots slot 1's Arista.
+#   4. (not with --dry-run) The squashfs to "rootfs" (read back and
+#      compared), the start of "rootfs_data" wiped (OpenWrt makes its overlay
+#      there at first boot), and the kernel to NOR 0:HLOS last (read back and
+#      compared).
 #
 # Nothing else is written: in NOR only 0:HLOS and the U-Boot environment, on
-# the eMMC only "rootfs" and the start of "rootfs_data".
-# Without --yes it asks for the last four hex digits of the unit's MAC before
-# writing. The last line is W318-INSTALL-RESULT: OK ... or FAILED: ...
+# the eMMC only "rootfs" and the start of "rootfs_data". Interrupted, it can
+# be run again from the start.
+# Without --yes it asks for the last four hex digits of the unit's MAC (as on
+# its label) before writing. The last line is W318-INSTALL-RESULT: OK ... or
+# FAILED: ...
 
 # (no set -u: /lib/functions.sh reads optional arguments and unset variables)
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -64,6 +68,7 @@ fail() {
 mkdir /tmp/arista-w318-install.lock 2>/dev/null || fail "another arista-w318-install is running"
 TMP=/tmp/arista-w318-install.d
 trap 'rm -rf "$TMP"; rmdir /tmp/arista-w318-install.lock 2>/dev/null' EXIT
+trap 'exit 1' INT TERM HUP
 rm -rf "$TMP"; mkdir -p "$TMP"
 
 . /lib/functions.sh
@@ -89,11 +94,19 @@ head_md5() { # head_md5 <dev> <bytes>
 	dd if="$1" bs=65536 2>/dev/null | head -c "$2" | md5sum | cut -d' ' -f1
 }
 
+# true when a device reads back as all 0xff (erased NOR)
+blank() { # blank <dev>
+	echo 3 > /proc/sys/vm/drop_caches
+	[ "$(dd if="$1" bs=65536 2>/dev/null | tr -d '\377' | wc -c)" -eq 0 ]
+}
+
 # ------------------------------------------------------------ 1. checks
 
 [ -n "$IMG" ] || fail "no image given (SYSUPGRADE.BIN)"
 [ "$(board_name)" = arista,w318 ] || fail "not an Arista W-318 ($(board_name))"
-grep -qs 'root=/dev/mmcblk' /proc/cmdline && fail "not running from RAM (root on the eMMC): boot the initramfs"
+# the RAM system's root is a tmpfs (as sysupgrade tells), an installed one's an overlay
+[ "$(awk '$2 == "/" { t = $3 } END { print t }' /proc/mounts)" = tmpfs ] ||
+	fail "not running from RAM: boot the initramfs"
 grep -q '^/dev/mmcblk' /proc/mounts && fail "something on the eMMC is mounted"
 
 ROOT=$(find_mmc_part rootfs)
@@ -123,8 +136,11 @@ case "$MAC" in ""|ff:ff:ff:ff:ff:ff|00:00:00:00:00:00) fail "no MAC in ART ($MAC
 say "unit $MAC"
 
 # slot 1: Arista's kernel and its root with the radios' files
-[ "$(hexdump -n 16 -e '16/1 "%02x"' "$(mtd_dev 0:HLOS_1)")" != ffffffffffffffffffffffffffffffff ] ||
-	fail "0:HLOS_1 is empty: no Arista kernel in slot 1 for the fallback"
+# Arista's kernels are signed ELF images (7f 45 4c 46)
+case "$(hexdump -n 4 -e '4/1 "%02x"' "$(mtd_dev 0:HLOS_1)")" in
+7f454c46|d00dfeed) ;;
+*) fail "0:HLOS_1 holds no kernel image: no Arista kernel in slot 1 for the fallback" ;;
+esac
 [ "$(head -c 4 "$ROOT1")" = hsqs ] || fail "rootfs_1 holds no squashfs: no Arista system in slot 1"
 unsquashfs -l -n "$ROOT1" 2>/dev/null > "$TMP/slot1.list"
 for f in lib/firmware/IPQ6018/WIFI_FW/qcn9000/amss.bin lib/firmware/IPQ6018/WIFI_FW/qcn9000/m3.bin \
@@ -181,7 +197,7 @@ fi
 if [ $YES != 1 ]; then
 	printf 'This writes OpenWrt to slot 0 of the W-318 %s. Type the last four hex digits of its MAC to go on: ' "$MAC"
 	read -r a
-	[ "$a" = "$(echo $MAC | tr -d : | tail -c 5)" ] || fail "not confirmed"
+	[ "$(echo "$a" | tr A-F a-f)" = "$(echo $MAC | tr -d : | tail -c 5)" ] || fail "not confirmed"
 fi
 
 # ------------------------------------------------------------ 3. environment
@@ -206,6 +222,12 @@ else
 	say "U-Boot environment written (once): bootcmd runs owrt_boot, then arista_boot; pri=1"
 fi
 
+# by its device path: mtd takes "0:HLOS" for two devices, "0" and "HLOS"
+H=$(mtd_dev 0:HLOS)
+mtd erase "$H" || fail "erasing 0:HLOS"
+blank "$H" || fail "0:HLOS does not read back blank"
+say "0:HLOS erased: until the kernel is written, the unit boots slot 1"
+
 # ------------------------------------------------------------ 4. slot 0
 
 dd if="$R" of="$ROOT" bs=65536 2>/dev/null || fail "writing rootfs"
@@ -216,9 +238,8 @@ dd if=/dev/zero of="$DATA" bs=65536 count=64 2>/dev/null || fail "wiping rootfs_
 sync
 say "rootfs_data's first 4 MiB wiped"
 
-# by its device path: mtd takes "0:HLOS" for two devices, "0" and "HLOS"
-mtd write "$K" "$(mtd_dev 0:HLOS)" || fail "writing 0:HLOS"
-[ "$(head_md5 "$(mtd_dev 0:HLOS)" $KLEN)" = "$KMD5" ] || fail "0:HLOS does not read back as written"
+mtd write "$K" "$H" || fail "writing 0:HLOS"
+[ "$(head_md5 "$H" $KLEN)" = "$KMD5" ] || fail "0:HLOS does not read back as written"
 say "kernel written to 0:HLOS and read back"
 
 echo "W318-INSTALL-RESULT: OK: OpenWrt is in slot 0; reboot to start it"
