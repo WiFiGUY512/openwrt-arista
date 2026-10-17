@@ -76,7 +76,14 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - `btmgmt` works. BlueZ's daemon isn't in the image; add `bluez-daemon` for
     `bluetoothctl`.
 - **The scan radio, airscan.** A service that only ever listens, and only on
-  radio2, so the serving radios never scan or leave their channels. It runs:
+  radio2, so the serving radios never scan or leave their channels. That
+  holds while airscan has the radio: it marks it (`airscan '1'` in its
+  wifi-device section), and what keeps the serving radios off scanning
+  (Aeolus) reads the mark. Turned off (`uci set airscan.main.enabled=0`,
+  commit, restart airscan), airscan takes the mark away and the AP is like
+  any OpenWrt AP: its serving radios scan when asked to (LuCI's Scan, a
+  channel on auto when the Wi-Fi starts). radio2 stays disabled until its
+  own `disabled` option is set to 0. It runs:
   - a spectrum survey (ath11k spectral scan; 20 MHz windows on 2.4 and 5 GHz,
     80 MHz ones on 6 GHz with 40 MHz for channels 225-229 and 20 for 233;
     per window, the share of samples above -82 dBm per 20 MHz, +3 dB per

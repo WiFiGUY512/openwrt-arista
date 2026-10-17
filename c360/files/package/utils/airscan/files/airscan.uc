@@ -146,21 +146,27 @@ function find_phy(pci) {
 	return null;
 }
 
-// Keep netifd off the scan radio. Only the scan radio's own section is touched.
+// Keep netifd off the scan radio, and mark it as the scan radio (airscan
+// '1'), which the init script takes away when airscan is turned off. Only the
+// scan radio's own section is touched.
 function release_from_netifd(pci) {
 	let c = uci.cursor();
-	let changed = false;
+	let taken = false, marked = false;
 	c.foreach("wireless", "wifi-device", (s) => {
 		if (substr(s.path || "", -length(pci)) != pci) return;
 		if (s.disabled != "1") {
 			c.set("wireless", s[".name"], "disabled", "1");
-			changed = true;
+			taken = true;
 		}
-		c.set("wireless", s[".name"], "airscan", "1");
+		if (s.airscan != "1") {
+			c.set("wireless", s[".name"], "airscan", "1");
+			marked = true;
+		}
 		radio.section = s[".name"];
 	});
-	if (changed) {
+	if (taken || marked)
 		c.commit("wireless");
+	if (taken) {
 		log(`took ${radio.section} (${pci}) out of netifd for scanning`);
 		sh(`ubus call network.wireless down '{"device":"${radio.section}"}'`);
 	}

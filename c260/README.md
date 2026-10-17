@@ -33,14 +33,24 @@ Seen working on a unit unless marked otherwise.
   51 clients, all 32 spectral windows (ath10k takes 255 samples a trigger, so
   each window is nine bursts, eight of 255 and one of 8; a 5 GHz sweep takes
   about a minute).
+  That holds while airscan has the radio: it marks it (`airscan '1'` in
+  radio0's section), and what keeps the serving radios off scanning (Aeolus)
+  reads the mark. Turned off, airscan takes the mark away and the AP is like
+  any OpenWrt AP: its serving radios scan when asked to (LuCI's Scan, a
+  channel on auto when the Wi-Fi starts).
   To serve clients on it instead: `uci set airscan.main.enabled=0`,
   `uci set wireless.radio0.disabled=0`, commit both, and restart airscan and
-  the Wi-Fi.
-- **Ethernet: two 5 GbE ports** (Aquantia AQR114C). eth0 is the first port
-  (linked at 2.5 Gb/s on a unit), eth1 the second (not yet linked on a
-  unit). Both are in `br-lan`, which
-  takes its address by DHCP; there is no WAN. MACs from ART: eth0 has
-  Arista's base MAC, the label MAC.
+  then the Wi-Fi (on a unit: the mark gone with airscan off, and back with
+  it on again).
+- **Ethernet: two 5 GbE ports** (Aquantia AQR114C), both PoE in. eth0 is
+  Ethernet 1 and eth1 Ethernet 2. Both are in `br-lan`, which takes its
+  address by DHCP; there is no WAN. MACs from ART: eth0 has Arista's base
+  MAC, the label MAC, and eth1 the one below it.
+  - On a unit, each at 2.5 Gb/s. Ethernet 2 on its own (out of `br-lan`, its
+    own DHCP client): an address from its own MAC, and 1.80 Gb/s up and
+    2.21 Gb/s down with iperf3 from the AP to a server two hops away. A
+    switch powers it as a class 5 device; its PoE pins then read as Ethernet
+    1's do on 802.3bt (HARDWARE.md).
 - **Bluetooth** (`arista-c260-bluetooth`): the CSR8811 starts as Arista
   starts it, with its PS keys copied from slot 1, and is `hci0` for BlueZ
   (HCI 4.2), powered on with LE on, not advertising, as the C-360's is. On a
@@ -72,7 +82,7 @@ Seen working on a unit unless marked otherwise.
 
 ## What doesn't (yet)
 
-- **Not yet tried on a unit:** 5 Gb/s links, and a link on Ethernet 2.
+- **Not yet tried on a unit:** 5 Gb/s links.
 
 ## In this directory
 

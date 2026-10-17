@@ -3,7 +3,8 @@
 A Wi-Fi 6E wall-plate access point: a Qualcomm IPQ6010 with its own 2.4 and
 5 GHz radios, a QCN9072 6 GHz card on PCIe, a 2.5 GbE uplink with PoE in,
 three 1 GbE LAN ports (Network 1 also a PoE output), an nRF52833 Bluetooth LE
-module, a TPM and a USB 3.0 port. No scan radio. Details in
+module, a TPM and a USB 3.0 port. No scan radio: its radios serve and scan
+as on any OpenWrt AP. Details in
 [HARDWARE.md](HARDWARE.md); installing in [INSTALL.md](INSTALL.md).
 
 ## What works

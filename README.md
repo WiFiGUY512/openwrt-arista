@@ -12,7 +12,7 @@ first boot.
 | Model | SoC | OpenWrt | Status |
 |---|---|---|---|
 | [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12 | Working: all radios, Bluetooth LE, the scan radio, both 10 GbE ports |
-| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, Ethernet 1 (at 2.5 Gb/s; Ethernet 2 not yet linked on a unit), LEDs, button, USB, PoE power policy, install and sysupgrade |
+| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, both Ethernet ports (at 2.5 Gb/s; 5 Gb/s not yet tried), LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 
 ## Download

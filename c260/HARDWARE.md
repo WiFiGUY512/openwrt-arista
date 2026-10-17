@@ -118,7 +118,9 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
   802.3bt (on a unit on an 802.3bt switch port: 0 1 0). gpio64 is 0 with a DC
   supply. Arista's system (`/sbin/8023af.sh`, `/etc/poe_prof.cfg`) also
   exports gpio2, 66 and 27 for Ethernet 2 but reads only Ethernet 1's (they
-  read 1 1 1 with nothing on Ethernet 2). On 802.3at without DC it lowers the
+  read 1 1 1 with nothing on Ethernet 2, and 0 1 0 on a unit with an
+  802.3bt switch port powering it, a class 5 device to the switch, as well as
+  Ethernet 1). On 802.3at without DC it lowers the
   2.4 and 5 GHz radios' power limit (from 26.5 and 28.5 dBm to 23.5 and
   25.5), turns the scan radio down (23 to 20 dBm, 2 chains to 1) and turns
   Bluetooth off (gpio51 low); its profile names USB too, but the function
