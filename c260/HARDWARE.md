@@ -113,7 +113,16 @@ and boot chain, different radios, half the RAM, a smaller NAND, no TPM.
 - **Button:** gpio52, active low (Arista's device tree calls it `wps`).
 - **USB:** one USB 2.0 port (480 Mb/s, as Arista's datasheet gives it), on
   the SoC's USB 3.0 controller (`usb3@8A00000`).
-- **PoE:** Arista reads the class it negotiated on each input from gpio54,
-  55 and 56 (PoE 1), 2, 66 and 27 (PoE 2) and 64, and on 802.3af/at power it
-  lowers transmit power, turns the third radio down and turns USB and
-  Bluetooth off. OpenWrt does none of that.
+- **PoE:** the PoE controller reports the class Ethernet 1 negotiated on
+  gpio54, 55 and 56: 1 1 1 for 802.3af, 1 0 1 for 802.3at, gpio56 at 0 for
+  802.3bt (on a unit on an 802.3bt switch port: 0 1 0). gpio64 is 0 with a DC
+  supply. Arista's system (`/sbin/8023af.sh`, `/etc/poe_prof.cfg`) also
+  exports gpio2, 66 and 27 for Ethernet 2 but reads only Ethernet 1's (they
+  read 1 1 1 with nothing on Ethernet 2). On 802.3at without DC it lowers the
+  2.4 and 5 GHz radios' power limit (from 26.5 and 28.5 dBm to 23.5 and
+  25.5), turns the scan radio down (23 to 20 dBm, 2 chains to 1) and turns
+  Bluetooth off (gpio51 low); its profile names USB too, but the function
+  behind it is empty, and the chains of the serving radios stay. The power a
+  switch allocates by LLDP overrides the pins (38.1 W and up 802.3bt, 25 W
+  and up 802.3at). `arista-c260-power` does the same but for the scan
+  radio, which it leaves alone.

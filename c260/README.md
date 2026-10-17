@@ -58,12 +58,21 @@ Seen working on a unit unless marked otherwise.
   storage, add `kmod-usb-storage` (from this build's feed) and
   `block-mount`.
 - **The console** on its RJ-45 port, 115200 8N1.
+- **Arista's PoE power policy** (`arista-c260-power`): on 802.3at (or af)
+  power on Ethernet 1 with no DC supply, the serving radios' transmit power
+  is capped (23 dBm at 2.4 GHz, 25 dBm at 5 GHz: Arista's 23.5 and 25.5,
+  in whole dBm) and the Bluetooth controller turned off, as Arista's own
+  system does. Its USB and antenna chains stay as they are, as on Arista's;
+  the scan radio is left alone. The PoE class comes from the PoE
+  controller's pins (HARDWARE.md), or from the power a switch allocates by
+  LLDP. `arista-c260-power status` shows what it reads and what is applied;
+  `/etc/config/arista-c260-power` turns it off or changes the caps. Tested
+  on a unit on 802.3bt (full power), and the 802.3at path with a test
+  override: caps applied and lifted, Bluetooth off and back.
 
 ## What doesn't (yet)
 
 - **Not yet tried on a unit:** 5 Gb/s links, and a link on Ethernet 2.
-- **PoE power classes:** Arista turns things down on 802.3af/at; OpenWrt
-  does not.
 
 ## In this directory
 
@@ -75,7 +84,8 @@ patches/openwrt/                     the device, calibration, sysupgrade,
 files/                               the device tree, the board-data and
                                      radio-LED hotplugs, the board data's
                                      country refresh, the
-                                     arista-c260-bluetooth and airscan
+                                     arista-c260-bluetooth,
+                                     arista-c260-power and airscan
                                      (with luci-app-airscan) packages, and
                                      the Ethernet driver's fix (qca-nss-dp);
                                      airscan and the fix are the C-360's,

@@ -1,0 +1,226 @@
+#!/bin/sh
+# arista-c260-power: the Arista C-260's PoE power policy, as Arista's own
+# system applies it (/sbin/8023af.sh, /etc/poe_prof.cfg).
+#
+# The PoE controller reports the class Ethernet 1 negotiated on gpio54/55/56:
+# 1 1 1 for 802.3af, 1 0 1 for 802.3at, gpio56 at 0 for 802.3bt. gpio64 is 0
+# when a DC supply is plugged in. (Arista also exports gpio2/66/27 for
+# Ethernet 2, but reads only Ethernet 1's; so does this.) A DC supply or
+# 802.3bt is full power. On 802.3at (or af) without a DC supply, the serving
+# radios' transmit power is capped (Arista's values, 23.5 dBm at 2.4 GHz and
+# 25.5 dBm at 5 GHz, to the whole dBm below: mac80211 takes no halves) and
+# the Bluetooth controller is turned off. Arista's
+# profile names the USB port too, but its USB function does nothing, and its
+# chains stay as they are; so here. Arista also turns the scan radio down;
+# this leaves the scan radio alone, as on the C-360.
+#
+# Without a DC supply, the power a switch reports by LLDP that it allocated
+# on Ethernet 1 (lldpd, Power via MDI TLV) decides the class instead of the
+# pins, as on Arista's system: 38.1 W or more is 802.3bt, 25 W or more
+# 802.3at, less 802.3af.
+#
+#	arista-c260-power status	what the input reads, and what is applied
+#	arista-c260-power apply		read the input, apply the policy
+#	arista-c260-power radios	apply the radio caps again (after Wi-Fi restarts)
+#	arista-c260-power monitor	apply again whenever the input changes
+
+STATE=/var/run/arista-c260-power
+BT_INIT=/etc/init.d/arista-c260-bluetooth
+
+log() { logger -t arista-c260-power "$*"; }
+
+opt() { uci -q get arista-c260-power.main.$1 || echo "$2"; }
+
+scan_section() { ubus call airscan status 2>/dev/null | jsonfilter -e '@.section' 2>/dev/null; }
+
+wifi_devices() { uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"; }
+
+tlmm_base() {
+	local c
+	for c in /sys/class/gpio/gpiochip*; do
+		[ "$(cat $c/label 2>/dev/null)" = 1000000.pinctrl ] && { cat $c/base; return; }
+	done
+}
+
+gpio() { # gpio <tlmm gpio>: its number in /sys/class/gpio, exported
+	local n=$(( $(tlmm_base) + $1 ))
+	[ -e /sys/class/gpio/gpio$n ] || echo $n > /sys/class/gpio/export 2>/dev/null
+	echo $n
+}
+
+pin() { # pin <tlmm gpio>: its level, as an input
+	local n=$(gpio $1)
+	[ "$(cat /sys/class/gpio/gpio$n/direction 2>/dev/null)" = in ] ||
+		echo in > /sys/class/gpio/gpio$n/direction 2>/dev/null
+	cat /sys/class/gpio/gpio$n/value 2>/dev/null
+}
+
+class() {
+	case "$1$2$3" in
+	111) echo 802.3af ;;
+	101) echo 802.3at ;;
+	??0) echo 802.3bt ;;
+	*) echo none ;;
+	esac
+}
+
+# Ethernet 1: eth0, or lan1 with DSA port names
+port1() {
+	local p
+	for p in eth0 lan1; do
+		[ -e /sys/class/net/$p ] && { echo $p; return; }
+	done
+}
+
+lldp_mw() { # lldp_mw <port>: the power (mW) a switch allocated on it, by LLDP
+	local kv mw
+	if [ -n "$C260_POWER_LLDP" ]; then
+		# test hook: C260_POWER_LLDP=25000
+		mw=$C260_POWER_LLDP
+	else
+		command -v lldpcli > /dev/null || return 0
+		kv=$(lldpcli -f keyvalue show neighbors ports "$1" details 2>/dev/null)
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.device-type=PSE$" || return 0
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.enabled=yes$" || return 0
+		mw=$(echo "$kv" | sed -n "s/^lldp\.$1\.port\.power\.allocated=\([0-9]*\)$/\1/p" | head -1)
+	fi
+	[ "${mw:-0}" -gt 0 ] 2>/dev/null && echo $mw
+}
+
+mw_class() { # Arista's thresholds (8023af.sh)
+	if [ $1 -ge 38100 ]; then echo 802.3bt
+	elif [ $1 -ge 25000 ]; then echo 802.3at
+	else echo 802.3af
+	fi
+}
+
+read_inputs() {
+	PINS=$(class $(pin 54) $(pin 55) $(pin 56))
+	POE=$PINS LLDP=
+	DC=0
+	[ "$(pin 64)" = 0 ] && DC=1
+	if [ $DC = 0 ] && [ "$(opt lldp 1)" = 1 ]; then
+		LLDP=$(lldp_mw "$(port1)")
+		[ -n "$LLDP" ] && POE=$(mw_class $LLDP)
+	fi
+	if [ $DC = 0 ] && { [ $POE = 802.3at ] || [ $POE = 802.3af ]; }; then
+		LEVEL=limited
+	else
+		LEVEL=full    # DC, 802.3bt, or nothing readable: never degrade on a guess
+	fi
+	# test hook: act as on another supply (C260_POWER_LEVEL=limited|full)
+	[ -n "$C260_POWER_LEVEL" ] && LEVEL=$C260_POWER_LEVEL
+}
+
+# The Bluetooth controller: off is arista-c260-bluetooth stopped and the
+# chip held in reset (gpio51 low, as Arista's ble_ctrl_func); on is the
+# service started again, which resets the chip and loads it.
+bt_set() { # on|off
+	[ -x $BT_INIT ] || return 0
+	local n
+	if [ $1 = off ] && [ ! -e $STATE.bt-off ]; then
+		$BT_INIT stop
+		n=$(gpio 51)
+		echo out > /sys/class/gpio/gpio$n/direction
+		echo 0 > /sys/class/gpio/gpio$n/value
+		touch $STATE.bt-off
+		log "Bluetooth off"
+	elif [ $1 = on ] && [ -e $STATE.bt-off ]; then
+		rm -f $STATE.bt-off
+		$BT_INIT enabled && $BT_INIT start
+		log "Bluetooth on"
+	fi
+}
+
+band_cap() { # band_cap <phy>: the cap in dBm for the phy's band
+	if iw phy $1 info 2>/dev/null | grep -q "Band 2:"; then opt txpower_5g 25
+	else opt txpower_2g 23
+	fi
+}
+
+# The caps, on every serving radio; a lower txpower set in uci is kept.
+# mac80211.sh sets each radio's power again when Wi-Fi restarts, so this runs
+# again then (hotplug).
+radios_apply() {
+	local level=$(cat $STATE.level 2>/dev/null || echo full)
+	local scan=$(scan_section)
+	local sec phy cap user
+	rm -f $STATE.caps.new
+	for sec in $(wifi_devices); do
+		[ "$sec" = "$scan" ] && continue
+		[ "$(uci -q get wireless.$sec.airscan)" = 1 ] && continue
+		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
+		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
+		user=$(uci -q get wireless.$sec.txpower)
+		if [ $level = limited ] && [ "$(opt radios 1)" = 1 ]; then
+			cap=$(band_cap $phy)
+			[ -n "$user" ] && [ "$user" -le "$cap" ] 2>/dev/null && continue
+			iw phy $phy set txpower limit $((cap * 100)) && echo "$sec $phy $cap" >> $STATE.caps.new
+		elif grep -q "^$sec " $STATE.caps 2>/dev/null; then
+			# was capped: back to what the config says
+			if [ -n "$user" ]; then iw phy $phy set txpower fixed $((user * 100))
+			else iw phy $phy set txpower auto
+			fi
+		fi
+	done
+	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
+}
+
+apply() {
+	read_inputs
+	if [ "$(opt enabled 1)" != 1 ]; then
+		echo full > $STATE.level
+		bt_set on
+		radios_apply
+		log "disabled: full power regardless (Ethernet 1 $POE, DC $DC)"
+		return
+	fi
+	echo $LEVEL > $STATE.level
+	log "power: $LEVEL (Ethernet 1 $POE, DC $DC)"
+	if [ $LEVEL = limited ] && [ "$(opt bluetooth 1)" = 1 ]; then bt_set off; else bt_set on; fi
+	radios_apply
+	{
+		echo "level=$LEVEL"
+		echo "poe=$POE"
+		echo "dc=$DC"
+	} > $STATE
+}
+
+# Read the input every 30 s; apply again once a new level has been read twice
+# in a row, so LLDP that arrives after boot, or a supply that changes, takes
+# effect without a flap on one odd reading.
+monitor() {
+	local seen= applied
+	while :; do
+		sleep $(opt interval 30)
+		[ "$(opt enabled 1)" = 1 ] || { seen=; continue; }
+		read_inputs
+		applied=$(cat $STATE.level 2>/dev/null)
+		if [ "$LEVEL" = "$applied" ]; then
+			seen=
+		elif [ "$LEVEL" = "$seen" ]; then
+			apply
+			seen=
+		else
+			seen=$LEVEL
+		fi
+	done
+}
+
+status() {
+	read_inputs
+	echo "Ethernet 1: $POE (pins $PINS${LLDP:+, LLDP $LLDP mW allocated})"
+	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
+	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
+	echo "Bluetooth: $([ -e $STATE.bt-off ] && echo off || echo on)"
+	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
+	return 0
+}
+
+case "$1" in
+apply) apply ;;
+radios) radios_apply ;;
+monitor) monitor ;;
+status|"") status ;;
+*) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
