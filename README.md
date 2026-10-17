@@ -15,6 +15,25 @@ first boot.
 | [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, Ethernet 1 (at 2.5 Gb/s; Ethernet 2 not yet linked on a unit), LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | Working: all radios, Bluetooth, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 
+## Download
+
+Built images are on the [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases),
+one release for all models, built from its tag with `build.sh`:
+
+- `openwrt-…-initramfs-uImage.itb`: the RAM system each install starts from
+- `openwrt-…-squashfs-factory.ubi` (C-360, C-260): what the install writes
+- `openwrt-…-squashfs-sysupgrade.bin`: for `sysupgrade`, and the W-318's install
+- `c360-openwrt-installer.img.xz`: the C-360's USB stick
+- `<model>-feed-<version>.tar.gz`: that build's package feed, with every
+  kernel module (see below)
+- `SHA256SUMS`: check what you downloaded with `sha256sum -c SHA256SUMS --ignore-missing`
+
+To install a kernel module, unpack the feed of the build your AP runs, copy
+the module's `.apk` (from `feed/packages/`) and any it depends on to the AP,
+and `apk add` them; the images trust the key the feed is signed with. Or
+serve the unpacked `feed/` over HTTP and add its `packages.adb` files to
+`/etc/apk/repositories.d/customfeeds.list`.
+
 ## Build
 
 On Linux, with [OpenWrt's build prerequisites](https://openwrt.org/docs/guide-developer/toolchain/install-buildsystem):
