@@ -1,10 +1,14 @@
 #!/bin/sh
 #
-# Arista C-360 on OpenWrt 25.12: the board data of the IPQ8074 and of the
-# QCN9074 and QCN9072 cards (ath11k's QCN9074, both), from the Arista system
-# in NAND slot 1, when ath11k first asks for it. Once OpenWrt has the C-360
-# (openwrt/openwrt#25941), the same data comes in ipq-wifi-arista_c360. The
-# firmware itself comes from 12-ath11k-vendor-firmware.
+# Arista C-360: the board data of the IPQ8074 and of the QCN9074 and QCN9072
+# cards (ath11k's QCN9074, both), from the Arista system in NAND slot 1. On
+# OpenWrt 25.12 it is written when ath11k first asks for it. On main
+# ipq-wifi-arista_c-360 has board-2.bin files already (Arista's stock set,
+# 6 GHz plan): these, the plan's and the country group's, replace them when
+# the init script or arista-c360-radio-mode runs this with REFRESH=1, for the
+# radios' next start. The IPQ8074 gets both board.bin (25.12) and board-2.bin
+# (main, which reads it first). The firmware itself comes from
+# 12-ath11k-vendor-firmware.
 #
 # Arista keeps a set of board data per radio plan and country group in
 # /lib/boarddata/radio{12,3,4}/user/<group>/ and copies the matching set in
@@ -24,6 +28,7 @@
 
 case "$FIRMWARE" in
 "ath11k/IPQ8074/hw2.0/board.bin"|\
+"ath11k/IPQ8074/hw2.0/board-2.bin"|\
 "ath11k/QCN9074/hw1.0/board-2.bin") ;;
 *) exit 0 ;;
 esac
@@ -93,9 +98,10 @@ else
 fi
 f4=bdwlan.baa
 
-# refreshed: nothing to do where both files are already this plan's and group's
+# refreshed: nothing to do where the files are already this plan's and group's
 if [ -n "$REFRESH" ] &&
    [ "$(cut -d' ' -f1-2 $IPQ/board.bin.source 2>/dev/null)" = "$mode $group" ] &&
+   [ "$(cut -d' ' -f1-2 $IPQ/board-2.bin.source 2>/dev/null)" = "$mode $group" ] &&
    [ "$(cut -d' ' -f1-2 $QCN/board-2.bin.source 2>/dev/null)" = "$mode $group" ]; then
 	exit 0
 fi
@@ -132,10 +138,17 @@ b12=$(pick radio12 $f12 $SRC/bdwlan.b290)
 b3=$(pick radio3 $f3 $SRC/qcn9000/bdwlan.bab)
 b4=$(pick radio4 $f4 $SRC/qcn9000/bdwlan.baa)
 
-if [ -n "$b12" ] && { [ -n "$REFRESH" ] || [ ! -e $IPQ/board.bin ]; }; then
+if [ -n "$b12" ] && { [ -n "$REFRESH" ] || [ ! -e $IPQ/board.bin ] || [ ! -e $IPQ/board-2.bin ]; }; then
 	mkdir -p $IPQ
 	cp "$b12" $IPQ/board.bin.tmp && mv $IPQ/board.bin.tmp $IPQ/board.bin &&
 		echo "$mode $group ${b12#$tmp/}" > $IPQ/board.bin.source
+	# with the variant the device tree names (main), and without (25.12)
+	{
+		printf 'QCA-ATH11K-BOARD'; printf '\000'; pad4 17
+		board_ie "bus=ahb,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C360" "$b12"
+		board_ie "bus=ahb,qmi-chip-id=0,qmi-board-id=255" "$b12"
+	} > $IPQ/board-2.bin.tmp && mv $IPQ/board-2.bin.tmp $IPQ/board-2.bin &&
+		echo "$mode $group ${b12#$tmp/}" > $IPQ/board-2.bin.source
 fi
 if [ -n "$b3" ] && [ -n "$b4" ] && { [ -n "$REFRESH" ] || [ ! -e $QCN/board-2.bin ]; }; then
 	mkdir -p $QCN

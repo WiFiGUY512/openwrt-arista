@@ -14,6 +14,9 @@
 # does (whose system then also turns its 6 GHz radio off; here the
 # regulatory database decides). Each file written gets a .source next to it.
 #
+# On OpenWrt main both are written as board-2.bin too, which ath11k reads
+# before board.bin, in place of ipq-wifi-arista_w-318's (Arista's stock set).
+#
 # A fresh install has no country yet, so its first boot takes FCC_CE's.
 # Run with REFRESH=1 (by /etc/init.d/arista-w318-board-data, at boot and
 # whenever the wireless configuration changes) it replaces both files when
@@ -22,7 +25,9 @@
 
 case "$FIRMWARE" in
 "ath11k/IPQ6018/hw1.0/board.bin"|\
-"ath11k/QCN9074/hw1.0/board.bin") ;;
+"ath11k/IPQ6018/hw1.0/board-2.bin"|\
+"ath11k/QCN9074/hw1.0/board.bin"|\
+"ath11k/QCN9074/hw1.0/board-2.bin") ;;
 *) exit 0 ;;
 esac
 [ -e "/lib/firmware/$FIRMWARE" ] && [ -z "$REFRESH" ] && exit 0
@@ -34,6 +39,43 @@ case "$(board_name)" in arista,w318|arista,w-318) ;; *) exit 0 ;; esac
 BD=lib/boarddata
 IPQ=/lib/firmware/ath11k/IPQ6018/hw1.0
 QCN=/lib/firmware/ath11k/QCN9074/hw1.0
+
+le32() {
+	# busybox ash does not expand "\\$(...)", so an inner printf builds the escapes
+	printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $((($1 >> 8) & 255)) \
+		$((($1 >> 16) & 255)) $((($1 >> 24) & 255)))"
+}
+
+# padding to 4 bytes, with ath11k-bdencoder's padding byte
+pad4() {
+	local n=$(((4 - $1 % 4) % 4))
+	[ $n -eq 0 ] || printf 'mmm' | head -c $n
+}
+
+# one board-2.bin BOARD element: { 0, len, { 0 (NAME), len, name }, { 1 (DATA), len, data } }
+board_ie() {
+	local name="$1" file="$2" nlen dlen
+	nlen=${#name}
+	dlen=$(wc -c < "$file")
+	le32 0
+	le32 $((8 + nlen + (4 - nlen % 4) % 4 + 8 + dlen + (4 - dlen % 4) % 4))
+	le32 0; le32 $nlen; printf %s "$name"; pad4 $nlen
+	le32 1; le32 $dlen; cat "$file"; pad4 $dlen
+}
+
+# board2 <dir> <name>...: <dir>/board.bin as <dir>/board-2.bin too, under
+# each name. OpenWrt main reads board-2.bin before board.bin, and has
+# ipq-wifi's in the image; this one, in the overlay, takes its place.
+board2() {
+	local d=$1 n
+	shift
+	[ -s $d/board.bin ] || return 0
+	{
+		printf 'QCA-ATH11K-BOARD'; printf '\000'; pad4 17
+		for n; do board_ie "$n" $d/board.bin; done
+	} > $d/board-2.bin.tmp && mv $d/board-2.bin.tmp $d/board-2.bin &&
+		cp $d/board.bin.source $d/board-2.bin.source
+}
 
 # Arista's country groups (ISO 3166 numeric codes in its country_map.cfg)
 country_group() {
@@ -60,7 +102,9 @@ esac
 # refreshed: nothing to do where both files are already this group's
 if [ -n "$REFRESH" ] &&
    [ "$(cut -d' ' -f1 $IPQ/board.bin.source 2>/dev/null)" = "$group" ] &&
-   [ "$(cut -d' ' -f1 $QCN/board.bin.source 2>/dev/null)" = "$group" ]; then
+   [ "$(cut -d' ' -f1 $QCN/board.bin.source 2>/dev/null)" = "$group" ] &&
+   [ "$(cut -d' ' -f1 $IPQ/board-2.bin.source 2>/dev/null)" = "$group" ] &&
+   [ "$(cut -d' ' -f1 $QCN/board-2.bin.source 2>/dev/null)" = "$group" ]; then
 	exit 0
 fi
 
@@ -73,15 +117,19 @@ unsquashfs -n -d "$tmp" "$dev" $BD/radio12/$group/bdwlan.b13 \
 b12=$tmp/$BD/radio12/$group/bdwlan.b13
 b3=$tmp/$BD/radio3/${g3}bdwlan.ba7
 
-if [ -s "$b12" ] && { [ -n "$REFRESH" ] || [ ! -e $IPQ/board.bin ]; }; then
+if [ -s "$b12" ] && { [ -n "$REFRESH" ] || [ ! -e $IPQ/board.bin ] || [ ! -e $IPQ/board-2.bin.source ]; }; then
 	mkdir -p $IPQ
 	cp "$b12" $IPQ/board.bin.tmp && mv $IPQ/board.bin.tmp $IPQ/board.bin &&
-		echo "$group ${b12#$tmp/}" > $IPQ/board.bin.source
+		echo "$group ${b12#$tmp/}" > $IPQ/board.bin.source &&
+		board2 $IPQ "bus=ahb,qmi-chip-id=0,qmi-board-id=255,variant=Arista-W318" \
+			"bus=ahb,qmi-chip-id=0,qmi-board-id=255"
 fi
-if [ -s "$b3" ] && { [ -n "$REFRESH" ] || [ ! -e $QCN/board.bin ]; }; then
+if [ -s "$b3" ] && { [ -n "$REFRESH" ] || [ ! -e $QCN/board.bin ] || [ ! -e $QCN/board-2.bin.source ]; }; then
 	mkdir -p $QCN
 	cp "$b3" $QCN/board.bin.tmp && mv $QCN/board.bin.tmp $QCN/board.bin &&
-		echo "$group ${b3#$tmp/}" > $QCN/board.bin.source
+		echo "$group ${b3#$tmp/}" > $QCN/board.bin.source &&
+		board2 $QCN "bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=Arista-W318" \
+			"bus=pci,qmi-chip-id=0,qmi-board-id=255"
 fi
 rm -rf "$tmp"
 

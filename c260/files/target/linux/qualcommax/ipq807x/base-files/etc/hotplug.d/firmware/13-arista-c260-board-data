@@ -12,17 +12,65 @@
 # same file, by the country of the wireless configuration. The file written
 # gets a .source next to it.
 #
+# On OpenWrt main it is written as board-2.bin too, which ath11k reads before
+# board.bin, in place of ipq-wifi-arista_c-260's (Arista's stock file).
+#
 # A fresh install has no country yet, so its first boot takes bdwlan.bin.
 # Run with REFRESH=1 (by /etc/init.d/arista-c260-board-data, at boot and
 # whenever the wireless configuration changes) it replaces the file when the
 # country now wants another; the radio reads it at its next start (a reboot).
 # Where the new file cannot be had, the one there stays.
 
-[ "$FIRMWARE" = "ath11k/IPQ8074/hw2.0/board.bin" ] || exit 0
-[ -e "/lib/firmware/$FIRMWARE" ] && [ -z "$REFRESH" ] && exit 0
+case "$FIRMWARE" in
+"ath11k/IPQ8074/hw2.0/board-2.bin")
+	[ -e "/lib/firmware/$FIRMWARE" ] && [ -z "$REFRESH" ] && exit 0
+	FIRMWARE=ath11k/IPQ8074/hw2.0/board.bin
+	;;
+"ath11k/IPQ8074/hw2.0/board.bin") ;;
+*) exit 0 ;;
+esac
+[ -e "/lib/firmware/$FIRMWARE" ] && [ -e "/lib/firmware/${FIRMWARE%.bin}-2.bin.source" ] &&
+	[ -z "$REFRESH" ] && exit 0
 
 . /lib/functions.sh
 case "$(board_name)" in arista,c260|arista,c-260) ;; *) exit 0 ;; esac
+
+le32() {
+	# busybox ash does not expand "\\$(...)", so an inner printf builds the escapes
+	printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $((($1 >> 8) & 255)) \
+		$((($1 >> 16) & 255)) $((($1 >> 24) & 255)))"
+}
+
+# padding to 4 bytes, with ath11k-bdencoder's padding byte
+pad4() {
+	local n=$(((4 - $1 % 4) % 4))
+	[ $n -eq 0 ] || printf 'mmm' | head -c $n
+}
+
+# one board-2.bin BOARD element: { 0, len, { 0 (NAME), len, name }, { 1 (DATA), len, data } }
+board_ie() {
+	local name="$1" file="$2" nlen dlen
+	nlen=${#name}
+	dlen=$(wc -c < "$file")
+	le32 0
+	le32 $((8 + nlen + (4 - nlen % 4) % 4 + 8 + dlen + (4 - dlen % 4) % 4))
+	le32 0; le32 $nlen; printf %s "$name"; pad4 $nlen
+	le32 1; le32 $dlen; cat "$file"; pad4 $dlen
+}
+
+# board2 <dir> <name>...: <dir>/board.bin as <dir>/board-2.bin too, under
+# each name. OpenWrt main reads board-2.bin before board.bin, and has
+# ipq-wifi's in the image; this one, in the overlay, takes its place.
+board2() {
+	local d=$1 n
+	shift
+	[ -s $d/board.bin ] || return 0
+	{
+		printf 'QCA-ATH11K-BOARD'; printf '\000'; pad4 17
+		for n; do board_ie "$n" $d/board.bin; done
+	} > $d/board-2.bin.tmp && mv $d/board-2.bin.tmp $d/board-2.bin &&
+		cp $d/board.bin.source $d/board-2.bin.source
+}
 
 country=$(uci -q show wireless | sed -n "s/^wireless\.[^.]*\.country='\([A-Z][A-Z]\)'$/\1/p" | head -n 1)
 case "$country" in
@@ -33,7 +81,8 @@ AU|AT|BE|BG|HR|CY|CZ|DK|EE|FI|FR|DE|GR|HU|IE|IT|LV|LT|LU|MT|NL|PL|PT|RO|SK|SI|ES
 *) file=bdwlan.bin ;;
 esac
 [ -n "$REFRESH" ] && [ -e "/lib/firmware/$FIRMWARE" ] &&
-	[ "$(cut -d' ' -f2 "/lib/firmware/$FIRMWARE.source" 2>/dev/null)" = "lib/boarddata/$file" ] && exit 0
+	[ "$(cut -d' ' -f2 "/lib/firmware/$FIRMWARE.source" 2>/dev/null)" = "lib/boarddata/$file" ] &&
+	[ "$(cut -d' ' -f2 "/lib/firmware/${FIRMWARE%.bin}-2.bin.source" 2>/dev/null)" = "lib/boarddata/$file" ] && exit 0
 
 mtd=$(find_mtd_index rootfs_1)
 [ -n "$mtd" ] || exit 0
@@ -55,6 +104,8 @@ if [ -s "$tmp/fs/lib/boarddata/$file" ]; then
 	if cp "$tmp/fs/lib/boarddata/$file" "/lib/firmware/$FIRMWARE.tmp" &&
 	   mv "/lib/firmware/$FIRMWARE.tmp" "/lib/firmware/$FIRMWARE"; then
 		echo "Arista lib/boarddata/$file (country ${country:-unset})" > "/lib/firmware/$FIRMWARE.source"
+		board2 "/lib/firmware/${FIRMWARE%/*}" "bus=ahb,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C260" \
+			"bus=ahb,qmi-chip-id=0,qmi-board-id=255"
 		if [ -n "$REFRESH" ]; then
 			logger -t arista-c260-board-data "IPQ8074 board data: Arista $file, for country ${country:-unset}, from the radio's next start (reboot)"
 		else
