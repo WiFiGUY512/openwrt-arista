@@ -28,6 +28,14 @@ die() { echo "arista-c360-net: $*" >&2; exit 1; }
 # C360_NET_CONFDIR (tests only): edit that config directory, apply nothing
 u() { uci ${C360_NET_CONFDIR:+-c $C360_NET_CONFDIR -t $C360_NET_CONFDIR/.uci} "$@"; }
 
+# On OpenWrt main the C-360 and C-260 share their images, and with them
+# this tool and its twin, arista-c260-net: each runs on its own model only.
+[ -n "${C360_NET_CONFDIR:-}" ] ||
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+arista,c360|arista,c-360) ;;
+*) die "this is not an Arista C-360 (arista-c260-net is the C-260's)" ;;
+esac
+
 # the ports' names: eth0/eth1 (OpenWrt 25.12) or lan1/lan2 (main)
 if [ -e /sys/class/net/lan1 ] || [ -e /sys/class/net/lan2 ]; then
 	P1=lan1 P2=lan2
