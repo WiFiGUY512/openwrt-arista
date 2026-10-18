@@ -157,7 +157,11 @@ say "pri=$(sed -n 's/^pri=//p' "$TMP/env.before"), bootcmd: $(sed -n 's/^bootcmd
 # the image
 [ -s "$IMG" ] || fail "no image $IMG"
 dir=$(tar tf "$IMG" 2>/dev/null | grep -m 1 '^sysupgrade-.*/$')
-[ "$dir" = sysupgrade-arista_w318/ ] || fail "$IMG is not a W-318 sysupgrade image"
+# 25.12's image is arista_w318, OpenWrt main's arista_w-318
+case "$dir" in
+sysupgrade-arista_w318/|sysupgrade-arista_w-318/) ;;
+*) fail "$IMG is not a W-318 sysupgrade image" ;;
+esac
 tar xf "$IMG" -C "$TMP" "${dir}kernel" "${dir}root" 2>/dev/null || fail "cannot unpack $IMG"
 K=$TMP/${dir}kernel R=$TMP/${dir}root
 [ "$(hexdump -n 4 -e '4/1 "%02x"' "$K")" = d00dfeed ] || fail "the kernel is not a FIT"

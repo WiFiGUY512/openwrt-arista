@@ -32,7 +32,9 @@ so the fallback first puts Arista's own settings back.
   `openwrt-qualcommax-ipq60xx-arista_w318-initramfs-uImage.itb`.
 * `openwrt-qualcommax-ipq60xx-arista_w318-squashfs-sysupgrade.bin` on the PC.
 * Both from the [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases)
-  or your own build's `out/w318/<version>/`.
+  or your own build's `out/w318/<version>/`. OpenWrt main's images are named
+  `arista_w-318` instead of `arista_w318` and boot the same way
+  (`config@cp01-c3`); read that name below.
 * The uplink port cabled to that network (it takes PoE).
 * For the backup: a USB stick (FAT32), or the PC.
 
