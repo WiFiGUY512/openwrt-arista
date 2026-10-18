@@ -86,7 +86,13 @@ esac
 
 mtd=$(find_mtd_index rootfs_1)
 [ -n "$mtd" ] || exit 0
-ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+# Another reader of slot 1 may hold it at this moment (at boot, one
+# service's script and another's run side by side): try for 30 s.
+for i in $(seq 30); do
+	ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+	[ -n "$ubi" ] && break
+	sleep 1
+done
 [ -n "$ubi" ] || exit 0
 vol=
 for v in /sys/class/ubi/ubi${ubi}_*; do

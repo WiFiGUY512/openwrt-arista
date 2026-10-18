@@ -61,7 +61,13 @@ gone() {
 if [ ! -s "$PSR" ]; then
 	mtd=$(find_mtd_index rootfs_1)
 	[ -n "$mtd" ] || { log "no rootfs_1 (Arista slot 1)"; exit 1; }
-	ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+	# Another reader of slot 1 may hold it at this moment (at boot, one
+	# service's script and another's run side by side): try for 30 s.
+	for i in $(seq 30); do
+		ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+		[ -n "$ubi" ] && break
+		sleep 1
+	done
 	[ -n "$ubi" ] || { log "cannot attach Arista slot 1"; exit 1; }
 	vol=
 	for v in /sys/class/ubi/ubi${ubi}_*; do
@@ -84,7 +90,10 @@ if [ ! -s "$PSR" ]; then
 fi
 
 # The BD address as its PS key wants it: 00:LAP-hi, LAP-lo, 00:UAP, NAP.
-base=$(mtd_get_mac_binary "0:ART" 0x18)
+# ART: "0:ART" in 25.12's device tree, "0:art" in main's
+art=0:ART
+grep -q '"0:art"' /proc/mtd && art=0:art
+base=$(mtd_get_mac_binary "$art" 0x18)
 bd=$(macaddr_add "$base" -2)
 set -- $(echo "$bd" | tr ':' ' ')
 bdwords="00$4 $5$6 00$3 $1$2"
