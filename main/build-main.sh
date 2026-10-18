@@ -10,6 +10,7 @@
 #                            qca-wireless commits
 #   main/patches/openwrt/    the devices as their upstream pull requests
 #                            stand, and the port's local patches (0014-)
+#   main/patches/feeds/      the port's patches to the feeds' packages
 #   <model>/files/           each model's packages and scripts (airscan,
 #                            power policies, radio plan, board data, the
 #                            installers, the Ethernet 2 tools), less what
@@ -163,6 +164,13 @@ for f in packages luci routing telephony video; do
 	[ -n "${!v:-}" ] && echo "src-git $f ${!v}" >>feeds.conf
 done
 ./scripts/feeds update -a >/dev/null
+# the port's patches to a feed's packages (main/patches/feeds/<feed>/)
+for f in feeds/*/; do
+	f=$(basename "$f")
+	[ -d "$MAIN/patches/feeds/$f" ] || [ -d "$W/.main-patches/feeds-$f" ] || continue
+	apply_patches "feeds/$f" "$W/.main-patches/feeds-$f" "$MAIN/patches/feeds/$f/"*.patch
+done
+./scripts/feeds update -i >/dev/null
 ./scripts/feeds install squashfs-tools luci bluez curl >/dev/null
 say "feeds: $(sed 's/^src-git \([a-z]*\) .*\^\(.\{8\}\).*/\1 \2/' feeds.conf | tr '\n' ' ')"
 

@@ -16,7 +16,8 @@ fix_modes() {
 		package/utils/arista-c260-power/files/arista-c260-power \
 		package/utils/arista-c260-power/files/arista-c260-power.init \
 		target/linux/qualcommax/ipq807x/base-files/etc/init.d/arista-c260-board-data \
-		target/linux/qualcommax/ipq807x/base-files/usr/sbin/arista-c260-net
+		target/linux/qualcommax/ipq807x/base-files/usr/sbin/arista-c260-net \
+		target/linux/qualcommax/ipq807x/base-files/usr/sbin/arista-c260-install
 }
 
 # after_build OUT: checks on the collected images

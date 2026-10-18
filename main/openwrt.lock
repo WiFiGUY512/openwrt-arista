@@ -4,7 +4,7 @@
 # pull requests as they stand).
 OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
 OPENWRT_COMMIT=bcb16b6347251f09a99c875c92db14a20c9499a3
-FEED_packages=https://git.openwrt.org/feed/packages.git^d645bfc6d4d11c8764c91f4d0d297d6ea4a42c15
+FEED_packages=https://git.openwrt.org/feed/packages.git^607b3dd1b5bb9c4f01f724eb3788fd21517f2250
 FEED_luci=https://git.openwrt.org/project/luci.git^b0cead459cfb434f2b2066e03f36c5bf39a583e7
 FEED_routing=https://git.openwrt.org/feed/routing.git^4b9891b9136259f93294a424507ed24c5e8c1cbd
 FEED_telephony=https://git.openwrt.org/feed/telephony.git^5d68d53c160a325ea9d03fce393e051573bcc736

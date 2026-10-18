@@ -71,23 +71,6 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def volume_bytes(img, lebs, doff, vol):
-    """A volume's contents as ubi_extract rebuilds it: every LEB at full size,
-    which is what ubiformat writes and the AP reads back."""
-    leb = ubi_extract.PEB - doff
-    have = {l: lebs[(vol["vol_id"], l)] for (vid, l) in lebs if vid == vol["vol_id"]}
-    out = bytearray()
-    for l in range(max(have) + 1):
-        if l in have:
-            _, p, dsize, vtype = have[l]
-            start = p * ubi_extract.PEB + doff
-            n = dsize if (vtype == 2 and dsize) else leb
-            out += img[start:start + n]
-        else:
-            out += b"\xff" * leb
-    return bytes(out)
-
-
 def one(pattern, where):
     found = sorted(glob.glob(os.path.join(where, pattern)))
     if len(found) != 1:
@@ -115,7 +98,7 @@ def stick_files(images):
         lines.append("%s  %s" % (hashlib.sha256(data).hexdigest(), name))
         print("%-14s %10d bytes  (%s)" % (name, len(data), os.path.basename(src)))
     for name in ("kernel", "rootfs"):
-        data = volume_bytes(img, lebs, doff, vols[name])
+        data = ubi_extract.volume_bytes(img, lebs, doff, vols[name])
         lines.append("%s volume:%s %d" % (hashlib.sha256(data).hexdigest(), name, len(data)))
         print("  volume %-6s %10d bytes" % (name, len(data)))
     files.append(("SHA256SUMS", ("\n".join(lines) + "\n").encode()))

@@ -10,6 +10,26 @@ OpenWrt load leaves, `arista_boot` booted Arista's slot 1 with Arista's own
 settings; after a power cycle OpenWrt came back by itself, and the U-Boot
 environment was as before.
 
+**`arista-c260-install`** (in the RAM installer) does sections 3–5 in one
+run, as `arista-c360-install` does on the C-360: checks (a C-260 running from
+RAM, the flash layout, slot 1's Arista system with the board data and PS
+keys, its kernel for the fallback), a verified backup of every partition,
+one environment write, and the write of slot 0 read back against the image's
+checksums. Copy the image as `factory.ubi`, and its `SHA256SUMS` made by
+`python3 c360/tools/ubi_extract.py --sums <the factory.ubi> > SHA256SUMS`,
+into `/tmp/c260` on the AP (or into `c260/` on a FAT32 USB stick), then:
+
+```
+arista-c260-install --dry-run --stick /tmp/c260   # checks and backup only
+arista-c260-install --stick /tmp/c260             # asks for the MAC's last four digits
+```
+
+Fetch the backup (`/tmp/c260/backup-<MAC>-<time>/`) before rebooting: in RAM
+it does not survive. Its checks were run against an installed unit's slot 1;
+the script has not yet installed a unit. OpenWrt main's images are named
+`arista_c-260` and boot `config@hk01`; the script writes the environment for
+whichever OpenWrt the RAM installer is.
+
 ## What you get
 
 * OpenWrt on the IPQ8074 (2.4 + 5 GHz), the QCA9882 third radio and the
