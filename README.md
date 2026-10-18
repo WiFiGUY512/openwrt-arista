@@ -11,9 +11,9 @@ first boot.
 
 | Model | SoC | OpenWrt | Status |
 |---|---|---|---|
-| [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12 | Working: all radios, Bluetooth LE, the scan radio, both 10 GbE ports |
-| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12 | Working: all radios, the scan radio, Bluetooth, both Ethernet ports (5 Gb/s, PoE in on either), LEDs, button, USB, PoE power policy, install and sysupgrade |
-| [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12 | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
+| [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the scan radio, both 10 GbE ports |
+| [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12, main | Working: all radios, the scan radio, Bluetooth, both Ethernet ports (5 Gb/s, PoE in on either), LEDs, button, USB, PoE power policy, install and sysupgrade |
+| [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 
 ## Download
 
@@ -56,6 +56,19 @@ module is built with the image (as OpenWrt's build servers do), so any of them
 can be installed later. Ordinary packages install from OpenWrt's feeds as on
 any OpenWrt device.
 
+### OpenWrt main
+
+```
+main/build-main.sh ipq807x     # the C-360 and the C-260
+main/build-main.sh ipq60xx     # the W-318
+```
+
+The same models on OpenWrt main, built from the devices' upstream pull
+requests as they stand: main's Ethernet driver moves several times the
+traffic of 25.12's (on the C-360 at 10G, 9.3 Gb/s up and 4.5 down against
+1.4 and 2.05). Main's board names are `arista,c-360`, `arista,c-260` and
+`arista,w-318`. See [main/README.md](main/README.md).
+
 ## Install
 
 Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md](c260/INSTALL.md), [w318/INSTALL.md](w318/INSTALL.md).
@@ -65,6 +78,7 @@ Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md]
 ```
 build.sh            builds one model: ./build.sh <model>
 release.sh          gathers the models' builds of a version: ./release.sh <version>
+main/               the models on OpenWrt main: main/build-main.sh <subtarget>
 <model>/
   README.md         what works, what doesn't
   INSTALL.md        installing and going back
