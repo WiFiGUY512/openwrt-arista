@@ -1,0 +1,22 @@
+# The OpenWrt and feed commits the main-based images are built against
+# (main/build-main.sh): OpenWrt main as the lab units run it, before the
+# Arista devices were merged (they come from patches/openwrt, the upstream
+# pull requests as they stand).
+OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
+OPENWRT_COMMIT=bcb16b6347251f09a99c875c92db14a20c9499a3
+FEED_packages=https://git.openwrt.org/feed/packages.git^d645bfc6d4d11c8764c91f4d0d297d6ea4a42c15
+FEED_luci=https://git.openwrt.org/project/luci.git^b0cead459cfb434f2b2066e03f36c5bf39a583e7
+FEED_routing=https://git.openwrt.org/feed/routing.git^4b9891b9136259f93294a424507ed24c5e8c1cbd
+FEED_telephony=https://git.openwrt.org/feed/telephony.git^5d68d53c160a325ea9d03fce393e051573bcc736
+FEED_video=https://github.com/openwrt/video.git^6917907d4d6c670cf85be525d23216595655061d
+# The radios' board files (ipq-wifi): qca-wireless at OpenWrt's commit, with
+# the three board-file pull requests' commits on it, combined locally. Each
+# adds its own files, so the result is QCA_COMMIT whoever builds it.
+QCA_URL=https://git.openwrt.org/project/firmware/qca-wireless.git
+QCA_BASE=5c5244c0b4fcd86738dfbf7a83d978b4ded574ef
+QCA_PR_URL=https://github.com/WiFiGUY512/firmware_qca-wireless.git
+QCA_PICKS="584b567e48177d77bacfea4c5231166a11acf48f b4e333070c0609840e9e2cdbc8ce4de37cb6a329
+	587e0bfcf9aecaad0c86083e9e06b153feeb835e 8df024253680192e2cc8f088ab6947274fe1abbe
+	94ee56aa681d61796c2a8e4186f45b9de7c2f1a8"
+QCA_COMMIT=fa0a36d3900c5718feffa3a43e7513af4e6d5da1
+QCA_DATE=2026-10-18T00:00:00Z

@@ -1,0 +1,56 @@
+From f884fb9a382bf779f061b35d0a661ae01cdac6ac Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 18 Oct 2026 11:20:28 -0500
+Subject: [PATCH 13/14] mac80211: ath11k: log the monitor trim at debug level
+
+The monitor rx length fix (949-wifi-ath11k-fix-monitor-rx-pktlen.patch)
+logs every frame it trims with ath11k_warn. A monitor interface on
+ipq807x/ipq60xx trims nearly every frame, so this fills dmesg and logread
+with "DELIVER trim8" warnings: on an Arista C-360 with a monitor-mode
+scan radio they were 960 of 1043 logread lines, pushed everything else
+out of the log, and flooded the serial console.
+
+Log it with ath11k_dbg (ATH11K_DBG_DATA) instead, as the rest of the
+monitor path does. The trim itself is unchanged.
+
+Tested on an Arista C-360 (ipq807x) with a monitor interface in use (a
+scan radio's monitor survey): no trim messages in dmesg.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile                              | 2 +-
+ .../ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch        | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index a90ab6ef..50158642 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=8
++PKG_RELEASE:=9
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch b/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
+index 4d4a6f18..6d349f6c 100644
+--- a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
++++ b/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
+@@ -80,8 +80,8 @@ to the monitor RX delivery path.
+ +			u32 old_len = mon_skb->len;
+ +
+ +			skb_trim(mon_skb, old_len - (FCS_LEN * 2));
+-+			ath11k_warn(ar->ab, "%s:%d DELIVER trim8 len %u -> %u\n",
+-+				    __func__, __LINE__, old_len, mon_skb->len);
+++			ath11k_dbg(ar->ab, ATH11K_DBG_DATA, "monitor trim len %u -> %u\n",
+++				   old_len, mon_skb->len);
+ +		}
+ +
+  		skb_next = mon_skb->next;
+-- 
+2.43.0
+

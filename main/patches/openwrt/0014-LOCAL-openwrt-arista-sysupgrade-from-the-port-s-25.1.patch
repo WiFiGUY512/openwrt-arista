@@ -1,0 +1,51 @@
+From 4b29fb57e0068f6347921f81f692cbadb71fb97b Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 18 Oct 2026 14:07:09 -0500
+Subject: [PATCH 14/14] LOCAL: openwrt-arista: sysupgrade from the port's 25.12
+ images
+
+The port's OpenWrt 25.12 images named the boards arista,c360, arista,c260
+and arista,w318; OpenWrt's review renamed them. Accept the old names too, so
+a unit on a 25.12 image takes a main image by sysupgrade (its port names
+change: eth0/eth1 become lan1/lan2, so keep no settings, or migrate them).
+Not for upstream.
+---
+ target/linux/qualcommax/image/ipq60xx.mk | 1 +
+ target/linux/qualcommax/image/ipq807x.mk | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
+index 0a950c3a..19866bdc 100644
+--- a/target/linux/qualcommax/image/ipq60xx.mk
++++ b/target/linux/qualcommax/image/ipq60xx.mk
+@@ -76,6 +76,7 @@ define Device/arista_w-318
+ 	KERNEL_SIZE := 8192k
+ 	DEVICE_PACKAGES := ipq-wifi-arista_w-318 kmod-ath11k-pci kmod-tpm-tis-spi \
+ 		kmod-fs-f2fs f2fs-tools bluetooth-uart squashfs-tools-unsquashfs
++	SUPPORTED_DEVICES += arista,w318
+ endef
+ TARGET_DEVICES += arista_w-318
+ 
+diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
+index 2059c5f9..4d086a89 100644
+--- a/target/linux/qualcommax/image/ipq807x.mk
++++ b/target/linux/qualcommax/image/ipq807x.mk
+@@ -91,6 +91,7 @@ define Device/arista_c-260
+ 	SOC := ipq8074
+ 	DEVICE_PACKAGES := ipq-wifi-arista_c-260 kmod-ath10k-ct ath10k-firmware-qca988x-ct \
+ 		kmod-spi-gpio kmod-gpio-nxp-74hc164
++	SUPPORTED_DEVICES += arista,c260
+ endef
+ TARGET_DEVICES += arista_c-260
+ 
+@@ -106,6 +107,7 @@ define Device/arista_c-360
+ 	DEVICE_PACKAGES := ipq-wifi-arista_c-360 kmod-ath11k-pci \
+ 		kmod-spi-gpio kmod-gpio-nxp-74hc164 kmod-tpm-tis-spi bluetooth-uart \
+ 		ubi-utils squashfs-tools-unsquashfs
++	SUPPORTED_DEVICES += arista,c360
+ endef
+ TARGET_DEVICES += arista_c-360
+ 
+-- 
+2.43.0
+

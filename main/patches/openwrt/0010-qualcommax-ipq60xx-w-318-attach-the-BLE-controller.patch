@@ -1,0 +1,63 @@
+From 2656020085479fdc19706ce1e5e402d1461cd36a Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 17 Oct 2026 05:11:50 +0000
+Subject: [PATCH 10/14] qualcommax: ipq60xx: w-318: attach the BLE controller
+
+The W-318's Nordic nRF52833 runs a Zephyr HCI UART controller (H:4,
+115200 baud, no flow control) on blsp1_uart2 (/dev/ttyMSM1); its reset
+is held released by a gpio-export in the device tree. Attach it with
+bluetooth-uart, configured from uci-defaults as on the Arista C-360.
+
+The controller has no public address. bluetoothd gives it a static
+random address.
+
+Tested on a unit: hci0 attaches at boot, powers on and scans LE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/qualcommax/image/ipq60xx.mk       |  2 +-
+ .../base-files/etc/uci-defaults/03_bluetooth   | 18 ++++++++++++++++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+ create mode 100644 target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth
+
+diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
+index 5c243d18..dbdb58d7 100644
+--- a/target/linux/qualcommax/image/ipq60xx.mk
++++ b/target/linux/qualcommax/image/ipq60xx.mk
+@@ -75,7 +75,7 @@ define Device/arista_w-318
+ 	SOC := ipq6010
+ 	KERNEL_SIZE := 8192k
+ 	DEVICE_PACKAGES := ipq-wifi-arista_w-318 kmod-ath11k-pci kmod-tpm-tis-spi \
+-		kmod-fs-f2fs f2fs-tools
++		kmod-fs-f2fs f2fs-tools bluetooth-uart
+ endef
+ TARGET_DEVICES += arista_w-318
+ 
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth b/target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth
+new file mode 100644
+index 00000000..21320f08
+--- /dev/null
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth
+@@ -0,0 +1,18 @@
++#!/bin/sh
++
++. /lib/functions.sh
++
++[ "$(board_name)" = "arista,w-318" ] || exit 0
++[ "$(uci -q get bluetooth-uart.main)" = "uart" ] || exit 0
++
++# Preserve an already configured UART, including a disabled one.
++[ -z "$(uci -q get bluetooth-uart.main.device)" ] || exit 0
++
++# The nRF52833's UART has no flow control.
++uci -q batch <<-EOF
++	set bluetooth-uart.main.device='/dev/ttyMSM1'
++	set bluetooth-uart.main.protocol='h4'
++	set bluetooth-uart.main.speed='115200'
++	set bluetooth-uart.main.flow_control='0'
++	set bluetooth-uart.main.enabled='1'
++EOF
+-- 
+2.43.0
+

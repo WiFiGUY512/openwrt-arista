@@ -1,0 +1,93 @@
+From 0cec18bb54c6066022b9ef10e8224431b0ce67b5 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 17 Oct 2026 05:11:50 +0000
+Subject: [PATCH 11/14] qualcommax: ipq60xx: w-318: copy the vendor QCN9074
+ firmware
+
+The W-318's QCN9072 card starts only with Arista's own build of the
+QCN9074 firmware (WLAN.HK.2.5.r4), as the Arista C-360's cards do. That
+build cannot be shipped, but every W-318 carries it in the Arista
+system kept in its second slot, the eMMC partition "rootfs_1".
+
+When ath11k asks for a QCN9074 amss.bin or m3.bin that is missing, copy
+both, unmodified, from that system. The partition is only read.
+Arista's squashfs stores xz compressor options the kernel rejects, so
+unsquashfs reads it. Without the Arista system the 6 GHz radio stays
+down.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/qualcommax/image/ipq60xx.mk      |  2 +-
+ .../firmware/12-ath11k-vendor-firmware        | 46 +++++++++++++++++++
+ 2 files changed, 47 insertions(+), 1 deletion(-)
+ create mode 100644 target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+
+diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
+index dbdb58d7..0a950c3a 100644
+--- a/target/linux/qualcommax/image/ipq60xx.mk
++++ b/target/linux/qualcommax/image/ipq60xx.mk
+@@ -75,7 +75,7 @@ define Device/arista_w-318
+ 	SOC := ipq6010
+ 	KERNEL_SIZE := 8192k
+ 	DEVICE_PACKAGES := ipq-wifi-arista_w-318 kmod-ath11k-pci kmod-tpm-tis-spi \
+-		kmod-fs-f2fs f2fs-tools bluetooth-uart
++		kmod-fs-f2fs f2fs-tools bluetooth-uart squashfs-tools-unsquashfs
+ endef
+ TARGET_DEVICES += arista_w-318
+ 
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+new file mode 100644
+index 00000000..95ffb6d1
+--- /dev/null
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+@@ -0,0 +1,46 @@
++#!/bin/sh
++#
++# Some boards' ath11k cards start only with their vendor's own build of the
++# firmware, which OpenWrt cannot ship. Each such board still carries it, in
++# the vendor system on its own flash. When the driver first asks for a file
++# that is missing, copy it from there, unmodified.
++
++[ -e "/lib/firmware/$FIRMWARE" ] && exit 0
++
++. /lib/functions.sh
++
++# vendor_firmware_extract_mmc PARTNAME SRC FILE...: the FILEs, from the
++# directory SRC of the squashfs in the eMMC partition named PARTNAME, into
++# the directory of $FIRMWARE
++vendor_firmware_extract_mmc() {
++	local part=$1 src=$2 dev tmp f
++	shift 2
++
++	dev=$(find_mmc_part "$part")
++	[ -n "$dev" ] || return 1
++	tmp=$(mktemp -d)
++	unsquashfs -n -d "$tmp" "$dev" \
++		$(for f in "$@"; do echo "$src/$f"; done) > /dev/null 2>&1
++	mkdir -p "/lib/firmware/${FIRMWARE%/*}"
++	for f in "$@"; do
++		[ -s "$tmp/$src/$f" ] && cp "$tmp/$src/$f" "/lib/firmware/${FIRMWARE%/*}/$f"
++	done
++	rm -rf "$tmp"
++	[ -s "/lib/firmware/$FIRMWARE" ]
++}
++
++board=$(board_name)
++
++case "$FIRMWARE" in
++"ath11k/QCN9074/hw1.0/amss.bin"|\
++"ath11k/QCN9074/hw1.0/m3.bin")
++	case "$board" in
++	arista,w-318)
++		# Arista's build of WLAN.HK.2.5.r4, in its system in eMMC slot 1
++		vendor_firmware_extract_mmc rootfs_1 \
++			lib/firmware/IPQ6018/WIFI_FW/qcn9000 amss.bin m3.bin ||
++			logger -t ath11k-vendor-firmware "no $FIRMWARE in the Arista system"
++		;;
++	esac
++	;;
++esac
+-- 
+2.43.0
+

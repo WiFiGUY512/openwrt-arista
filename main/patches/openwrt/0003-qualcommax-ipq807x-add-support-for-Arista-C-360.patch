@@ -1,0 +1,802 @@
+From fe4927110fa8ef0f11ecf74e339ee40d0a182fd3 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Fri, 16 Oct 2026 11:51:59 -0500
+Subject: [PATCH 03/14] qualcommax: ipq807x: add support for Arista C-360
+
+Arista C-360 is a Wi-Fi 6E enterprise access point with four radios and
+two 10 GbE ports that both take PoE.
+
+Hardware specification:
+- SoC: Qualcomm IPQ8076A (4x Cortex-A53, up to 2.2 GHz)
+- RAM: 2 GiB DDR4
+- Flash: 32 MiB SPI NOR (Macronix MX25U25635F), 1 GiB parallel NAND
+- Ethernet: 2x 10GBASE-T (Aquantia AQR113C over USXGMII), PoE in on both
+- Wi-Fi:
+  - IPQ8074: 2.4 GHz 4x4 and 5 GHz 4x4 802.11ax
+  - QCN9074 (PCIe 0): 6 GHz 4x4 802.11ax
+  - QCN9072 (PCIe 1): 2.4/5/6 GHz 2x2 802.11ax (the QCN9074's 2x2
+    sibling, same 17cb:1104)
+- Bluetooth LE: Nordic nRF52833 (HCI over UART)
+- TPM: Infineon SLB 9670 (TPM 2.0, SPI)
+- USB: 1x USB 3.0 Type-A
+- LEDs: power (green, orange), Ethernet 1 and 2 (green, orange),
+  2.4 GHz, 5 GHz, 6 GHz (green), on two 74LV164 shift registers
+- Button: reset
+- UART: RJ-45 console port, RS-232 levels, 115200 8N1
+
+MAC addresses:
+- Ethernet 1 (lan1): 0:art 0x0 (label, 30:86:2d:xx:xx:xx)
+- Ethernet 2 (lan2): 0:art 0x6 (label - 1)
+- Wi-Fi: from the calibration data (label - 63, - 47, - 31 and - 15)
+
+Calibration data for all three Wi-Fi chips is read from 0:art through
+NVMEM cells (0x1000, 0x26800 and 0x4c000).
+
+Ethernet 1 alone is in the LAN by default, so that both ports cabled to
+one switch (as for PoE redundancy) make no loop; add lan2 to br-lan, or
+bond the two, as needed.
+
+Flash layout: the stock firmware keeps two NAND slots of 384 MiB,
+"rootfs" (slot 0) and "rootfs_1" (slot 1), their kernels in SPI NOR
+(0:hlos, 0:hlos_1). OpenWrt takes slot 0 for UBI (kernel FIT, rootfs,
+rootfs_data); slot 1 stays as a fallback. The device tree appends
+ubi.mtd=rootfs and root=/dev/ubiblock0_1, so the root is found whatever
+U-Boot passes.
+
+Flash instructions (console needed):
+1. Stop U-Boot: it waits 2 s and stops only for the string
+   s6.D5r4Gnb89ZEWSW6Kq.
+   Do not let the stock firmware boot meanwhile: its boot script saves the
+   U-Boot environment on every boot.
+2. Boot the initramfs from a TFTP server (nothing is saved):
+     setenv ipaddr <AP address>; setenv serverip <TFTP server>
+     setenv fdt_high 0x4A3E0000
+     setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0
+     tftpboot 0xA0000000 openwrt-qualcommax-ipq807x-arista_c-360-initramfs-uImage.itb
+     bootm 0xA0000000#config@hk09
+   fdt_high is needed: the stock value places the device tree on top of
+   U-Boot's own. panic=0 halts a failed boot instead of rebooting into the
+   stock firmware, which would save the environment.
+3. Back up all MTD partitions; 0:art holds the unit's calibration data and
+   MAC addresses and exists nowhere else.
+4. Copy the factory image to /tmp and write it to slot 0 ("rootfs" in
+   /proc/mtd):
+     ubidetach -p /dev/mtdN; ubiformat /dev/mtdN -y -f /tmp/factory.ubi
+5. Set the boot command, in one environment write, and reboot:
+     fw_setenv -s - <<'EOF'
+     owrt_args console=ttyMSM0,115200n8 rootwait panic=10
+     owrt_parts setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi)
+     owrt_load ubi part ubi && ubi read 0x44000000 kernel
+     owrt_boot setenv fdt_high 0x4A3E0000; run owrt_parts owrt_load && bootm 0x44000000#config@hk09
+     arista_unset setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000
+     arista_args if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi
+     arista_boot run arista_unset arista_args ubootscript
+     bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot
+     pri 1
+     EOF
+
+The stock boot (bootipq) checks image signatures; this boot command loads
+OpenWrt's kernel from UBI with bootm instead and falls back to the stock
+boot, slot 1. The stock boot script sets bootargs only when the slot
+changes and then saves the environment, so the fallback first puts the
+stock bootargs, fdt_high and partition settings back. Later upgrades are
+ordinary sysupgrades.
+
+Return to stock: fw_setenv bootcmd 'run ubootscript', then reboot; the
+stock firmware in slot 1 boots.
+
+Known limitations:
+- The QCN9074 and QCN9072 radios start only with Arista's own build of the
+  firmware (WLAN.HK.2.5.r4). With every public ath11k-firmware build
+  tested (2.5.0.1 to 2.9.0.1), the firmware stops answering at the QMI
+  capability request. A following commit copies Arista's build from the
+  unit's own Arista system.
+- Bluetooth LE is attached by a following commit (bluetooth-uart).
+- The SoC's second USB controller is left disabled, as in Arista's own
+  device tree: enabled, its PHY doesn't lock.
+- Only the vendor's 6 GHz radio plan is supported. gpio9 (exported as
+  "dual-5g", low) selects the plan; the vendor's dual 5 GHz plan also
+  needs other calibration (ART 0x71800) and board data for the IPQ8074
+  and the PCIe 0 card.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../uboot-envtools/files/qualcommax_ipq807x   |   1 +
+ package/firmware/ipq-wifi/Makefile            |   2 +
+ target/linux/qualcommax/dts/ipq8074-c-360.dts | 576 ++++++++++++++++++
+ target/linux/qualcommax/image/ipq807x.mk      |  14 +
+ .../ipq807x/base-files/etc/board.d/01_leds    |   6 +
+ .../ipq807x/base-files/etc/board.d/02_network |   3 +
+ .../base-files/lib/upgrade/platform.sh        |   4 +
+ 7 files changed, 606 insertions(+)
+ create mode 100644 target/linux/qualcommax/dts/ipq8074-c-360.dts
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
+index 7c15a78c..3cf77254 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
+@@ -28,6 +28,7 @@ ubootenv_mtdinfo () {
+ 
+ case "$board" in
+ aliyun,ap8220|\
++arista,c-360|\
+ compex,wpq873|\
+ edgecore,eap102|\
+ zyxel,nbg7815|\
+diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
+index ba6126a7..641c0543 100644
+--- a/package/firmware/ipq-wifi/Makefile
++++ b/package/firmware/ipq-wifi/Makefile
+@@ -32,6 +32,7 @@ ALLWIFIBOARDS:= \
+ 	alfa-network_ap120c-ax \
+ 	aliyun_ap8220 \
+ 	arcadyan_aw1000 \
++	arista_c-360 \
+ 	askey_sbe1v1k \
+ 	asus_rt-ax89x \
+ 	buffalo_wxr-5950ax12 \
+@@ -243,6 +244,7 @@ $(eval $(call generate-ipq-wifi-package,8devices_mango,8devices Mango))
+ $(eval $(call generate-ipq-wifi-package,alfa-network_ap120c-ax,ALFA Network AP120C-AX))
+ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
+ $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
++$(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
+ $(eval $(call generate-ipq-wifi-package,askey_sbe1v1k,Askey SBE1V1K))
+ $(eval $(call generate-ipq-wifi-package,asus_rt-ax89x,Asus RT-AX89X))
+ $(eval $(call generate-ipq-wifi-package,buffalo_wxr-5950ax12,Buffalo WXR-5950AX12))
+diff --git a/target/linux/qualcommax/dts/ipq8074-c-360.dts b/target/linux/qualcommax/dts/ipq8074-c-360.dts
+new file mode 100644
+index 00000000..62ee25aa
+--- /dev/null
++++ b/target/linux/qualcommax/dts/ipq8074-c-360.dts
+@@ -0,0 +1,576 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/dts-v1/;
++
++#include "ipq8074.dtsi"
++#include "ipq8074-hk-cpu.dtsi"
++#include "ipq8074-ess.dtsi"
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++	model = "Arista C-360";
++	compatible = "arista,c-360", "qcom,ipq8074";
++
++	aliases {
++		serial0 = &blsp1_uart5;
++		serial1 = &blsp1_uart3;
++		led-boot = &led_power_orange;
++		led-failsafe = &led_power_orange;
++		led-running = &led_power_green;
++		led-upgrade = &led_power_orange;
++		label-mac-device = &port_lan1;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++		bootargs-append = " ubi.mtd=rootfs root=/dev/ubiblock0_1";
++	};
++
++	memory@40000000 {
++		device_type = "memory";
++		reg = <0x0 0x40000000 0x0 0x80000000>;
++	};
++
++	reg_usb_vbus: regulator-usb-vbus {
++		compatible = "regulator-fixed";
++		regulator-name = "usb_vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
++	gpio-export {
++		compatible = "gpio-export";
++
++		ble-nreset {
++			gpio-export,name = "ble-nreset";
++			gpio-export,output = <1>;
++			gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>;
++		};
++
++		/*
++		 * the radio plan, as on the vendor firmware: low for 6 GHz (the
++		 * IPQ8074 on all of 5 GHz, the pcie0 QCN9074 on 6 GHz), high for
++		 * dual 5 GHz (the IPQ8074 on lower 5 GHz, the pcie0 QCN9074 on
++		 * upper 5 GHz)
++		 */
++		dual-5g {
++			gpio-export,name = "dual-5g";
++			gpio-export,output = <0>;
++			gpios = <&tlmm 9 GPIO_ACTIVE_HIGH>;
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++		pinctrl-0 = <&button_pins>;
++		pinctrl-names = "default";
++
++		reset {
++			label = "reset";
++			gpios = <&tlmm 42 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++	};
++
++	led-spi {
++		compatible = "spi-gpio";
++		#address-cells = <1>;
++		#size-cells = <0>;
++		sck-gpios = <&tlmm 18 GPIO_ACTIVE_HIGH>;
++		mosi-gpios = <&tlmm 19 GPIO_ACTIVE_HIGH>;
++
++		led_gpio: led-gpio@0 {
++			compatible = "fairchild,74hc595";
++			reg = <0>;
++			enable-gpios = <&tlmm 20 GPIO_ACTIVE_HIGH>;
++			spi-max-frequency = <100000>;
++			gpio-controller;
++			#gpio-cells = <2>;
++			registers-number = <2>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_power_green: led-0 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&led_gpio 0 GPIO_ACTIVE_HIGH>;
++		};
++
++		led_power_orange: led-1 {
++			color = <LED_COLOR_ID_ORANGE>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&led_gpio 1 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-2 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_2GHZ;
++			gpios = <&led_gpio 2 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-3 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_5GHZ;
++			gpios = <&led_gpio 3 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-4 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_6GHZ;
++			gpios = <&led_gpio 4 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-5 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_LAN;
++			function-enumerator = <1>;
++			gpios = <&led_gpio 5 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-6 {
++			color = <LED_COLOR_ID_ORANGE>;
++			function = LED_FUNCTION_LAN;
++			function-enumerator = <1>;
++			gpios = <&led_gpio 6 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-8 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_LAN;
++			function-enumerator = <2>;
++			gpios = <&led_gpio 8 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-9 {
++			color = <LED_COLOR_ID_ORANGE>;
++			function = LED_FUNCTION_LAN;
++			function-enumerator = <2>;
++			gpios = <&led_gpio 9 GPIO_ACTIVE_HIGH>;
++		};
++	};
++};
++
++&blsp1_spi1 {
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "0:sbl1";
++				reg = <0x0 0x50000>;
++				read-only;
++			};
++
++			partition@50000 {
++				label = "0:mibib";
++				reg = <0x50000 0x10000>;
++				read-only;
++			};
++
++			partition@60000 {
++				label = "0:bootconfig";
++				reg = <0x60000 0x20000>;
++				read-only;
++			};
++
++			partition@80000 {
++				label = "0:bootconfig1";
++				reg = <0x80000 0x20000>;
++				read-only;
++			};
++
++			partition@a0000 {
++				label = "0:qsee";
++				reg = <0xa0000 0x180000>;
++				read-only;
++			};
++
++			partition@220000 {
++				label = "0:qsee_1";
++				reg = <0x220000 0x180000>;
++				read-only;
++			};
++
++			partition@3a0000 {
++				label = "0:devcfg";
++				reg = <0x3a0000 0x10000>;
++				read-only;
++			};
++
++			partition@3b0000 {
++				label = "0:devcfg_1";
++				reg = <0x3b0000 0x10000>;
++				read-only;
++			};
++
++			partition@3c0000 {
++				label = "0:apdp";
++				reg = <0x3c0000 0x10000>;
++				read-only;
++			};
++
++			partition@3d0000 {
++				label = "0:apdp_1";
++				reg = <0x3d0000 0x10000>;
++				read-only;
++			};
++
++			partition@3e0000 {
++				label = "0:rpm";
++				reg = <0x3e0000 0x40000>;
++				read-only;
++			};
++
++			partition@420000 {
++				label = "0:rpm_1";
++				reg = <0x420000 0x40000>;
++				read-only;
++			};
++
++			partition@460000 {
++				label = "0:cdt";
++				reg = <0x460000 0x10000>;
++				read-only;
++			};
++
++			partition@470000 {
++				label = "0:cdt_1";
++				reg = <0x470000 0x10000>;
++				read-only;
++			};
++
++			partition@480000 {
++				label = "0:appsblenv";
++				reg = <0x480000 0x10000>;
++			};
++
++			partition@490000 {
++				label = "0:appsbl";
++				reg = <0x490000 0x100000>;
++				read-only;
++			};
++
++			partition@590000 {
++				label = "0:appsbl_1";
++				reg = <0x590000 0x100000>;
++				read-only;
++			};
++
++			partition@690000 {
++				label = "0:art";
++				reg = <0x690000 0x100000>;
++				read-only;
++
++				nvmem-layout {
++					compatible = "fixed-layout";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					macaddr_art_0: macaddr@0 {
++						reg = <0x0 0x6>;
++					};
++
++					macaddr_art_6: macaddr@6 {
++						reg = <0x6 0x6>;
++					};
++
++					caldata_ipq8074: calibration@1000 {
++						reg = <0x1000 0x20000>;
++					};
++
++					caldata_pcie0: calibration@26800 {
++						reg = <0x26800 0x20000>;
++					};
++
++					caldata_pcie1: calibration@4c000 {
++						reg = <0x4c000 0x20000>;
++					};
++				};
++			};
++
++			/* the Aquantia PHYs' firmware, which the bootloader loads */
++			partition@790000 {
++				label = "0:ethphyfw";
++				reg = <0x790000 0x80000>;
++				read-only;
++			};
++
++			partition@810000 {
++				label = "0:hlos";
++				reg = <0x810000 0x800000>;
++				read-only;
++			};
++
++			partition@1010000 {
++				label = "0:hlos_1";
++				reg = <0x1010000 0x800000>;
++				read-only;
++			};
++
++			partition@1810000 {
++				label = "config";
++				reg = <0x1810000 0x400000>;
++				read-only;
++			};
++
++			partition@1c10000 {
++				label = "devcert";
++				reg = <0x1c10000 0x20000>;
++				read-only;
++			};
++
++			partition@1c30000 {
++				label = "reserved1";
++				reg = <0x1c30000 0x20000>;
++				read-only;
++			};
++
++			partition@1c50000 {
++				label = "reserved2";
++				reg = <0x1c50000 0x3b0000>;
++				read-only;
++			};
++		};
++	};
++};
++
++/* Infineon SLB 9670 TPM 2.0 */
++&blsp1_spi4 {
++	pinctrl-0 = <&tpm_spi_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	tpm@0 {
++		compatible = "tcg,tpm_tis-spi";
++		reg = <0>;
++		spi-max-frequency = <12000000>;
++	};
++};
++
++/* the nRF52833 Bluetooth LE controller (HCI over UART, no flow control) */
++&blsp1_uart3 {
++	pinctrl-0 = <&ble_uart_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&blsp1_uart5 {
++	status = "okay";
++};
++
++&edma {
++	status = "okay";
++};
++
++&mdio {
++	status = "okay";
++
++	/* Ethernet 2 */
++	aqr113c_0: ethernet-phy@0 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <0>;
++	};
++
++	/* Ethernet 1 */
++	aqr113c_8: ethernet-phy@8 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <8>;
++	};
++};
++
++&pcie0 {
++	status = "okay";
++	perst-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
++
++	pcie@0 {
++		/* QCN9074: the 6 GHz radio */
++		wifi@0,0 {
++			compatible = "pci17cb,1104";
++			reg = <0x00010000 0 0 0 0>;
++			/* as the vendor firmware: 16 + 1 interfaces, 512 clients */
++			qcom,ath11k-fw-memory-mode = <0>;
++			qcom,ath11k-calibration-variant = "Arista-C360-pcie0";
++			nvmem-cells = <&caldata_pcie0>;
++			nvmem-cell-names = "calibration";
++		};
++	};
++};
++
++&pcie1 {
++	status = "okay";
++	perst-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
++
++	pcie@0 {
++		/* QCN9072, the 2x2 QCN9074: the 2.4/5/6 GHz radio */
++		wifi@0,0 {
++			compatible = "pci17cb,1104";
++			reg = <0x00010000 0 0 0 0>;
++			qcom,ath11k-fw-memory-mode = <0>;
++			qcom,ath11k-calibration-variant = "Arista-C360-pcie1";
++			nvmem-cells = <&caldata_pcie1>;
++			nvmem-cell-names = "calibration";
++		};
++	};
++};
++
++&pcie_qmp0 {
++	status = "okay";
++};
++
++&pcie_qmp1 {
++	status = "okay";
++};
++
++&qpic_bam {
++	status = "okay";
++};
++
++&qpic_nand {
++	status = "okay";
++
++	/* absorbs the partitions the bootloader adds at boot */
++	partitions {
++		status = "disabled";
++	};
++
++	nand@0 {
++		reg = <0>;
++		nand-ecc-strength = <8>;
++		nand-ecc-step-size = <512>;
++		nand-bus-width = <8>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			/* the stock firmware's first slot */
++			partition@0 {
++				label = "rootfs";
++				reg = <0x0 0x18000000>;
++				linux,rootfs;
++			};
++
++			/* the stock firmware's second slot, kept as a fallback */
++			partition@18000000 {
++				label = "rootfs_1";
++				reg = <0x18000000 0x18000000>;
++				read-only;
++			};
++
++			partition@30000000 {
++				label = "logging";
++				reg = <0x30000000 0x10000000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&qusb_phy_0 {
++	status = "okay";
++	vdd-supply = <&reg_usb_vbus>;
++};
++
++&ssphy_0 {
++	status = "okay";
++};
++
++&switch {
++	status = "okay";
++
++	ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@0 {
++			reg = <0>;
++			ethernet = <&edma>;
++			phy-mode = "internal";
++
++			fixed-link {
++				speed = <1000>;
++				full-duplex;
++			};
++		};
++
++		port_lan1: port@5 {
++			reg = <5>;
++			label = "lan1";
++			phy-handle = <&aqr113c_8>;
++			phy-mode = "usxgmii";
++			managed = "in-band-status";
++			pcs-handle = <&uniphy1 0>;
++			nvmem-cells = <&macaddr_art_0>;
++			nvmem-cell-names = "mac-address";
++		};
++
++		port@6 {
++			reg = <6>;
++			label = "lan2";
++			phy-handle = <&aqr113c_0>;
++			phy-mode = "usxgmii";
++			managed = "in-band-status";
++			pcs-handle = <&uniphy2 0>;
++			nvmem-cells = <&macaddr_art_6>;
++			nvmem-cell-names = "mac-address";
++		};
++	};
++};
++
++&tlmm {
++	button_pins: button-state {
++		pins = "gpio42";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-up;
++	};
++
++	ble_uart_pins: ble-uart-state {
++		pins = "gpio46", "gpio47", "gpio48", "gpio49";
++		function = "blsp2_uart";
++		drive-strength = <8>;
++		bias-disable;
++	};
++
++	tpm_spi_pins: tpm-spi-state {
++		pins = "gpio50", "gpio51", "gpio52", "gpio53";
++		function = "blsp3_spi";
++		drive-strength = <8>;
++		bias-disable;
++	};
++};
++
++&uniphy1 {
++	status = "okay";
++};
++
++&uniphy2 {
++	status = "okay";
++};
++
++&usb_0 {
++	status = "okay";
++};
++
++&wifi {
++	status = "okay";
++	qcom,ath11k-calibration-variant = "Arista-C360";
++	nvmem-cells = <&caldata_ipq8074>;
++	nvmem-cell-names = "calibration";
++};
+diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
+index de722576..d276cf24 100644
+--- a/target/linux/qualcommax/image/ipq807x.mk
++++ b/target/linux/qualcommax/image/ipq807x.mk
+@@ -80,6 +80,20 @@ define Device/arcadyan_aw1000
+ endef
+ TARGET_DEVICES += arcadyan_aw1000
+ 
++define Device/arista_c-360
++	$(call Device/FitImage)
++	$(call Device/UbiFit)
++	DEVICE_VENDOR := Arista
++	DEVICE_MODEL := C-360
++	BLOCKSIZE := 256k
++	PAGESIZE := 4096
++	DEVICE_DTS_CONFIG := config@hk09
++	SOC := ipq8074
++	DEVICE_PACKAGES := ipq-wifi-arista_c-360 kmod-ath11k-pci ath11k-firmware-qcn9074 \
++		kmod-spi-gpio kmod-gpio-nxp-74hc164 kmod-tpm-tis-spi kmod-hci-uart
++endef
++TARGET_DEVICES += arista_c-360
++
+ define Device/asus_rt-ax89x
+ 	DEVICE_VENDOR := Asus
+ 	DEVICE_MODEL := RT-AX89X
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
+index b49c47fe..19991138 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
+@@ -11,6 +11,12 @@ arcadyan,aw1000)
+ 	ucidef_set_led_netdev "wan" "WAN" "green:internet" "wan"
+ 	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:1c:green:wan" "wan" "tx rx link_10 link_100 link_1000 link_2500"
+ 	;;
++arista,c-360)
++	ucidef_set_led_netdev "lan1-mgig" "LAN1-MGIG" "green:lan-1" "lan1" "link_2500 link_5000 link_10000"
++	ucidef_set_led_netdev "lan1" "LAN1" "orange:lan-1" "lan1" "link_10 link_100 link_1000"
++	ucidef_set_led_netdev "lan2-mgig" "LAN2-MGIG" "green:lan-2" "lan2" "link_2500 link_5000 link_10000"
++	ucidef_set_led_netdev "lan2" "LAN2" "orange:lan-2" "lan2" "link_10 link_100 link_1000"
++	;;
+ asus,rt-ax89x)
+ 	ucidef_set_led_netdev "aqr" "AQR" "white:aqr10g" "10g-copper"
+ 	ucidef_set_led_netdev "sfp" "SFP" "white:sfp" "10g-sfp"
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
+index de072424..5b8a261c 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
+@@ -19,6 +19,9 @@ ipq807x_setup_interfaces()
+ 	zte,mf269)
+ 		ucidef_set_interfaces_lan_wan "lan" "wan"
+ 		;;
++	arista,c-360)
++		ucidef_set_interface_lan "lan1" "dhcp"
++		;;
+ 	asus,rt-ax89x)
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 lan7 lan8 10g-sfp 10g-copper" "wan"
+ 		;;
+diff --git a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
+index b9a25bc7..3294521c 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
+@@ -193,6 +193,10 @@ platform_do_upgrade() {
+ 	zyxel,nwa210ax)
+ 		nand_do_upgrade "$1"
+ 		;;
++	arista,c-360)
++		CI_UBIPART="rootfs"
++		nand_do_upgrade "$1"
++		;;
+ 	asus,rt-ax89x)
+ 		CI_UBIPART="UBI_DEV"
+ 		CI_KERNPART="linux"
+-- 
+2.43.0
+

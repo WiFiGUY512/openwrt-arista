@@ -1,0 +1,64 @@
+From 3d27fb4936134f10f9e83241ddf38bbf5124fcfe Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Fri, 16 Oct 2026 11:51:59 -0500
+Subject: [PATCH 04/14] qualcommax: ipq807x: c-360: attach the BLE controller
+
+The C-360's Nordic nRF52833 runs a Zephyr HCI UART controller (H:4,
+115200 baud, no flow control) on blsp1_uart3 (/dev/ttyMSM1); its reset
+is held released by a gpio-export in the device tree. Attach it with
+bluetooth-uart, configured from uci-defaults as on the Linksys LN6001.
+
+The controller has no public address. bluetoothd (bluez-daemon, which
+pulls in kmod-crypto-user) gives it a static random address.
+
+Tested on a unit: hci0 attaches at boot, and with bluez-daemon the
+controller powers on and scans LE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/qualcommax/image/ipq807x.mk       |  2 +-
+ .../base-files/etc/uci-defaults/03_bluetooth   | 18 ++++++++++++++++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+ create mode 100644 target/linux/qualcommax/ipq807x/base-files/etc/uci-defaults/03_bluetooth
+
+diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
+index d276cf24..2100ed47 100644
+--- a/target/linux/qualcommax/image/ipq807x.mk
++++ b/target/linux/qualcommax/image/ipq807x.mk
+@@ -90,7 +90,7 @@ define Device/arista_c-360
+ 	DEVICE_DTS_CONFIG := config@hk09
+ 	SOC := ipq8074
+ 	DEVICE_PACKAGES := ipq-wifi-arista_c-360 kmod-ath11k-pci ath11k-firmware-qcn9074 \
+-		kmod-spi-gpio kmod-gpio-nxp-74hc164 kmod-tpm-tis-spi kmod-hci-uart
++		kmod-spi-gpio kmod-gpio-nxp-74hc164 kmod-tpm-tis-spi bluetooth-uart
+ endef
+ TARGET_DEVICES += arista_c-360
+ 
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/uci-defaults/03_bluetooth b/target/linux/qualcommax/ipq807x/base-files/etc/uci-defaults/03_bluetooth
+new file mode 100644
+index 00000000..abe01eff
+--- /dev/null
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/uci-defaults/03_bluetooth
+@@ -0,0 +1,18 @@
++#!/bin/sh
++
++. /lib/functions.sh
++
++[ "$(board_name)" = "arista,c-360" ] || exit 0
++[ "$(uci -q get bluetooth-uart.main)" = "uart" ] || exit 0
++
++# Preserve an already configured UART, including a disabled one.
++[ -z "$(uci -q get bluetooth-uart.main.device)" ] || exit 0
++
++# The nRF52833's UART has no flow control.
++uci -q batch <<-EOF
++	set bluetooth-uart.main.device='/dev/ttyMSM1'
++	set bluetooth-uart.main.protocol='h4'
++	set bluetooth-uart.main.speed='115200'
++	set bluetooth-uart.main.flow_control='0'
++	set bluetooth-uart.main.enabled='1'
++EOF
+-- 
+2.43.0
+

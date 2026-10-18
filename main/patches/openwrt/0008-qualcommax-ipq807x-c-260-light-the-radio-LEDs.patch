@@ -1,0 +1,61 @@
+From 4c08f587d7e88f79a2e7f06f9039af85bb411793 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 18 Oct 2026 08:54:37 -0500
+Subject: [PATCH 08/14] qualcommax: ipq807x: c-260: light the radio LEDs
+
+The 2.4, 5 and WLAN LEDs had no trigger. Phy numbers follow the order
+the radios were first found in, and they differ between units: on one
+C-260 the QCA988x card on pcie0 is phy0, ahead of the IPQ8074's radios.
+So board.d cannot name them. A hotplug script ties each LED to its
+radio by device path instead, with the radio's phyNradio trigger: the
+LED is lit while the radio is enabled.
+
+Tested on a unit: the three LEDs follow the IPQ8074's two radios and
+the QCA988x card.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../hotplug.d/ieee80211/12-arista-c-260-leds  | 30 +++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+ create mode 100755 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds
+
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds
+new file mode 100755
+index 00000000..9d4037f2
+--- /dev/null
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds
+@@ -0,0 +1,30 @@
++#!/bin/sh
++# Arista C-260: each radio LED follows its radio, found by device path.
++# Phy numbers follow the order the radios were first found in, which
++# differs between units. 2.4 and 5 are the IPQ8074's radios, WLAN is the
++# QCA988x card on pcie0. "phyNradio" lights the LED while the radio is
++# enabled.
++
++[ "$ACTION" = add ] || exit 0
++
++. /lib/functions.sh
++
++[ "$(board_name)" = arista,c-260 ] || exit 0
++
++case "$(readlink "/sys/class/ieee80211/$DEVICENAME/device")" in
++*/c000000.wifi)
++	if iw phy "$DEVICENAME" info | grep -q "Band 1:"; then
++		led=green:wlan-2ghz
++	else
++		led=green:wlan-5ghz
++	fi
++	;;
++*/0000:01:00.0)
++	led=green:wlan
++	;;
++*)
++	exit 0
++	;;
++esac
++
++echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
+-- 
+2.43.0
+
