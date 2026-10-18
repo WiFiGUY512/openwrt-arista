@@ -167,7 +167,10 @@ apply() {
 	fi
 	[ -f $MARK ] || cp /etc/config/network $PREV
 	u commit network
-	/etc/init.d/network reload
+	# A bond change takes a restart: on a reload netifd makes the bond while
+	# Ethernet 1 is still a bridge port, the bond refuses it ("Device is in
+	# use"), and once up it takes no new port. A restart frees the ports first.
+	/etc/init.d/network ${NETWORK_ACTION:-reload}
 	sleep 2
 	relink
 	if [ "$NOROLLBACK" = 1 ]; then
@@ -180,7 +183,7 @@ apply() {
 	  sleep $TIMEOUT
 	  if [ "$(cat $MARK 2>/dev/null)" = "$1" ]; then
 		cp $PREV /etc/config/network && rm -f $MARK $PREV
-		/etc/init.d/network reload
+		/etc/init.d/network ${NETWORK_ACTION:-reload}
 		sleep 2
 		relink
 		logger -t arista-c260-net "not confirmed in ${TIMEOUT}s: the previous network config is back"
@@ -298,6 +301,7 @@ bond)
 		u set network.c260bond.monitor_mode=mii
 		u set network.c260bond.monitor_interval=100
 		to=bond0
+		NETWORK_ACTION=restart
 		;;
 	off)
 		bonded || { echo "not bonded"; exit 0; }
@@ -326,6 +330,24 @@ bond)
 		done
 		u -q delete network.$s.ports
 		for p in $new; do u add_list network.$s.ports="$p"; done
+	done
+	# and in the bridges' VLAN tables (a bridge with VLAN filtering), where the
+	# port is named with its tagging (lan1, lan1:t, lan1:u*): left there, it
+	# stays a bridge port and the bond cannot take it. No globbing: u* is
+	# no file pattern.
+	u -X -q show network | sed -n "s/^network\.\([^.=]*\)=bridge-vlan$/\1/p" | while read s; do
+		set -f
+		new=""
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in
+			"$from") p=$to ;;
+			"$from":*) p=$to:${p#$from:} ;;
+			esac
+			new="$new $p"
+		done
+		u -q delete network.$s.ports
+		for p in $new; do u add_list network.$s.ports="$p"; done
+		set +f
 	done
 	apply $TAG
 	;;
