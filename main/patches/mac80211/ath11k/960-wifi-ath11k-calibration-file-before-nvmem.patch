@@ -1,0 +1,43 @@
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Subject: [PATCH] wifi: ath11k: a calibration file in place comes before nvmem
+
+LOCAL (openwrt-arista, not for upstream): the Arista C-360's dual 5 GHz
+radio plan gives the IPQ8074 the calibration data at ART 0x71800, where
+the device tree's nvmem cell names 0x1000 (the 6 GHz plan, Arista's
+default). The plan writes cal-ahb-c000000.wifi.bin; with no such file the
+nvmem cell is used as before. request_firmware_direct: no hotplug wait.
+
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
+@@ -2466,6 +2466,7 @@ static int ath11k_qmi_load_bdf_qmi(struc
+ {
+ 	struct device *dev = ab->dev;
+ 	char filename[ATH11K_QMI_MAX_BDF_FILE_NAME_SIZE];
++	char path[100];
+ 	struct ath11k_board_data bd;
+ 	u32 fw_size, file_type;
+ 	const struct firmware *fw_entry = NULL;
+@@ -2513,6 +2514,21 @@ static int ath11k_qmi_load_bdf_qmi(struc
+ 		fw_size = ATH11K_QMI_MAX_BDF_FILE_NAME_SIZE;
+ 	} else {
+ 		file_type = ATH11K_QMI_FILE_TYPE_CALDATA;
++
++		/* A calibration file in place comes before the nvmem cell:
++		 * one a board's radio plan writes, for calibration data the
++		 * device tree does not name.
++		 */
++		snprintf(filename, sizeof(filename), "cal-%s-%s.bin",
++			 ath11k_bus_str(ab->hif.bus), dev_name(dev));
++		ath11k_core_create_firmware_path(ab, filename, path, sizeof(path));
++		if (!request_firmware_direct(&fw_entry, path, dev)) {
++			ath11k_dbg(ab, ATH11K_DBG_QMI,
++				   "calibration data from %s before nvmem\n", path);
++			goto success;
++		}
++		fw_entry = NULL;
++
+ 		ret = ath11k_qmi_get_caldata_nvmem(ab, &caldata, &fw_size);
+ 		if (!ret) {
+ 			tmp = caldata;
