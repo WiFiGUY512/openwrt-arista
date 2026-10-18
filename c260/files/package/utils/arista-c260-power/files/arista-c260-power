@@ -181,12 +181,32 @@ radios_apply() {
 	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
 }
 
+# The power LED shows the level: green at full power, orange (the W-318's is
+# amber) while the power is reduced. Option led '0' leaves it green. OpenWrt
+# lights it green once the boot is done; this runs after that.
+power_led() { # power_led full|limited
+	local g=/sys/class/leds/green:power o= l on off
+	for l in orange amber; do
+		[ -e /sys/class/leds/$l:power ] && o=/sys/class/leds/$l:power
+	done
+	[ -e $g ] && [ -n "$o" ] || return 0
+	[ "$(opt led 1)" = 1 ] || set -- full
+	if [ $1 = limited ]; then on=$o off=$g; else on=$g off=$o; fi
+	echo none > $off/trigger
+	echo 0 > $off/brightness
+	echo none > $on/trigger
+	cat $on/max_brightness > $on/brightness
+	l=${on##*/}
+	echo ${l%:power} > $STATE.led
+}
+
 apply() {
 	read_inputs
 	if [ "$(opt enabled 1)" != 1 ]; then
 		echo full > $STATE.level
 		bt_set on
 		radios_apply
+		power_led full
 		log "disabled: full power regardless (Ethernet 1 $POE1, Ethernet 2 $POE2, DC $DC)"
 		return
 	fi
@@ -194,6 +214,7 @@ apply() {
 	log "power: $LEVEL (Ethernet 1 $POE1, Ethernet 2 $POE2, DC $DC)"
 	if [ $LEVEL = limited ] && [ "$(opt bluetooth 1)" = 1 ]; then bt_set off; else bt_set on; fi
 	radios_apply
+	power_led $LEVEL
 	{
 		echo "level=$LEVEL"
 		echo "poe=$POE"
@@ -232,6 +253,7 @@ status() {
 	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
 	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
 	echo "Bluetooth: $([ -e $STATE.bt-off ] && echo off || echo on)"
+	echo "power LED: $(cat $STATE.led 2>/dev/null || echo not set)"
 	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
 	return 0
 }

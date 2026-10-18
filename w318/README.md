@@ -57,6 +57,8 @@ Seen working on a unit unless marked otherwise.
   output is on only when the W-318 itself runs on 802.3bt (as the datasheet
   has it: off on 802.3at and on a DC supply). The PoE class comes from the
   PoE controller's pins, or from the power a switch allocates by LLDP.
+  While the power is reduced the power LED is amber, green at full power
+  (option `led`, as on the C-360).
   `arista-w318-power status` shows what it reads and what is applied;
   `/etc/config/arista-w318-power` turns it off, turns the PoE output off or
   changes the caps. On a unit on 802.3bt: full power, the PoE output's

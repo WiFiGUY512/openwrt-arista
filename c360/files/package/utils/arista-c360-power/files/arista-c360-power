@@ -22,8 +22,11 @@
 #	arista-c360-power monitor	apply again whenever the inputs change
 
 STATE=/var/run/arista-c360-power
-USB=8af8800.usb
+# The USB controller, dwc3-qcom's: 8a00000.usb in OpenWrt main's device tree,
+# 8af8800.usb (the glue node) in 25.12's.
 USBDRV=/sys/bus/platform/drivers/dwc3-qcom
+USB=8a00000.usb
+[ -e /sys/bus/platform/devices/$USB ] || USB=8af8800.usb
 # uci writes are staged in a save directory of their own, so they never show
 # among anyone else's changes. A commit still takes what is staged in
 # /tmp/.uci too (uci reads both), so nothing is committed while someone has
@@ -224,6 +227,25 @@ chains_apply() { # chains_apply limited|full
 	return 0
 }
 
+# The power LED shows the level: green at full power, orange (the W-318's is
+# amber) while the power is reduced. Option led '0' leaves it green. OpenWrt
+# lights it green once the boot is done; this runs after that.
+power_led() { # power_led full|limited
+	local g=/sys/class/leds/green:power o= l on off
+	for l in orange amber; do
+		[ -e /sys/class/leds/$l:power ] && o=/sys/class/leds/$l:power
+	done
+	[ -e $g ] && [ -n "$o" ] || return 0
+	[ "$(opt led 1)" = 1 ] || set -- full
+	if [ $1 = limited ]; then on=$o off=$g; else on=$g off=$o; fi
+	echo none > $off/trigger
+	echo 0 > $off/brightness
+	echo none > $on/trigger
+	cat $on/max_brightness > $on/brightness
+	l=${on##*/}
+	echo ${l%:power} > $STATE.led
+}
+
 apply() {
 	read_inputs
 	echo $LEVEL > $STATE.level
@@ -232,6 +254,7 @@ apply() {
 		echo full > $STATE.level
 		chains_apply full
 		radios_apply
+		power_led full
 		log "disabled: full power regardless (PoE 1 $POE1, PoE 2 $POE2, DC $DC)"
 		return
 	fi
@@ -239,6 +262,7 @@ apply() {
 	if [ $LEVEL = limited ] && [ "$(opt usb 1)" = 1 ]; then usb_set off; else usb_set on; fi
 	chains_apply $LEVEL
 	radios_apply
+	power_led $LEVEL
 	{
 		echo "level=$LEVEL"
 		echo "poe1=$POE1"
@@ -276,6 +300,7 @@ status() {
 	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
 	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
 	echo "USB port: $([ -e $USBDRV/$USB ] && echo on || echo off)"
+	echo "power LED: $(cat $STATE.led 2>/dev/null || echo not set)"
 	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
 	uci -q show arista-c360-power.chains | sed -n "s/^arista-c360-power\.chains\.\([^=]*\)=.*/radio \1: 2.4 GHz chains reduced to mask $(opt chains_2g 3)/p"
 	return 0

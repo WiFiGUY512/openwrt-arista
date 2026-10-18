@@ -172,6 +172,25 @@ radios_apply() {
 	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
 }
 
+# The power LED shows the level: green at full power, orange (the W-318's is
+# amber) while the power is reduced. Option led '0' leaves it green. OpenWrt
+# lights it green once the boot is done; this runs after that.
+power_led() { # power_led full|limited
+	local g=/sys/class/leds/green:power o= l on off
+	for l in orange amber; do
+		[ -e /sys/class/leds/$l:power ] && o=/sys/class/leds/$l:power
+	done
+	[ -e $g ] && [ -n "$o" ] || return 0
+	[ "$(opt led 1)" = 1 ] || set -- full
+	if [ $1 = limited ]; then on=$o off=$g; else on=$g off=$o; fi
+	echo none > $off/trigger
+	echo 0 > $off/brightness
+	echo none > $on/trigger
+	cat $on/max_brightness > $on/brightness
+	l=${on##*/}
+	echo ${l%:power} > $STATE.led
+}
+
 apply() {
 	read_inputs
 	echo $LEVEL > $STATE.level
@@ -182,6 +201,7 @@ apply() {
 	fi
 	if [ $LEVEL = limited ] && [ "$(opt usb 1)" = 1 ]; then usb_set off; else usb_set on; fi
 	radios_apply
+	power_led $LEVEL
 	# the PoE output wants 802.3bt itself
 	if [ "$(opt pse 1)" = 1 ] && [ $DC = 0 ] && [ $POE = 802.3bt ] && [ $LEVEL = full ]; then
 		pse_set on
@@ -223,6 +243,7 @@ status() {
 	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
 	echo "USB port: $([ -e $STATE.usb-off ] && echo off || echo on)"
 	echo "PoE output on Network 1: $([ -e $STATE.pse-on ] && echo on || echo off)"
+	echo "power LED: $(cat $STATE.led 2>/dev/null || echo not set)"
 	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
 	return 0
 }

@@ -147,7 +147,9 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   power alone, with no DC supply or 802.3bt on the other input, the USB port
   is turned off and the serving radios' transmit power capped (15 dBm at
   2.4 GHz, 18 dBm at 5 and 6 GHz), as Arista's own system does. The PoE class
-  comes from the PoE controller's pins (HARDWARE.md). `arista-c360-power
+  comes from the PoE controller's pins (HARDWARE.md). While the power is
+  reduced the power LED is orange, green at full power (option `led`).
+  `arista-c360-power
   status` shows the inputs and what is applied; `/etc/config/arista-c360-power`
   turns it off or changes the caps. Tested on a unit on 802.3bt (full power),
   and the 802.3at path with a test override.

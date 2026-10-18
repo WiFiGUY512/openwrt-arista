@@ -108,7 +108,9 @@ Seen working on a unit unless marked otherwise.
   ports', each from the PoE controller's pins (HARDWARE.md) or the power a
   switch allocates on it by LLDP. Arista's system reads only Ethernet 1's,
   which reads as 802.3af with nothing on it, and so would cap a C-260 that
-  runs on Ethernet 2's 802.3bt. `arista-c260-power status` shows what it
+  runs on Ethernet 2's 802.3bt. While the power is reduced the power LED
+  is orange, green at full power (option `led`, as on the C-360).
+  `arista-c260-power status` shows what it
   reads and what is applied;
   `/etc/config/arista-c260-power` turns it off or changes the caps. Tested
   on a unit on 802.3bt (full power), and the 802.3at path with a test
