@@ -15,7 +15,7 @@ fix_modes() {
 		$q/etc/hotplug.d/ieee80211/12-arista-w318-leds
 	chmod 0755 $q/etc/init.d/arista-w318-ble $q/etc/init.d/arista-w318-board-data \
 		$q/etc/init.d/arista-w318-lanled $q/usr/libexec/arista-w318-lanled \
-		$q/usr/sbin/arista-w318-install \
+		$q/usr/sbin/arista-w318-install $q/etc/board.d/05_arista_wlan_country \
 		package/utils/arista-w318-power/files/arista-w318-power \
 		package/utils/arista-w318-power/files/arista-w318-power.init
 }

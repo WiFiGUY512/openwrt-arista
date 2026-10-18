@@ -152,6 +152,7 @@ rm -rf "$S/package/kernel/qca-nss-dp" \
 cp -rp "$MAIN/files/." "$S/"
 model_files "$S" . .main-files
 for f in target/linux/qualcommax/*/base-files/etc/init.d/* target/linux/qualcommax/*/base-files/usr/sbin/* \
+	target/linux/qualcommax/*/base-files/etc/board.d/* \
 	target/linux/qualcommax/*/base-files/usr/libexec/*; do
 	[ -f "$f" ] && chmod 0755 "$f"
 done

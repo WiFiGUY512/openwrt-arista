@@ -1,0 +1,24 @@
+#!/bin/sh
+# Arista C-360: no country of its own for the 6 GHz radio.
+#
+# Without Wi-Fi defaults from the board, OpenWrt gives a 6 GHz radio the
+# country '00', and its setup runs "iw reg set 00" for it, disabled or not.
+# The IPQ8074 Wi-Fi firmware refuses the world domain ("failed to process
+# regulatory info -22"), and from then until the next boot the 5 GHz radio
+# cannot start its radar check (hostapd: DFS start_dfs_cac() failed). This is
+# what a fresh install boots with. Declared Wi-Fi defaults without a country,
+# the 6 GHz radios get none and follow the country the other radios set.
+
+. /lib/functions/uci-defaults.sh
+
+board_config_update
+
+case "$(board_name)" in
+arista,c360|arista,c-360)
+	ucidef_set_country ""
+	;;
+esac
+
+board_config_flush
+
+exit 0

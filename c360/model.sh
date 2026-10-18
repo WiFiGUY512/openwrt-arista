@@ -13,7 +13,7 @@ fix_modes() {
 	local q=target/linux/qualcommax/ipq807x/base-files
 	chmod 0755 $q/usr/sbin/arista-c360-install $q/usr/sbin/arista-c360-net \
 		$q/etc/init.d/arista-c360-ble $q/etc/init.d/arista-c360-linkwatch \
-		$q/etc/init.d/arista-c360-board-data
+		$q/etc/init.d/arista-c360-board-data $q/etc/board.d/05_arista_wlan_country
 	chmod 0644 $q/etc/hotplug.d/ieee80211/12-arista-c360-leds \
 		$q/etc/hotplug.d/firmware/12-ath11k-vendor-firmware \
 		$q/etc/hotplug.d/firmware/13-arista-c360-board-data
