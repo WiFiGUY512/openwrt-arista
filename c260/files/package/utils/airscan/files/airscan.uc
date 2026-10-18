@@ -23,6 +23,10 @@
 // heard on a channel the AP is not using, deauth/disassoc floods.
 // Results: ubus object "airscan" and JSON files under /tmp/airscan.
 //
+// A board with a BLE controller and no scan radio (Arista W-318: its Nordic
+// nRF52833) runs the BLE survey alone, under the same ubus object: its radio
+// jobs answer that there is no scan radio, and status says "ble only".
+//
 // The radio can be lent (ubus "lend"): another service, a client test for
 // one, borrows it for a while. airscan takes its own interfaces off it, runs
 // no job on it, and has it back when told ("reclaim") or when the loan runs
@@ -44,6 +48,8 @@ import * as struct from 'struct';
 import * as socket from 'socket';
 
 const BOARDS = { "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0" };
+// boards with a BLE controller and no scan radio: the BLE survey alone
+const BLE_BOARDS = { "arista,w318": true, "arista,w-318": true };
 const OUT = "/tmp/airscan";
 const MON = "as-mon0", STA = "as-sta0";
 const PIDFILE = "/var/run/airscan.pid";
@@ -1142,8 +1148,9 @@ const methods = {
 		call: () => ({
 			board: board_name(), radio: radio.pci, phy: radio.phy, section: radio.section,
 			spectral_supported: radio.spectral, state,
-			// what a borrower can count on: "lend", and a deaf radio healed
-			features: [ "lend", "heal" ],
+			// what a borrower can count on: "lend", and a deaf radio healed;
+			// with no scan radio, the BLE survey only
+			features: radio.pci ? [ "lend", "heal" ] : [ "ble" ],
 			loan: loan.until ? { to: loan.to, until: loan.until } : null,
 			heal: { count: heal.count, failed: heal.failed, last: heal.last },
 			last, next, config: cfg,
@@ -1225,8 +1232,14 @@ const methods = {
 cfg = load_config();
 if (!cfg.enabled) { log("disabled in /etc/config/airscan"); exit(0); }
 let pci = BOARDS[board_name()];
-if (!pci) { log(`no dedicated scan radio on board "${board_name()}"; not starting`); exit(0); }
+const BLE_ONLY = !pci && BLE_BOARDS[board_name()];
+if (!pci && !BLE_ONLY) { log(`no dedicated scan radio on board "${board_name()}"; not starting`); exit(0); }
 radio.pci = pci;
+if (BLE_ONLY) {
+	state = "ble only";
+	for (let m in [ "spectrum", "bss", "clients", "sweep", "scan", "lend" ])
+		methods[m].call = () => ({ error: "no scan radio on this board" });
+}
 // One airscan at a time. On a restart procd can start us while the previous
 // instance is still cleaning up, and its cleanup deletes the scan interfaces;
 // wait for it to exit (up to 15 s) before touching the radio.
@@ -1238,7 +1251,7 @@ for (let i = 0; i < 60; i++) {
 }
 fs.writefile(PIDFILE, `${MYPID}\n`);
 fs.mkdir(OUT);
-release_from_netifd(pci);
+if (!BLE_ONLY) release_from_netifd(pci);
 
 uloop.init();
 // ucode -S starts with its collector off: without it, what refers to itself
@@ -1261,8 +1274,12 @@ uloop.guard((e) => {
 conn = ubus.connect();
 if (!conn) { log("cannot connect to ubus"); exit(1); }
 conn.publish("airscan", methods);
-log(`started; scan radio ${pci}`);
-later(2000, run_next);
+if (BLE_ONLY) {
+	log("started; the BLE survey only (no scan radio on this board)");
+} else {
+	log(`started; scan radio ${pci}`);
+	later(2000, run_next);
+}
 ble_schedule(15000);
 uloop.run();
 cleanup();

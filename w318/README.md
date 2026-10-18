@@ -40,6 +40,10 @@ Seen working on a unit unless marked otherwise.
 - **Bluetooth** (`/etc/init.d/arista-w318-ble`): the nRF52833 runs Arista's
   Zephyr HCI firmware; it is `hci0` for BlueZ, powered on with LE, a static
   address from ART, not advertising. On a unit: 14 devices heard in 10 s.
+  On OpenWrt main the images carry airscan for its BLE survey, as on the
+  C-360 and C-260 (`ubus call airscan ble`, LuCI's airscan BLE page): with no
+  scan radio here it runs the survey alone, and its Wi-Fi survey calls answer
+  "no scan radio on this board". On a unit: 13 devices, one a tracker.
 - **The TPM:** TPM 2.0 on SPI (`/dev/tpm0`, `/dev/tpmrm0`).
 - **USB 3.0:** a stick at 5 Gb/s, 197 MB/s read.
 - **The LEDs.** Power is amber while booting, in failsafe and while

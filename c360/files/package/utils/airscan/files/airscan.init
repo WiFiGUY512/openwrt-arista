@@ -25,7 +25,8 @@ start_service() {
 	. /lib/functions.sh
 	case "$(board_name)" in
 	arista,c260|arista,c-260|\
-	arista,c360|arista,c-360) ;;
+	arista,c360|arista,c-360|\
+	arista,w318|arista,w-318) ;;
 	*) return 0 ;;
 	esac
 	if [ "$(uci -q get airscan.main.enabled)" = 0 ]; then
