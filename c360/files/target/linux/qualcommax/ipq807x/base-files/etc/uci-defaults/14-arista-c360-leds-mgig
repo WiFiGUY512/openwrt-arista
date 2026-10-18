@@ -1,0 +1,27 @@
+#!/bin/sh
+# Arista C-360: each Ethernet port's LED is green for any link above 1 Gb/s
+# (2.5, 5 and 10G) and orange for 1 Gb/s or slower. Units installed before
+# green covered 5 and 10G kept LED settings that light it at 2.5G only, and
+# so lit nothing at 5 or 10G: a sysupgrade keeps the settings, and board.d
+# makes the LEDs only on a fresh install. Such a green LED gets 5 and 10G,
+# as a fresh install has it. Settings changed by hand are left alone.
+
+. /lib/functions.sh
+
+case "$(board_name)" in arista,c360|arista,c-360) ;; *) exit 0 ;; esac
+
+changed=
+for n in 1 2; do
+	s=led_lan${n}_2500
+	[ "$(uci -q get system.$s.sysfs)" = green:lan-$n ] || continue
+	[ "$(uci -q get system.$s.mode)" = link_2500 ] || continue
+	uci set system.$s.name=LAN$n-MGIG
+	uci -q delete system.$s.mode
+	for m in link_2500 link_5000 link_10000; do
+		uci add_list system.$s.mode=$m
+	done
+	changed=1
+done
+[ -z "$changed" ] || uci commit system
+
+exit 0
