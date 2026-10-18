@@ -15,15 +15,16 @@ off or about to be power-cycled. Then, per unit:
      checks each result: two register writes that power the USB port (gpio29,
      which Arista's U-Boot leaves off), usb start, usb storage, fatls, fatload
      of the RAM installer,
-     setenv fdt_high and bootargs (RAM only, with panic=0), bootm. It never
-     sends saveenv; send() refuses anything containing it.
+     setenv fdt_high and bootargs (RAM only, with panic=0), bootm. The bootm
+     tries OpenWrt main's configuration (config@hk09) first and, when U-Boot
+     comes back to its prompt, 25.12's (config@1, with pcie_ports=compat). It
+     never sends saveenv; send() refuses anything containing it.
   3. In the RAM installer it checks it is a C-360 running from RAM, then runs
      arista-c360-install (with --dry-run: backup and checks only). Before a
      real install it asks you to type the last four hex digits of the unit's
      MAC, unless --yes.
   4. After a real install it reboots the AP, does NOT stop U-Boot, and
-     confirms OpenWrt starts from NAND (ubi.mtd=ubi on the kernel command
-     line).
+     confirms OpenWrt starts from NAND (see nand_openwrt).
 
 Everything the console prints is logged to c360-flash-<time>.log.
 --at-prompt skips step 1 when you have already stopped U-Boot yourself.
@@ -65,11 +66,18 @@ RESULT = re.compile(r"C360-INSTALL-RESULT: (OK|FAILED)([^\r\n]*)")
 # GPIO_CFG(29) output enable (TLMM at 0x01000000, 0x1000 per pin).
 USB_POWER = ("mw.l 0x0101D004 0x2", "mw.l 0x0101D000 0x201")
 
+# The RAM installer's boots, in the order tried: OpenWrt main's FIT has the one
+# configuration config@hk09; 25.12's has config@1 and wants pcie_ports=compat.
+# On the other's FIT U-Boot finds no such configuration and comes back to its
+# prompt, having started nothing.
+RAM_BOOTS = (("console=ttyMSM0,115200n8 rootwait panic=0", "config@hk09"),
+             ("console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat", "config@1"))
+
 UBOOT_ALLOWED = USB_POWER + ("usb start", "usb storage", "fatls usb 0:1 c360",
                  "fatload usb 0:1 0xA0000000 c360/initramfs.itb",
-                 "setenv fdt_high 0x4A3E0000",
-                 "setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat",
-                 "bootm 0xA0000000#config@1", "\x03")
+                 "setenv fdt_high 0x4A3E0000", "\x03") + tuple(
+                 x for args, conf in RAM_BOOTS
+                 for x in ("setenv bootargs " + args, "bootm 0xA0000000#" + conf))
 
 
 class Stop(Exception):
@@ -201,12 +209,19 @@ def boot_installer(c):
     if not m or int(m.group(1)) != sizes["initramfs.itb"]:
         raise Stop("fatload read %s bytes, the file is %d" % (m and m.group(1), sizes["initramfs.itb"]))
     uboot(c, "setenv fdt_high 0x4A3E0000", 10)
-    uboot(c, "setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat", 10)
-    print(">> booting the RAM installer")
-    c.mark()
-    c.send("bootm 0xA0000000#config@1", uboot=True)
-    c.wait(60, lambda c: re.search(r"Starting kernel", c.buf),
-           abort=(("bootm failed", re.compile(r"ERROR|Bad Linux|Wrong Image|can't get kernel")),))
+    for args, conf in RAM_BOOTS:
+        uboot(c, "setenv bootargs " + args, 10)
+        print(">> booting the RAM installer (%s)" % conf)
+        c.mark()
+        c.send("bootm 0xA0000000#" + conf, uboot=True)
+        # the kernel starting, or the prompt back after bootm's own output
+        c.wait(60, lambda c: re.search(r"Starting kernel", c.buf) or
+               (at_uboot_prompt(c) and "\n" in c.buf))
+        if "Starting kernel" in c.buf:
+            break
+        print(">> U-Boot did not boot %s" % conf)
+    else:
+        raise Stop("bootm failed for every configuration: %s" % c.buf.strip()[-300:])
     c.mark()
     c.wait(300, lambda c: ACTIVATE.search(c.buf),
            abort=(("the installer crashed (panic=0 holds it; power-cycle)", re.compile(r"Kernel panic")),))
@@ -217,9 +232,12 @@ def boot_installer(c):
 
 
 def install(c, dry, yes):
-    facts = shell(c, "cat /tmp/sysinfo/board_name; grep -c ubi.mtd= /proc/cmdline; cat /sys/class/net/eth0/address")
+    # From RAM, / is a tmpfs (rootfs on older kernels); the command line does not
+    # tell, as main's device tree appends ubi.mtd= to every boot's.
+    facts = shell(c, "cat /tmp/sysinfo/board_name; awk '$2 == \"/\" {print $3; exit}' /proc/mounts; "
+                     "cat /sys/class/net/eth0/address")
     f = [x.strip() for x in facts.split("\n") if x.strip()]
-    if len(f) < 3 or f[0] != "arista,c360" or f[1] != "0":
+    if len(f) < 3 or f[0] not in ("arista,c360", "arista,c-360") or f[1] not in ("tmpfs", "rootfs", "ramfs"):
         raise Stop("not the C-360 RAM installer: %r" % f)
     mac = f[2].replace(":", "").lower()
     print(">> unit MAC %s" % f[2])
@@ -249,13 +267,23 @@ def install(c, dry, yes):
     return mac
 
 
+def nand_openwrt(cmdline):
+    """OpenWrt booted from NAND: owrt_args's panic=10 (the RAM installer has
+    panic=0, Arista's ba0/ba1 none) and a UBI root, not Arista's
+    root=mtd:ubi_rootfs (25.12: ubi.mtd=ubi; main's device tree appends
+    ubi.mtd=rootfs)."""
+    args = cmdline.split()
+    return "panic=10" in args and any(a.startswith("ubi.mtd=") for a in args) and \
+        not any(a.startswith("root=mtd:") for a in args)
+
+
 def first_boot(c):
     print(">> rebooting into OpenWrt from NAND (not stopping U-Boot)")
     c.mark()
     c.send("reboot")
     c.wait(120, lambda c: UBOOT_BANNER.search(c.buf))
     m = c.wait(240, lambda c: CMDLINE.search(c.buf))
-    if "ubi.mtd=ubi" not in m.group(1):
+    if not nand_openwrt(m.group(1)):
         raise Stop("the AP booted something other than OpenWrt from NAND: %s" % m.group(1))
     c.mark()
     c.wait(300, lambda c: ACTIVATE.search(c.buf))

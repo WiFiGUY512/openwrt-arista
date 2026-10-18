@@ -4,8 +4,8 @@
 usage: c360-make-stick.py --images <dir> --img <out.img> [--size-mib N] [--xz]
        c360-make-stick.py --images <dir> <stick>
 
-<dir> holds the arista_c360 build output: ...-initramfs-uImage.itb (the RAM
-installer) and ...-squashfs-factory.ubi.
+<dir> holds the arista_c360 build output (arista_c-360 on OpenWrt main):
+...-initramfs-uImage.itb (the RAM installer) and ...-squashfs-factory.ubi.
 
 --img writes a disk image to put on a stick with Rufus (or dd, or balenaEtcher):
 an MBR with one FAT32 partition, the way Raspberry Pi images are made. It is
@@ -41,12 +41,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ubi_extract  # noqa: E402  (bundled beside this script)
 
 # Arista's U-Boot leaves the USB port unpowered: the two writes drive its VBUS
-# pin, gpio29, high (output value, then output enable), as Arista's system does
-UBOOT_LINE = ("mw.l 0x0101D004 0x2; mw.l 0x0101D000 0x201; "
-              "usb start; fatload usb 0:1 0xA0000000 c360/initramfs.itb && "
-              "setenv fdt_high 0x4A3E0000 && "
-              "setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat && "
-              "bootm 0xA0000000#config@1")
+# pin, gpio29, high (output value, then output enable), as Arista's system does.
+# OpenWrt main's FIT (arista_c-360) has the one configuration config@hk09 and
+# needs no pcie_ports=compat; 25.12's (arista_c360) boots config@1 with it.
+def uboot_line(itb):
+    main = "arista_c-360" in os.path.basename(itb)
+    return ("mw.l 0x0101D004 0x2; mw.l 0x0101D000 0x201; "
+            "usb start; fatload usb 0:1 0xA0000000 c360/initramfs.itb && "
+            "setenv fdt_high 0x4A3E0000 && "
+            "setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0%s && "
+            "bootm 0xA0000000#%s" % (("", "config@hk09") if main else (" pcie_ports=compat", "config@1")))
 LABEL = "C360OPENWRT"
 BACKUP_MIB = 180
 # arista-c360-install starts a backup only while more than this is free
@@ -93,8 +97,8 @@ def one(pattern, where):
 
 def stick_files(images):
     """The c360/ files, as [(name, bytes)], and the newest input's mtime."""
-    itb = one("*arista_c360-initramfs-uImage.itb", images)
-    ubi = one("*arista_c360-squashfs-factory.ubi", images)
+    itb = one("*arista_c*360-initramfs-uImage.itb", images)
+    ubi = one("*arista_c*360-squashfs-factory.ubi", images)
 
     img, npeb, lebs, stats, doff = ubi_extract.parse(ubi)
     vols = ubi_extract.volumes(img, lebs, doff)
@@ -128,7 +132,7 @@ def stick_files(images):
         "4. When it prints C360-INSTALL-RESULT: OK installed, type reboot.\n\n"
         "Each unit's flash backup is written here, to backup-<MAC>-<time>/,\n"
         "gzipped (about %d MiB). Keep them: the ART partition in each holds that\n"
-        "unit's radio calibration and exists nowhere else.\n" % (UBOOT_LINE, BACKUP_MIB)).replace("\n", "\r\n").encode()))
+        "unit's radio calibration and exists nowhere else.\n" % (uboot_line(itb), BACKUP_MIB)).replace("\n", "\r\n").encode()))
     return files, max(os.path.getmtime(itb), os.path.getmtime(ubi))
 
 

@@ -148,6 +148,18 @@ bootm 0xA0000000#config@1
 without someone stopping U-Boot boots Arista, whose script saves the U-Boot
 environment.
 
+An OpenWrt main image (`arista_c-360`, board name `arista,c-360`) has one
+configuration, `config@hk09`, and needs no `pcie_ports=compat`:
+
+```
+setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0
+tftpboot 0xA0000000 openwrt-qualcommax-ipq807x-arista_c-360-initramfs-uImage.itb
+bootm 0xA0000000#config@hk09
+```
+
+Its device tree names NAND slot 0 `rootfs`, not `ubi`, and the partitions
+`0:art`, `logging` and so on in lower case; below, read `"rootfs"` for `"ubi"`.
+
 ### B3. Back up the flash (strongly recommended)
 
 The installer sees all partitions; only `ubi` (NAND slot 0) and `0:APPSBLENV`
@@ -196,6 +208,26 @@ reboot
   environment, so without this a fallback would boot, and save, OpenWrt's
   `bootargs`, `fdt_high` and partition table.
 * `pri 1` makes Arista's boot use slot 1, the slot that is kept.
+
+For an OpenWrt main image the write is this instead (what
+`arista-c360-install` writes from main's RAM installer). The device tree adds
+`ubi.mtd=rootfs` and the root itself; the boot is in parts, as on the units
+moved to main:
+
+```
+fw_setenv -s - <<'EOF'
+owrt_args console=ttyMSM0,115200n8 rootwait panic=10
+owrt_parts setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi)
+owrt_load ubi part ubi && ubi read 0x44000000 kernel
+owrt_boot setenv fdt_high 0x4A3E0000; run owrt_parts owrt_load && bootm 0x44000000#config@hk09
+arista_unset setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000
+arista_args if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi
+arista_boot run arista_unset arista_args ubootscript
+bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot
+pri 1
+EOF
+reboot
+```
 
 To boot Arista's firmware once: stop U-Boot and `run arista_boot`. To go
 back to Arista for good: `fw_setenv bootcmd 'run ubootscript'` from OpenWrt

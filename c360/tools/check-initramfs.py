@@ -85,10 +85,14 @@ def main():
     elif amss:
         # the firmware hotplug supplies Arista's only when none is installed
         fails.append("a QCN9074 amss.bin is in the image (it would shadow Arista's)")
+    # On OpenWrt main the image carries upstream's QCN9074 board-2.bin, and the
+    # board data hotplug writes Arista's over it (ath11k reads board-2.bin first)
+    hp = rootfs.get("etc/hotplug.d/firmware/13-arista-c360-board-data")
+    writes_board2 = hp is not None and b"board-2.bin" in hp[1]
     for n in ("lib/firmware/ath11k/QCN9074/hw1.0/m3.bin",
               "lib/firmware/ath11k/QCN9074/hw1.0/board-2.bin",
               "lib/firmware/ath11k/IPQ8074/hw2.0/board.bin"):
-        if n in rootfs:
+        if n in rootfs and not (n.endswith("/board-2.bin") and writes_board2):
             fails.append("%s is in the image (the hotplug would not supply Arista's)" % n)
     cal = [n for n in rootfs if re.search(r"lib/firmware/ath11k/.*/(cal-|caldata)", n)]
     if cal:
@@ -98,11 +102,13 @@ def main():
     for need in ("etc/hotplug.d/firmware/12-ath11k-vendor-firmware",
                  "etc/hotplug.d/firmware/13-arista-c360-board-data",
                  "usr/sbin/unsquashfs", "usr/sbin/ubiattach", "usr/sbin/fw_setenv",
-                 "etc/hotplug.d/ieee80211/12-arista-c360-leds",
+                 # the radio LEDs: 25.12's name, main's (as upstream has it)
+                 ("etc/hotplug.d/ieee80211/12-arista-c360-leds",
+                  "etc/hotplug.d/ieee80211/12-arista-c-360-leds"),
                  "usr/sbin/arista-c360-install", "usr/sbin/ubiformat",
                  "usr/sbin/arista-c360-radio-mode", "etc/init.d/arista-c360-radio"):
-        if need not in rootfs:
-            fails.append("missing %s" % need)
+        if not any(n in rootfs for n in (need if isinstance(need, tuple) else (need,))):
+            fails.append("missing %s" % " or ".join(need if isinstance(need, tuple) else (need,)))
     # the installer mounts the USB stick (FAT32) from Linux
     mods = {n.rsplit("/", 1)[-1] for n in rootfs if n.startswith("lib/modules/")}
     for ko in ("usb-storage.ko", "vfat.ko", "nls_cp437.ko", "nls_iso8859-1.ko"):

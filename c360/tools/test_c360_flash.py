@@ -3,7 +3,8 @@
 
 The fake device behaves like Arista's U-Boot (a 2 s window for the stop key,
 echo, IPQ807x# prompts, usb/fatls/fatload output, a vendor boot when the
-window is missed) and like the OpenWrt RAM installer and first NAND boot.
+window is missed, a FIT with OpenWrt main's config@hk09 or 25.12's config@1)
+and like the OpenWrt RAM installer and first NAND boot.
 Each scenario checks what the driver concluded and what it sent: never
 saveenv, never the stop key after the install's reboot.
 
@@ -30,8 +31,26 @@ class FakeC360:
     """A scripted console. Output is queued with due times; input is echoed
     the way U-Boot and ash echo it."""
 
-    def __init__(self, board="arista,c360", install_result="OK", stick=True, key_window=2.0):
-        self.board, self.install_result, self.stick, self.key_window = board, install_result, stick, key_window
+    # what each FIT boots: its configuration, the RAM installer's kernel command
+    # line, and the first NAND boot's
+    FITS = {
+        "main": ("config@hk09", "arista,c-360",
+                 "console=ttyMSM0,115200n8 rootwait panic=0 rootwait pri=1 ubi.mtd=rootfs root=/dev/ubiblock0_1",
+                 "console=ttyMSM0,115200n8 rootwait panic=10 rootwait pri=1 ubi.mtd=rootfs root=/dev/ubiblock0_1"),
+        "25.12": ("config@1", "arista,c360",
+                  "console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat",
+                  "console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat"),
+    }
+    # Arista's own boot of slot 1 (ba1), as when OpenWrt's boot fails
+    ARISTA = "console=ttyMSM0,115200n8 ubi.mtd=rootfs_1 root=mtd:ubi_rootfs rootfstype=squashfs"
+
+    def __init__(self, board=None, install_result="OK", stick=True, key_window=2.0, fit="main",
+                 nand_boots="openwrt"):
+        self.install_result, self.stick, self.key_window = install_result, stick, key_window
+        self.config, default_board, self.ram_cmdline, self.nand_cmdline = self.FITS.get(fit, (None, "arista,c-360", "", ""))
+        self.board = board or default_board
+        if nand_boots == "arista":
+            self.nand_cmdline = self.ARISTA
         # as on a unit: the port has no power until gpio29 is driven high
         self.vbus = {"out": False, "oe": False}
         self.q = []                 # [due, bytes]
@@ -144,9 +163,14 @@ class FakeC360:
                                                               "%d bytes read in 1312 ms (15.6 MiB/s)\r\n" % ITB,
         }.get(cmd, "")
         if cmd.startswith("bootm"):
+            if cmd.split("#", 1)[-1] != self.config:
+                # U-Boot 2016.01's fit_image_load, then bootm_find_os
+                self.emit("\r\n## Loading kernel from FIT Image at a0000000 ...\r\n"
+                          "Could not find configuration node\r\nERROR: can't get kernel image!\r\nIPQ807x# ")
+                return
             self.state = "booting"
             self.emit("\r\n## Loading kernel from FIT Image at a0000000 ...\r\nStarting kernel ...\r\n\r\n")
-            self.emit("[    0.000000] Kernel command line: console=ttyMSM0,115200n8 rootwait panic=0 pcie_ports=compat\r\n", 0.2)
+            self.emit("[    0.000000] Kernel command line: %s\r\n" % self.ram_cmdline, 0.2)
             self.emit("[   12.000000] init: Console is alive\r\n", 0.3)
             self.emit("\r\nPlease press Enter to activate this console.\r\n", 0.2)
             self.state = "activate"
@@ -171,7 +195,7 @@ class FakeC360:
             self.prompt()
             return
         if cmd.startswith("cat /tmp/sysinfo/board_name"):
-            self.emit("%s\r\n0\r\n00:11:22:33:44:55\r\n" % self.board)
+            self.emit("%s\r\ntmpfs\r\n00:11:22:33:44:55\r\n" % self.board)
         elif cmd.startswith("ls /dev/sd"):
             self.emit("/dev/sda\r\n/dev/sda1\r\n" if self.stick else "")
         elif cmd.startswith("arista-c360-install"):
@@ -190,7 +214,7 @@ class FakeC360:
             self.emit("[  200.0] reboot: Restarting system\r\n", 0.1)
             self.emit("\r\nU-Boot 2016.01 (May 20 2024 - 10:00:00)\r\n", 0.3)
             self.emit("Starting kernel ...\r\n", 2.2)   # the window passes untouched
-            self.emit("[    0.000000] Kernel command line: console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat\r\n", 0.2)
+            self.emit("[    0.000000] Kernel command line: %s\r\n" % self.nand_cmdline, 0.2)
             self.emit("\r\nPlease press Enter to activate this console.\r\n", 0.3)
             return
         self.prompt()
@@ -233,6 +257,10 @@ def main():
     results = [
         run("install, confirmed by MAC digits", FakeC360(), [], 0, "OpenWrt is running from NAND", inputs=["4455"]),
         run("install, --yes", FakeC360(), ["--yes"], 0, "OpenWrt is running from NAND"),
+        run("25.12 image: config@1 next", FakeC360(fit="25.12"), ["--yes"], 0, "OpenWrt is running from NAND"),
+        run("no configuration boots", FakeC360(fit="none"), ["--yes"], 1, "bootm failed for every configuration"),
+        run("NAND boot falls back to Arista", FakeC360(nand_boots="arista"), ["--yes"], 1,
+            "booted something other than OpenWrt from NAND"),
         run("dry run", FakeC360(), ["--dry-run"], 0, "Dry run complete: nothing was written"),
         run("wrong digits: nothing written", FakeC360(), [], 1, "not confirmed; nothing was written", inputs=["0000"]),
         run("missed U-Boot window", FakeC360(key_window=0.0), ["--yes"], 1, "missed U-Boot's window"),

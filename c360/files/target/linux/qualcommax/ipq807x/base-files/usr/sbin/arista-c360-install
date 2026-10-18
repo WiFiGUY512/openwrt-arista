@@ -48,14 +48,43 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-OWRT_ARGS='console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat'
-OWRT_BOOT='setenv fdt_high 0x4A3E0000; setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi); ubi part ubi && ubi read 0x44000000 kernel && bootm 0x44000000#config@1'
-# Arista's own boot, with what OpenWrt's boot set put back first: its
-# bootkernel sets bootargs only when pri changes, and then saves the
-# environment, so without this a fallback would boot, and save, OpenWrt's
-# bootargs, fdt_high and partition table.
-ARISTA_BOOT='setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000; if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi; run ubootscript'
+# The U-Boot environment the install writes, one variable a line, by the
+# OpenWrt the RAM installer is: 25.12 (arista,c360) boots its FIT's config@1
+# with ubi.mtd and pcie_ports on the command line; OpenWrt main (arista,c-360)
+# boots config@hk09, the stock FIT's only configuration, and its device tree
+# appends ubi.mtd=rootfs and root= itself (the split form the installed units
+# were given at their rename, 2026-10-17). Either way, Arista's own boot comes
+# after OpenWrt's with what OpenWrt's boot set put back first: its bootkernel
+# sets bootargs only when pri changes, and then saves the environment, so
+# without this a fallback would boot, and save, OpenWrt's bootargs, fdt_high
+# and partition table.
 BOOTCMD='setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot'
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+arista,c-360)
+	ENV="owrt_args console=ttyMSM0,115200n8 rootwait panic=10
+owrt_parts setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi)
+owrt_load ubi part ubi && ubi read 0x44000000 kernel
+owrt_boot setenv fdt_high 0x4A3E0000; run owrt_parts owrt_load && bootm 0x44000000#config@hk09
+arista_unset setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000
+arista_args if test \${pri} = 0; then setenv bootargs \${ba0}; else setenv bootargs \${ba1}; fi
+arista_boot run arista_unset arista_args ubootscript"
+	;;
+*)
+	ENV="owrt_args console=ttyMSM0,115200n8 ubi.mtd=ubi rootwait panic=10 pcie_ports=compat
+owrt_boot setenv fdt_high 0x4A3E0000; setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x18000000@0x0(ubi); ubi part ubi && ubi read 0x44000000 kernel && bootm 0x44000000#config@1
+arista_boot setenv mtdids; setenv mtdparts; setenv fdt_high 0x4A400000; if test \${pri} = 0; then setenv bootargs \${ba0}; else setenv bootargs \${ba1}; fi; run ubootscript"
+	;;
+esac
+ENV="$ENV
+bootcmd $BOOTCMD
+pri 1"
+
+# env_is_set: every variable of $ENV reads back as it is there
+env_is_set() {
+	echo "$ENV" | while read -r name value; do
+		[ "$(fw_printenv -n "$name" 2>/dev/null)" = "$value" ] || exit 1
+	done
+}
 
 say() { echo "c360-install: $*"; }
 fail() {
@@ -71,11 +100,21 @@ trap 'rmdir /tmp/arista-c360-install.lock 2>/dev/null' EXIT
 # --- 1. checks ---------------------------------------------------------------
 
 case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in arista,c360|arista,c-360) ;; *) fail "this is not an Arista C-360" ;; esac
-grep -q 'ubi.mtd=' /proc/cmdline && fail "running from NAND; boot the RAM installer from the stick first"
+# From RAM, / is a tmpfs (rootfs on older kernels). From NAND it is OpenWrt's
+# squashfs: ubi.mtd= on the command line no longer tells, as main's device
+# tree appends it to every boot's.
+case "$(awk '$2 == "/" {print $3; exit}' /proc/mounts)" in
+tmpfs|rootfs|ramfs) ;;
+*) fail "running from NAND; boot the RAM installer first" ;;
+esac
 
-# /proc/mtd: mtdN: size erasesize "name"
-mtd_dev() { grep "\"$1\"\$" /proc/mtd | cut -d: -f1; }
-mtd_size() { printf '%d' "0x$(grep "\"$1\"\$" /proc/mtd | awk '{print $2}')"; }
+# /proc/mtd: mtdN: size erasesize "name". The names' case differs: 25.12's
+# device tree has 0:ART and LOGGING, main's 0:art and logging.
+mtd_dev() { grep -i "\"$1\"\$" /proc/mtd | cut -d: -f1; }
+mtd_size() { printf '%d' "0x$(grep -i "\"$1\"\$" /proc/mtd | awk '{print $2}')"; }
+# slot 0: "ubi" in 25.12's device tree, "rootfs" in main's
+S0=ubi
+[ -n "$(mtd_dev ubi)" ] || S0=rootfs
 # ubi_node /sys/class/ubi/ubiX_Y: its /dev node, made from sysfs if udev has
 # not made it yet (the first-boot extractor needed the same)
 ubi_node() {
@@ -83,10 +122,10 @@ ubi_node() {
 	[ -c "$n" ] || mknod "$n" c "$(cut -d: -f1 "$1/dev")" "$(cut -d: -f2 "$1/dev")"
 	echo "$n"
 }
-for p in ubi rootfs_1 LOGGING 0:ART 0:APPSBLENV; do
+for p in $S0 rootfs_1 LOGGING 0:ART 0:APPSBLENV; do
 	[ -n "$(mtd_dev "$p")" ] || fail "no flash partition \"$p\": not the expected C-360 layout"
 done
-[ "$(mtd_size ubi)" = $((0x18000000)) ] || fail "slot 0 (\"ubi\") is $(mtd_size ubi) bytes, not 0x18000000"
+[ "$(mtd_size $S0)" = $((0x18000000)) ] || fail "slot 0 (\"$S0\") is $(mtd_size $S0) bytes, not 0x18000000"
 fw_printenv bootcmd >/dev/null 2>&1 || fail "cannot read the U-Boot environment (fw_printenv)"
 for v in ba0 ba1 ubootscript; do
 	[ -n "$(fw_printenv -n $v 2>/dev/null)" ] ||
@@ -211,27 +250,19 @@ fi
 # Arista system the install keeps, not slot 0, which is about to be OpenWrt.
 # Written before slot 0: a unit stopped at any point from here (a failed
 # write, the power gone) tries OpenWrt, does not find it, and boots slot 1.
-if [ "$(fw_printenv -n owrt_args 2>/dev/null)" = "$OWRT_ARGS" ] &&
-   [ "$(fw_printenv -n owrt_boot 2>/dev/null)" = "$OWRT_BOOT" ] &&
-   [ "$(fw_printenv -n arista_boot 2>/dev/null)" = "$ARISTA_BOOT" ] &&
-   [ "$(fw_printenv -n bootcmd 2>/dev/null)" = "$BOOTCMD" ] &&
-   [ "$pri" = 1 ]; then
+if env_is_set; then
 	say "the U-Boot boot command is already set; the environment is not written"
 else
-	printf 'owrt_args %s\nowrt_boot %s\narista_boot %s\nbootcmd %s\npri 1\n' \
-		"$OWRT_ARGS" "$OWRT_BOOT" "$ARISTA_BOOT" "$BOOTCMD" >/tmp/c360-env.txt
+	echo "$ENV" >/tmp/c360-env.txt
 	say "setting the U-Boot boot command and pri=1 (one environment write)"
 	fw_setenv -s /tmp/c360-env.txt || fail "fw_setenv failed"
-	[ "$(fw_printenv -n bootcmd)" = "$BOOTCMD" ] && [ "$(fw_printenv -n owrt_boot)" = "$OWRT_BOOT" ] &&
-		[ "$(fw_printenv -n arista_boot)" = "$ARISTA_BOOT" ] &&
-		[ "$(fw_printenv -n owrt_args)" = "$OWRT_ARGS" ] && [ "$(fw_printenv -n pri)" = 1 ] ||
-		fail "the U-Boot environment does not read back as written"
+	env_is_set || fail "the U-Boot environment does not read back as written"
 fi
 fw_printenv >"$BK/u-boot-env-after.txt" 2>&1
 
 # --- 4. slot 0 ---------------------------------------------------------------
 
-M=$(mtd_dev ubi)
+M=$(mtd_dev $S0)
 ubidetach -p /dev/$M >/dev/null 2>&1
 say "writing factory.ubi to slot 0 (/dev/$M)"
 ubiformat /dev/$M -y -f "$STICK/factory.ubi" >/tmp/ubiformat.log 2>&1 || { tail -5 /tmp/ubiformat.log; fail "ubiformat failed"; }
