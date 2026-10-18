@@ -6,13 +6,17 @@ USE_PROCD=1
 
 # airscan marks the radio it takes (wireless.<radio>.airscan '1'): what reads
 # the mark keeps the serving radios off scanning, Aeolus among them. Turned
-# off, airscan takes the mark away: the radio is like the others again, and
-# the serving radios behave as on any AP. Whether it then serves clients is
-# the wireless config's (its disabled option).
+# off, airscan takes the mark away: the radio is like the others again, its
+# country theirs (airscan took its own off), and the serving radios behave as
+# on any AP. Whether it then serves clients is the wireless config's (its
+# disabled option).
 unmark() {
-	local s changed=
+	local s c changed=
 	for s in $(uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)\.airscan='1'$/\1/p"); do
 		uci -q delete wireless.$s.airscan && changed=1
+		[ -n "$(uci -q get wireless.$s.country)" ] && continue
+		c=$(uci -q show wireless | sed -n "/^wireless\.$s\./d; s/^wireless\.[^.]*\.country='\(.*\)'$/\1/p" | head -n 1)
+		[ -z "$c" ] || uci set wireless.$s.country="$c"
 	done
 	[ -z "$changed" ] || uci commit wireless
 }
@@ -20,8 +24,8 @@ unmark() {
 start_service() {
 	. /lib/functions.sh
 	case "$(board_name)" in
-	arista,c260|\
-	arista,c360) ;;
+	arista,c260|arista,c-260|\
+	arista,c360|arista,c-360) ;;
 	*) return 0 ;;
 	esac
 	if [ "$(uci -q get airscan.main.enabled)" = 0 ]; then

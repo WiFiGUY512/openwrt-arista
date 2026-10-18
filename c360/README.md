@@ -83,7 +83,13 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   commit, restart airscan), airscan takes the mark away and the AP is like
   any OpenWrt AP: its serving radios scan when asked to (LuCI's Scan, a
   channel on auto when the Wi-Fi starts). radio2 stays disabled until its
-  own `disabled` option is set to 0. It runs:
+  own `disabled` option is set to 0. While airscan has it, radio2 has no
+  `country` of its own: OpenWrt sets up a disabled radio too and gives its
+  country to the whole AP, and the 6 GHz default ('00') switched the AP to
+  world rules in the middle of every boot, where the IPQ8074 refused it and
+  the 5 GHz radar check failed (on a unit, 5 GHz down after some boots). The
+  serving radios set the country; turned off, airscan gives radio2 theirs.
+  It runs:
   - a spectrum survey (ath11k spectral scan; 20 MHz windows on 2.4 and 5 GHz,
     80 MHz ones on 6 GHz with 40 MHz for channels 225-229 and 20 for 233;
     per window, the share of samples above -82 dBm per 20 MHz, +3 dB per

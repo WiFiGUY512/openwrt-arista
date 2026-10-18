@@ -37,7 +37,11 @@ Seen working on a unit unless marked otherwise.
   radio0's section), and what keeps the serving radios off scanning (Aeolus)
   reads the mark. Turned off, airscan takes the mark away and the AP is like
   any OpenWrt AP: its serving radios scan when asked to (LuCI's Scan, a
-  channel on auto when the Wi-Fi starts).
+  channel on auto when the Wi-Fi starts). While airscan has it, radio0 has
+  no `country` of its own (OpenWrt gives a disabled radio's country to the
+  whole AP, so one unlike the serving radios' switches it at every boot, as
+  on the C-360); the serving radios set it, and turned off, airscan gives
+  radio0 theirs.
   To serve clients on it instead: `uci set airscan.main.enabled=0`,
   `uci set wireless.radio0.disabled=0`, commit both, and restart airscan and
   then the Wi-Fi (on a unit: the mark gone with airscan off, and back with

@@ -6,7 +6,8 @@
 // PCI 0000:01:00.0, ath10k). Serving radios are never touched: no
 // interface, scan, retune or spectral command is ever issued on another phy.
 // The radio is taken out of netifd's control (wifi-device disabled) so that a
-// "wifi reload" cannot tear down the interfaces airscan creates on it.
+// "wifi reload" cannot tear down the interfaces airscan creates on it, and
+// gives no country of its own: the serving radios set the AP's.
 //
 // Jobs, one at a time, all receive-only on the scan radio:
 //   spectral  ath10k/ath11k spectral scan, 20 MHz windows on 2.4/5 GHz, 80 MHz
@@ -42,7 +43,7 @@ import * as uci from 'uci';
 import * as struct from 'struct';
 import * as socket from 'socket';
 
-const BOARDS = { "arista,c260": "0000:01:00.0", "arista,c360": "0001:01:00.0" };
+const BOARDS = { "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0" };
 const OUT = "/tmp/airscan";
 const MON = "as-mon0", STA = "as-sta0";
 const PIDFILE = "/var/run/airscan.pid";
@@ -149,9 +150,15 @@ function find_phy(pci) {
 // Keep netifd off the scan radio, and mark it as the scan radio (airscan
 // '1'), which the init script takes away when airscan is turned off. Only the
 // scan radio's own section is touched.
+// The scan radio has no country option: netifd sets up a disabled radio too,
+// and its country goes to the whole system (iw reg set). One unlike the
+// serving radios' (OpenWrt gives a 6 GHz radio '00') switched the AP's
+// regulatory domain in the middle of every boot; on a C-360 the IPQ8074
+// refused it and the 5 GHz radar check failed. Without one the radio follows
+// the country the serving radios set; turned off, airscan gives it theirs.
 function release_from_netifd(pci) {
 	let c = uci.cursor();
-	let taken = false, marked = false;
+	let taken = false, changed = false;
 	c.foreach("wireless", "wifi-device", (s) => {
 		if (substr(s.path || "", -length(pci)) != pci) return;
 		if (s.disabled != "1") {
@@ -160,11 +167,16 @@ function release_from_netifd(pci) {
 		}
 		if (s.airscan != "1") {
 			c.set("wireless", s[".name"], "airscan", "1");
-			marked = true;
+			changed = true;
+		}
+		if (s.country != null) {
+			c.delete("wireless", s[".name"], "country");
+			log(`${s[".name"]}: its own country (${s.country}) taken off; the serving radios set the AP's`);
+			changed = true;
 		}
 		radio.section = s[".name"];
 	});
-	if (taken || marked)
+	if (taken || changed)
 		c.commit("wireless");
 	if (taken) {
 		log(`took ${radio.section} (${pci}) out of netifd for scanning`);
