@@ -9,10 +9,13 @@
 #
 # The multifunction QCN9072 (pcie1, airscan) is the same in both. A plan is
 # a level on gpio9 (/sys/class/gpio/dual-5g, low for 6g), the IPQ8074
-# calibration (ART 0x1000 or 0x71800, 11-ath11k-caldata) and the board data
-# of all three radios (13-arista-c360-board-data). The radios read
-# calibration and board data when they start, so a new plan takes a reboot;
-# the init script sets gpio9 at boot.
+# calibration (ART 0x1000 or 0x71800) and the board data of all three radios
+# (13-arista-c360-board-data). The radios read calibration and board data
+# when they start, so a new plan takes a reboot; the init script sets gpio9
+# at boot. The board data is written when the plan changes. The calibration:
+# on OpenWrt main the device tree's nvmem cell gives 0x1000, and the dual
+# 5 GHz plan writes 0x71800 as a file, which ath11k reads first (patch 960);
+# on 25.12 11-ath11k-caldata writes the plan's when it is missing.
 
 . /lib/functions.sh
 
@@ -22,8 +25,9 @@ FW=/lib/firmware/ath11k
 IPQ=$FW/IPQ8074/hw2.0
 QCN=$FW/QCN9074/hw1.0
 # what the hotplug scripts wrote for the running plan
-GEN="$IPQ/board.bin $IPQ/board.bin.source $IPQ/cal-ahb-c000000.wifi.bin
-	$QCN/board-2.bin $QCN/board-2.bin.source"
+GEN="$IPQ/board.bin $IPQ/board.bin.source $IPQ/board-2.bin $IPQ/board-2.bin.source
+	$IPQ/cal-ahb-c000000.wifi.bin $QCN/board-2.bin $QCN/board-2.bin.source"
+CAL=$IPQ/cal-ahb-c000000.wifi.bin
 
 usage() {
 	cat <<EOF
@@ -49,6 +53,30 @@ die() {
 
 mode() {
 	[ "$(uci -q get $CFG.main.mode)" = dual5g ] && echo dual5g || echo 6g
+}
+
+# plan_files: the plan's board data and, in the dual 5 GHz plan, the
+# IPQ8074's calibration from ART 0x71800, written now for the radios' next
+# start. In the 6 GHz plan the calibration file goes: the device tree's (main)
+# or 11-ath11k-caldata's (25.12) is 0x1000.
+plan_files() {
+	local part mtd
+	. /lib/functions/system.sh	# find_mtd_chardev
+	REFRESH=1 FIRMWARE=ath11k/IPQ8074/hw2.0/board.bin \
+		sh /etc/hotplug.d/firmware/13-arista-c360-board-data
+	if [ "$(mode)" = dual5g ]; then
+		for part in 0:art 0:ART; do
+			mtd=$(find_mtd_chardev "$part")
+			[ -n "$mtd" ] && break
+		done
+		[ -n "$mtd" ] || die "no ART partition for the dual 5 GHz calibration"
+		mkdir -p $IPQ
+		dd if="$mtd" of=$CAL.tmp iflag=skip_bytes,fullblock bs=$((0x20000)) \
+			skip=$((0x71800)) count=1 2>/dev/null && mv $CAL.tmp $CAL ||
+			die "cannot read the dual 5 GHz calibration from $mtd"
+	else
+		rm -f $CAL
+	fi
 }
 
 gpio_set() { # gpio_set <plan>
@@ -123,19 +151,24 @@ status() {
 	local m=$(mode) f s src running=
 	echo "plan: $m"
 	echo "gpio9 (dual-5g): $(cat $GPIO 2>/dev/null || echo missing)"
-	for f in $IPQ/board.bin $QCN/board-2.bin; do
+	for f in $IPQ/board-2.bin $QCN/board-2.bin; do
 		src=$(cat $f.source 2>/dev/null)
 		running="$running ${src%% *}"
 		if [ ! -e $f ]; then
 			src="none yet, written at the next boot"
 		elif [ -z "$src" ]; then
-			src="written before arista-c360-radio"
+			src="the image's (ipq-wifi), or written before arista-c360-radio"
 		fi
 		echo "${f#$FW/}: $src"
 	done
+	if [ -e $CAL ]; then
+		echo "${CAL#$FW/}: written (the dual 5 GHz plan's, ART 0x71800)"
+	else
+		echo "${CAL#$FW/}: none, the 6 GHz plan's from ART 0x1000"
+	fi
 	case "$running" in
 	" $m $m") ;;
-	*) echo "board data is not the $m plan's: reboot" ;;
+	*) echo "board data is not the $m plan's: arista-c360-radio-mode apply, then reboot" ;;
 	esac
 	radios
 	for s in $SERVING $IPQ5; do
@@ -152,12 +185,14 @@ case "$1" in
 	wireless_plan $1
 	uci commit $CFG
 	rm -f $GEN
+	plan_files
 	logger -t arista-c360-radio "$1 plan from the next boot"
 	echo "the $1 plan from the next boot: reboot"
 	;;
 apply)
 	case "$(board_name)" in arista,c360|arista,c-360) ;; *) die "not an Arista C-360" ;; esac
 	rm -f $GEN
+	plan_files
 	echo "the $(mode) plan's board data from the next boot: reboot"
 	;;
 boot)
