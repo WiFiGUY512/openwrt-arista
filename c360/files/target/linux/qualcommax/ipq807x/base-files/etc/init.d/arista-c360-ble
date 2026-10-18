@@ -60,7 +60,7 @@ ble_static_addr() {
 
 start_service() {
 	case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
-	arista,c360) ;;
+	arista,c360|arista,c-360) ;;
 	*) return 0 ;;
 	esac
 	[ -c "$BLE_TTY" ] || { logger -t arista-c360-ble "no $BLE_TTY (is blsp1_uart3 enabled?)"; return 1; }

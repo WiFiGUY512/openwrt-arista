@@ -22,7 +22,7 @@
 [ -e "/lib/firmware/$FIRMWARE" ] && [ -z "$REFRESH" ] && exit 0
 
 . /lib/functions.sh
-[ "$(board_name)" = arista,c260 ] || exit 0
+case "$(board_name)" in arista,c260|arista,c-260) ;; *) exit 0 ;; esac
 
 country=$(uci -q show wireless | sed -n "s/^wireless\.[^.]*\.country='\([A-Z][A-Z]\)'$/\1/p" | head -n 1)
 case "$country" in

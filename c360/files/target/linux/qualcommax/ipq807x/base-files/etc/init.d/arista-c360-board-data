@@ -14,7 +14,7 @@ refresh() {
 
 start_service() {
 	. /lib/functions.sh
-	[ "$(board_name)" = arista,c360 ] || return 0
+	case "$(board_name)" in arista,c360|arista,c-360) ;; *) return 0 ;; esac
 	refresh
 }
 
@@ -24,6 +24,6 @@ service_triggers() {
 
 reload_service() {
 	. /lib/functions.sh
-	[ "$(board_name)" = arista,c360 ] || return 0
+	case "$(board_name)" in arista,c360|arista,c-360) ;; *) return 0 ;; esac
 	refresh
 }

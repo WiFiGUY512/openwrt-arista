@@ -9,7 +9,7 @@ USE_PROCD=1
 
 start_service() {
 	. /lib/functions.sh
-	[ "$(board_name)" = arista,c260 ] || return 0
+	case "$(board_name)" in arista,c260|arista,c-260) ;; *) return 0 ;; esac
 	procd_open_instance
 	procd_set_param command /bin/sh -c '
 		for i in $(seq 1 60); do

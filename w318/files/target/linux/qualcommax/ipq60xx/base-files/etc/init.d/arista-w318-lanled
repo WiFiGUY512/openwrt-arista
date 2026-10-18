@@ -10,7 +10,7 @@ USE_PROCD=1
 
 start_service() {
 	. /lib/functions.sh
-	[ "$(board_name)" = arista,w318 ] || return 0
+	case "$(board_name)" in arista,w318|arista,w-318) ;; *) return 0 ;; esac
 	procd_open_instance
 	procd_set_param command /bin/sh /usr/libexec/arista-w318-lanled
 	procd_set_param respawn

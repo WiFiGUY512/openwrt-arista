@@ -145,7 +145,7 @@ status() {
 
 case "$1" in
 6g|dual5g)
-	[ "$(board_name)" = arista,c360 ] || die "not an Arista C-360"
+	case "$(board_name)" in arista,c360|arista,c-360) ;; *) die "not an Arista C-360" ;; esac
 	[ "$1" = "$(mode)" ] && { echo "already the $1 plan"; exit 0; }
 	uci -q set $CFG.main=radio
 	uci set $CFG.main.mode=$1
@@ -156,12 +156,12 @@ case "$1" in
 	echo "the $1 plan from the next boot: reboot"
 	;;
 apply)
-	[ "$(board_name)" = arista,c360 ] || die "not an Arista C-360"
+	case "$(board_name)" in arista,c360|arista,c-360) ;; *) die "not an Arista C-360" ;; esac
 	rm -f $GEN
 	echo "the $(mode) plan's board data from the next boot: reboot"
 	;;
 boot)
-	[ "$(board_name)" = arista,c360 ] && gpio_set "$(mode)"
+	case "$(board_name)" in arista,c360|arista,c-360) gpio_set "$(mode)" ;; esac
 	;;
 status|'')
 	status

@@ -70,7 +70,7 @@ trap 'rmdir /tmp/arista-c360-install.lock 2>/dev/null' EXIT
 
 # --- 1. checks ---------------------------------------------------------------
 
-[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "arista,c360" ] || fail "this is not an Arista C-360"
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in arista,c360|arista,c-360) ;; *) fail "this is not an Arista C-360" ;; esac
 grep -q 'ubi.mtd=' /proc/cmdline && fail "running from NAND; boot the RAM installer from the stick first"
 
 # /proc/mtd: mtdN: size erasesize "name"

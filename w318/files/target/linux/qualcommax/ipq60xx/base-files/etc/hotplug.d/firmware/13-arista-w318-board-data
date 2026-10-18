@@ -29,7 +29,7 @@ esac
 
 . /lib/functions.sh
 
-[ "$(board_name)" = arista,w318 ] || exit 0
+case "$(board_name)" in arista,w318|arista,w-318) ;; *) exit 0 ;; esac
 
 BD=lib/boarddata
 IPQ=/lib/firmware/ath11k/IPQ6018/hw1.0

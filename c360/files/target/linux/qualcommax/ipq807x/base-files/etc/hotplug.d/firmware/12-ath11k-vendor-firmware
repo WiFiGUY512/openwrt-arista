@@ -48,7 +48,7 @@ case "$FIRMWARE" in
 "ath11k/QCN9074/hw1.0/amss.bin"|\
 "ath11k/QCN9074/hw1.0/m3.bin")
 	case "$board" in
-	arista,c360)
+	arista,c360|arista,c-360)
 		# Arista's build of WLAN.HK.2.5.r4, in its system in NAND slot 1
 		vendor_firmware_extract rootfs_1 ubi_rootfs \
 			lib/firmware/IPQ8074/WIFI_FW/qcn9000 amss.bin m3.bin ||

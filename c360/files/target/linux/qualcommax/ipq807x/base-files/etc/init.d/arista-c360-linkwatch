@@ -7,7 +7,7 @@ START=99
 
 boot() {
 	. /lib/functions.sh
-	[ "$(board_name)" = "arista,c360" ] || return 0
+	case "$(board_name)" in arista,c360|arista,c-360) ;; *) return 0 ;; esac
 	(
 		n=0; down=0; t=0
 		while [ $t -lt 600 ] && [ $n -lt 5 ]; do

@@ -103,7 +103,7 @@ blank() { # blank <dev>
 # ------------------------------------------------------------ 1. checks
 
 [ -n "$IMG" ] || fail "no image given (SYSUPGRADE.BIN)"
-[ "$(board_name)" = arista,w318 ] || fail "not an Arista W-318 ($(board_name))"
+case "$(board_name)" in arista,w318|arista,w-318) ;; *) fail "not an Arista W-318 ($(board_name))" ;; esac
 # the RAM system's root is a tmpfs (as sysupgrade tells), an installed one's an overlay
 [ "$(awk '$2 == "/" { t = $3 } END { print t }' /proc/mounts)" = tmpfs ] ||
 	fail "not running from RAM: boot the initramfs"

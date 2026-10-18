@@ -9,7 +9,7 @@ USE_PROCD=1
 
 start_service() {
 	. /lib/functions.sh
-	[ "$(board_name)" = arista,w318 ] || return 0
+	case "$(board_name)" in arista,w318|arista,w-318) ;; *) return 0 ;; esac
 	# not in the RAM system the install runs from (its root a tmpfs), which
 	# may back up to USB
 	[ "$(awk '$2 == "/" { t = $3 } END { print t }' /proc/mounts)" = tmpfs ] && return 0

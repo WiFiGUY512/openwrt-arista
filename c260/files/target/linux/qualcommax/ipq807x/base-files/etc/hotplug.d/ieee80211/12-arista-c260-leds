@@ -7,7 +7,7 @@
 [ "$ACTION" = add ] || exit 0
 [ -n "$DEVICENAME" ] || exit 0
 . /lib/functions.sh
-[ "$(board_name)" = arista,c260 ] || exit 0
+case "$(board_name)" in arista,c260|arista,c-260) ;; *) exit 0 ;; esac
 
 dev=$(readlink /sys/class/ieee80211/$DEVICENAME/device)
 case "${dev##*/}" in

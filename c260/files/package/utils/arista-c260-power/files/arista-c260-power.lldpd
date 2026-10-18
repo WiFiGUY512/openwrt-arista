@@ -6,7 +6,7 @@
 
 . /lib/functions.sh
 
-[ "$(board_name)" = arista,c260 ] || exit 0
+case "$(board_name)" in arista,c260|arista,c-260) ;; *) exit 0 ;; esac
 [ "$(uci -q get lldpd.config)" = lldpd ] || exit 0
 [ "$(uci -q get lldpd.config.interface)" = "loopback lan" ] || exit 0
 

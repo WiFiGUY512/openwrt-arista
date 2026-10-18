@@ -31,7 +31,7 @@ esac
 
 . /lib/functions.sh
 
-[ "$(board_name)" = arista,c360 ] || exit 0
+case "$(board_name)" in arista,c360|arista,c-360) ;; *) exit 0 ;; esac
 
 SRC=lib/firmware/IPQ8074/WIFI_FW
 BD=lib/boarddata
