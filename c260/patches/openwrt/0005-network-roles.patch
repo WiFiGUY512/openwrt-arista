@@ -1,6 +1,6 @@
 Subject: qualcommax: ipq807x: Arista C-260 network roles
 
-Both Ethernet ports are in the LAN bridge, which takes its address by DHCP, as on other two-port access points; there is no WAN. The label MAC is Arista's base MAC, ART 0x18 (the port-5 MAC; ART 0x0 to 0x12 hold Qualcomm's placeholders). The ports keep the MACs their device tree gives them.
+Ethernet 1 (eth0) is the LAN, a DHCP client as for this target's other APs, and there is no WAN. Ethernet 2 (eth1) stays free, as on the C-360, so two cables to one switch (as for PoE redundancy) make no loop; arista-c260-net attaches it to the LAN, a VLAN or a VXLAN, or makes the two ports a bond. The label MAC is Arista's base MAC, ART 0x18 (the port-5 MAC; ART 0x0 to 0x12 hold Qualcomm's placeholders). The ports keep the MACs their device tree gives them.
 
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 index 7a5f280a24..c0d74d981d 100644
@@ -11,7 +11,7 @@ index 7a5f280a24..c0d74d981d 100644
  		ucidef_set_interfaces_lan_wan "lan" "wan"
  		;;
 +	arista,c260)
-+		ucidef_set_interface_lan "eth0 eth1" "dhcp"
++		ucidef_set_interface_lan "eth0" "dhcp"
 +		;;
  	asus,rt-ax89x)
  		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 lan7 lan8 10g-sfp 10g-copper" "wan"

@@ -43,9 +43,8 @@ Seen working on a unit unless marked otherwise.
   then the Wi-Fi (on a unit: the mark gone with airscan off, and back with
   it on again).
 - **Ethernet: two 5 GbE ports** (Aquantia AQR114C), both PoE in. eth0 is
-  Ethernet 1 and eth1 Ethernet 2. Both are in `br-lan`, which takes its
-  address by DHCP; there is no WAN. MACs from ART: eth0 has Arista's base
-  MAC, the label MAC, and eth1 the one below it.
+  Ethernet 1 and eth1 Ethernet 2. MACs from ART: eth0 has Arista's base MAC,
+  the label MAC, and eth1 the one below it.
   - On a unit, each at 5 Gb/s and at 2.5 Gb/s, and Ethernet 2 at 1 Gb/s too.
     Ethernet 2 on its own (out of `br-lan`, its own DHCP client): an address
     from its own MAC, and traffic both ways.
@@ -58,6 +57,27 @@ Seen working on a unit unless marked otherwise.
   - It runs on either port's power: on a unit on 802.3bt on both, Ethernet 1
     pulled, it stayed up on Ethernet 2's, without a restart. A switch powers
     either as a class 5 device.
+- **Ethernet 1 is the uplink; there is no WAN.** On a fresh install `br-lan`
+  holds Ethernet 1 only and takes its address by DHCP, so the port works as an
+  access port, and as a trunk once VLANs are added on it. Ethernet 2 is free,
+  in no bridge, so two cables to one switch make no loop. As on the C-360.
+- **Ethernet 2, or a bond, with `arista-c260-net`** (the C-360's
+  `arista-c360-net`, the same script under the C-260's name):
+
+  | command | what it does |
+  |---|---|
+  | `port2 lan` | Ethernet 2 on the LAN, with Ethernet 1 |
+  | `port2 vlan 30` | Ethernet 2 an access port on VLAN 30, bridged to VLAN 30 on the uplink |
+  | `port2 trunk 20 30` | the LAN untagged and VLANs 20 and 30 tagged, to chain another AP |
+  | `port2 vxlan 100 <peer>` | Ethernet 2 bridged into a VXLAN tunnel (VNI 100) |
+  | `port2 off` | Ethernet 2 back in no bridge |
+  | `bond on` / `bond off` | both ports one LACP bond (802.3ad), and back; the uplink's VLANs move with it |
+  | `status` | the uplink, the bridges and their ports |
+
+  - A device on Ethernet 2 needs power of its own: both ports are PoE in only.
+  - Each change is undone after 120 s unless `arista-c260-net confirm` follows,
+    so a change that cuts the AP off reverts by itself.
+  - Bonding (`kmod-bonding`) and netifd's `vxlan` are in the image for it.
 - **Bluetooth** (`arista-c260-bluetooth`): the CSR8811 starts as Arista
   starts it, with its PS keys copied from slot 1, and is `hci0` for BlueZ
   (HCI 4.2), powered on with LE on, not advertising, as the C-360's is. On a

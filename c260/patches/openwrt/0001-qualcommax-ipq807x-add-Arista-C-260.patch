@@ -6,7 +6,7 @@ diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/
 index f356bbbca5..9db96e483b 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
-@@ -67,6 +67,31 @@ define Device/arcadyan_aw1000
+@@ -67,6 +67,37 @@ define Device/arcadyan_aw1000
  endef
  TARGET_DEVICES += arcadyan_aw1000
  
@@ -19,6 +19,11 @@ index f356bbbca5..9db96e483b 100644
 +# installation sets (INSTALL.md); the initramfs is the RAM system it is
 +# installed from. The QCA988x is the scan radio (airscan), as the C-360's
 +# QCN9072 is: the IPQ8074's radios serve clients, it does everything else.
++# Two 5 GbE ports, both PoE in: bonding (LACP, 802.3ad) is in the image, so
++# the pair can be one uplink, and vxlan (netifd's proto handler, with
++# kmod-vxlan), as on the C-360. kmod-tls is there because kmod-bonding
++# depends on it optionally ("!kmod-tls || kmod-tls"): with every module built
++# as m (ALL_KMODS), that caps bonding at m, out of the image, unless tls is y.
 +define Device/arista_c260
 +	$(call Device/FitImage)
 +	$(call Device/UbiFit)
@@ -31,7 +36,8 @@ index f356bbbca5..9db96e483b 100644
 +	DEVICE_DTS_CONFIG := config@1
 +	DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca988x-ct \
 +		ubi-utils squashfs-tools-unsquashfs kmod-spi-gpio kmod-spi-bitbang \
-+		kmod-gpio-nxp-74hc164 kmod-leds-gpio arista-c260-bluetooth airscan
++		kmod-gpio-nxp-74hc164 kmod-leds-gpio arista-c260-bluetooth airscan \
++		kmod-bonding proto-bonding kmod-tls vxlan
 +endef
 +TARGET_DEVICES += arista_c260
 +

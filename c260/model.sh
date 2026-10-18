@@ -5,7 +5,7 @@ MODEL_NAME="Arista C-260"
 DEVICE=arista_c260
 TARGET=qualcommax/ipq807x
 # the feed packages the image needs beyond OpenWrt's core
-FEEDS_INSTALL="squashfs-tools luci bluez"
+FEEDS_INSTALL="squashfs-tools luci bluez proto-bonding"
 
 # fix_modes: modes for files/ that git on some hosts does not keep
 fix_modes() {
@@ -15,7 +15,8 @@ fix_modes() {
 		package/utils/arista-c260-bluetooth/files/arista-c260-bluetooth.init \
 		package/utils/arista-c260-power/files/arista-c260-power \
 		package/utils/arista-c260-power/files/arista-c260-power.init \
-		target/linux/qualcommax/ipq807x/base-files/etc/init.d/arista-c260-board-data
+		target/linux/qualcommax/ipq807x/base-files/etc/init.d/arista-c260-board-data \
+		target/linux/qualcommax/ipq807x/base-files/usr/sbin/arista-c260-net
 }
 
 # after_build OUT: checks on the collected images

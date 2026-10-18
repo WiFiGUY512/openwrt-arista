@@ -1,0 +1,328 @@
+#!/bin/sh
+# arista-c260-net: the Arista C-260's two Ethernet ports.
+#
+# Ethernet 1 is the uplink: untagged it is the LAN (an access port), and each
+# VLAN on it is <uplink>.<id> in a bridge br-vlan<id> (a trunk). Ethernet 2 is
+# free by default, in no bridge, so two cables to one switch make no loop. It
+# can be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
+# another AP), or to a VXLAN tunnel; or both ports can be one LACP bond.
+#
+#	arista-c260-net status
+#	arista-c260-net port2 off|lan
+#	arista-c260-net port2 vlan <id>             access port on VLAN <id>
+#	arista-c260-net port2 trunk <id> [<id>...]  the LAN untagged, VLANs tagged
+#	arista-c260-net port2 vxlan <vni> <peer> [<udp port>]
+#	arista-c260-net bond on|off
+#	arista-c260-net confirm                     keep the last change
+#
+# A change is applied at once, and undone after 120 s unless confirmed with
+# "arista-c260-net confirm", so a change that cuts the AP off reverts by
+# itself (C260_NET_TIMEOUT=<s> for longer). --no-rollback applies without the timer.
+
+PREV=/etc/config/network.c260-prev
+MARK=/tmp/arista-c260-net.pending
+TIMEOUT=${C260_NET_TIMEOUT:-120}	# seconds; longer when a switch is slow to follow
+
+die() { echo "arista-c260-net: $*" >&2; exit 1; }
+
+# C260_NET_CONFDIR (tests only): edit that config directory, apply nothing
+u() { uci ${C260_NET_CONFDIR:+-c $C260_NET_CONFDIR -t $C260_NET_CONFDIR/.uci} "$@"; }
+
+# the ports' names: eth0/eth1 (OpenWrt 25.12) or lan1/lan2 (main)
+if [ -e /sys/class/net/lan1 ] || [ -e /sys/class/net/lan2 ]; then
+	P1=lan1 P2=lan2
+else
+	P1=eth0 P2=eth1
+fi
+
+# The bond is netifd's own bonding device, bond0 (section c260bond): netifd
+# sets its mode as it creates it. The older proto-bonding interface (device
+# bond-bond0) could come up in balance-rr: a VLAN of it in a bridge raised the
+# bond before the protocol script set 802.3ad (seen on a unit at boot).
+native_bonded() { [ "$(u -q get network.c260bond.type)" = bonding ]; }
+legacy_bonded() { [ "$(u -q get network.bond0.proto)" = bonding ]; }
+bonded() { native_bonded || legacy_bonded; }
+uplink() {
+	if native_bonded; then echo bond0
+	elif legacy_bonded; then echo bond-bond0
+	else echo $P1
+	fi
+}
+
+# the bridge device section with the given name, if any
+bridge_sec() {
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.name='$1'$/\1/p" | head -1
+}
+
+# ports of a bridge, as a list
+ports_of() {
+	local s=$(bridge_sec "$1")
+	[ -n "$s" ] && u -q get network.$s.ports
+}
+
+set_ports() { # bridge port...
+	local b=$1 s
+	shift
+	s=$(bridge_sec "$b")
+	if [ -z "$s" ]; then
+		s=$(echo "$b" | sed 's/[^a-zA-Z0-9_]/_/g')
+		u set network.$s=device
+		u set network.$s.name="$b"
+		u set network.$s.type=bridge
+	fi
+	u -q delete network.$s.ports
+	for p in "$@"; do u add_list network.$s.ports="$p"; done
+}
+
+# remove port $2 (exact name) from every bridge
+drop_port() {
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.type='bridge'$/\1/p" | while read s; do
+		local keep="" p
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in
+			"$1") ;;
+			*) keep="$keep $p" ;;
+			esac
+		done
+		u -q delete network.$s.ports
+		for p in $keep; do u add_list network.$s.ports="$p"; done
+	done
+}
+
+# every port of every bridge that is Ethernet 2, or a VLAN or tunnel on it
+detach_port2() {
+	local p
+	for p in $(u -X -q show network | sed -n "s/^network\.[^.]*\.ports='\(.*\)'$/\1/p" | tr "'" ' '); do
+		case "$p" in
+		$P2|$P2.*) drop_port "$p" ;;
+		esac
+	done
+	# the VXLAN bridges and tunnels this tool made
+	u -X -q show network | sed -n "s/^network\.\(c260vx[0-9]*\)=interface$/\1/p" | while read s; do
+		u -q delete network.$s
+		u -q delete network.${s}br
+		u -q delete network.br_$s
+	done
+}
+
+vlan_bridge() { # id: the bridge for VLAN <id> on the uplink, made if missing
+	local id=$1 b=br-vlan$1 up=$(uplink)
+	if [ -z "$(bridge_sec $b)" ]; then
+		set_ports $b $up.$id
+		u set network.vlan$id=interface
+		u set network.vlan$id.device=$b
+		u set network.vlan$id.proto=none
+	fi
+	echo $b
+}
+
+mgmt_iface() { # the interface the AP is managed through: the one with a gateway, else lan
+	local m=$(u -X -q show network | sed -n "s/^network\.\([^.]*\)\.gateway=.*/\1/p" | head -1)
+	echo ${m:-lan}
+}
+
+# A port that leaves the bond is closed by the bonding driver after netifd has
+# raised it for its new use, so it stays down while netifd counts it as up
+# (seen on a unit, OpenWrt 25.12). After a change, raise each port netifd
+# holds, and bounce once any that still has no link after 15 s.
+relink() {
+	local p n
+	# a bond's ports must stay down until the bond takes them: the kernel will
+	# not enslave a port that is up
+	bonded && return 0
+	for p in $P1 $P2; do
+		[ -e /sys/class/net/$p ] || continue
+		[ "$(ubus call network.device status "{\"name\":\"$p\"}" 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null)" = true ] || continue
+		if ! ip link show $p | grep -q "[<,]UP[,>]"; then
+			logger -t arista-c260-net "$p is down though netifd holds it: raising it"
+			ip link set $p up
+		fi
+		n=0
+		while [ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" != 1 ] && [ $n -lt 15 ]; do
+			sleep 1
+			n=$((n + 1))
+		done
+		[ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" = 1 ] && continue
+		logger -t arista-c260-net "$p has no link after the change: bouncing it"
+		ip link set $p down
+		sleep 2
+		ip link set $p up
+	done
+}
+
+apply() {
+	u changes network | grep -q . || { echo "no change"; u revert network; return 0; }
+	if [ -n "$C260_NET_CONFDIR" ]; then
+		u commit network
+		echo "committed to $C260_NET_CONFDIR (test: nothing applied)"
+		return 0
+	fi
+	[ -f $MARK ] || cp /etc/config/network $PREV
+	u commit network
+	/etc/init.d/network reload
+	sleep 2
+	relink
+	if [ "$NOROLLBACK" = 1 ]; then
+		rm -f $MARK $PREV
+		echo "applied"
+		return 0
+	fi
+	# the timer outlives the SSH session that started it
+	( trap '' HUP
+	  sleep $TIMEOUT
+	  if [ "$(cat $MARK 2>/dev/null)" = "$1" ]; then
+		cp $PREV /etc/config/network && rm -f $MARK $PREV
+		/etc/init.d/network reload
+		sleep 2
+		relink
+		logger -t arista-c260-net "not confirmed in ${TIMEOUT}s: the previous network config is back"
+	  fi ) </dev/null >/dev/null 2>&1 &
+	echo $! > $MARK.timer
+	echo $1 > $MARK
+	echo "applied; run 'arista-c260-net confirm' within ${TIMEOUT}s, or it is undone"
+}
+
+status() {
+	echo "Ethernet 1: $P1, Ethernet 2: $P2"
+	if bonded; then
+		echo "uplink: $(uplink) (LACP: $P1 + $P2)"
+	else
+		echo "uplink: $P1"
+	fi
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.type='bridge'$/\1/p" | while read s; do
+		echo "  $(u -q get network.$s.name): $(u -q get network.$s.ports)"
+	done
+	local where=$(u -X -q show network | grep -E "\.ports=.*'$P2(\.[0-9]+)?'" | sed -n "s/^network\.\([^.]*\)\.ports=.*/\1/p")
+	[ -n "$where" ] || bonded || echo "Ethernet 2: in no bridge"
+	[ -f $MARK ] && echo "a change is waiting for 'arista-c260-net confirm'"
+	return 0
+}
+
+NOROLLBACK=0
+[ "$1" = --no-rollback ] && { NOROLLBACK=1; shift; }
+TAG=$(date +%s)$$
+
+case "$1" in
+status|"")
+	status
+	;;
+confirm)
+	[ -f $MARK ] || { echo "nothing to confirm"; exit 0; }
+	kill $(cat $MARK.timer 2>/dev/null) 2>/dev/null
+	rm -f $MARK $MARK.timer $PREV
+	echo "confirmed"
+	;;
+port2)
+	bonded && die "Ethernet 2 is in the bond; 'arista-c260-net bond off' first"
+	shift
+	mode=$1
+	[ -n "$mode" ] || die "port2 off|lan|vlan <id>|trunk <id>...|vxlan <vni> <peer> [port]"
+	shift
+	detach_port2
+	case "$mode" in
+	off) ;;
+	lan)
+		set_ports br-lan $(ports_of br-lan) $P2
+		;;
+	vlan)
+		[ -n "$1" ] && [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 4094 ] || die "vlan <1-4094>"
+		b=$(vlan_bridge $1)
+		set_ports $b $(ports_of $b) $P2
+		;;
+	trunk)
+		[ $# -ge 1 ] || die "trunk <id> [<id>...]"
+		set_ports br-lan $(ports_of br-lan) $P2
+		for id in "$@"; do
+			[ "$id" -ge 1 ] 2>/dev/null && [ "$id" -le 4094 ] || die "bad VLAN $id"
+			b=$(vlan_bridge $id)
+			set_ports $b $(ports_of $b) $P2.$id
+		done
+		;;
+	vxlan)
+		vni=$1 peer=$2 port=${3:-4789}
+		[ -n "$vni" ] && [ "$vni" -ge 1 ] 2>/dev/null && [ "$vni" -le 16777215 ] || die "vxlan <vni> <peer> [port]"
+		[ -n "$peer" ] || die "vxlan <vni> <peer> [port]"
+		s=c260vx$vni
+		u set network.$s=interface
+		u set network.$s.proto=vxlan
+		u set network.$s.peeraddr="$peer"
+		u set network.$s.vid="$vni"
+		u set network.$s.port="$port"
+		m=$(mgmt_iface)
+		[ -n "$m" ] && u set network.$s.tunlink="$m"
+		set_ports br-$s $P2 $s
+		u set network.${s}br=interface
+		u set network.${s}br.device=br-$s
+		u set network.${s}br.proto=none
+		;;
+	*)
+		die "port2 off|lan|vlan <id>|trunk <id>...|vxlan <vni> <peer> [port]"
+		;;
+	esac
+	apply $TAG
+	case "$mode" in
+	lan|trunk)
+		[ "$(u -q get network.lan.auto)" = 0 ] &&
+			echo "note: the LAN interface is disabled (network.lan.auto=0), so Ethernet 2 carries no untagged LAN"
+		;;
+	esac
+	;;
+bond)
+	case "$2" in
+	on)
+		native_bonded && { echo "already bonded"; exit 0; }
+		if legacy_bonded; then
+			# the older proto-bonding interface: replace it with the device
+			u delete network.bond0
+			from=bond-bond0
+		else
+			detach_port2
+			from=$P1
+		fi
+		u set network.c260bond=device
+		u set network.c260bond.type=bonding
+		u set network.c260bond.name=bond0
+		u add_list network.c260bond.ports=$P1
+		u add_list network.c260bond.ports=$P2
+		u set network.c260bond.policy=802.3ad
+		u set network.c260bond.lacp_rate=fast
+		u set network.c260bond.xmit_hash_policy=layer3+4
+		u set network.c260bond.monitor_mode=mii
+		u set network.c260bond.monitor_interval=100
+		to=bond0
+		;;
+	off)
+		bonded || { echo "not bonded"; exit 0; }
+		if native_bonded; then
+			u delete network.c260bond
+			from=bond0
+		else
+			u delete network.bond0
+			from=bond-bond0
+		fi
+		to=$P1
+		;;
+	*)
+		die "bond on|off"
+		;;
+	esac
+	# move the uplink, and each VLAN on it, between the port and the bond
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.type='bridge'$/\1/p" | while read s; do
+		new=""
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in
+			"$from") p=$to ;;
+			"$from".*) p=$to.${p#$from.} ;;
+			esac
+			new="$new $p"
+		done
+		u -q delete network.$s.ports
+		for p in $new; do u add_list network.$s.ports="$p"; done
+	done
+	apply $TAG
+	;;
+*)
+	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+	exit 2
+	;;
+esac

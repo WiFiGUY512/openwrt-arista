@@ -69,7 +69,7 @@ Add `setenv gatewayip <gateway>` if the TFTP server is on another subnet.
 `panic=0` makes a crashing kernel halt instead of rebooting into Arista's
 boot, which would save the U-Boot environment.
 
-The RAM system takes an address by DHCP on its LAN (both ports).
+The RAM system takes an address by DHCP on its LAN, Ethernet 1.
 
 ## 3. Back up the flash (strongly recommended)
 
@@ -129,10 +129,12 @@ to Arista for good: `fw_setenv bootcmd 'run ubootscript'` from OpenWrt (or
 
 ## First boot
 
-* **Both Ethernet ports are in `br-lan`**, which takes its address by DHCP;
-  look for the AP in your DHCP server's leases. It uses the unit's base MAC,
-  the one on its label. There is no WAN. Two cables to the same switch make
-  a loop unless the switch or `br-lan` runs STP.
+* **Ethernet 1 is the uplink**, with no WAN. `br-lan` holds Ethernet 1 only
+  and **takes its address by DHCP**, so look for the AP in your DHCP server's
+  leases. It uses the unit's base MAC, the one on its label.
+* **Ethernet 2 is free**, in no bridge, so a second cable to the same switch
+  makes no loop. `arista-c260-net` puts it on the LAN, on a VLAN or a VXLAN,
+  or bonds both ports (README.md).
 * **Wi-Fi is off** until you turn it on, and SSH and LuCI have no password:
   set one first.
 * **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device: press `f`
