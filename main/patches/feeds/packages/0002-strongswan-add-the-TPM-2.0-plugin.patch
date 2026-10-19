@@ -1,0 +1,190 @@
+Subject: strongswan: add the TPM 2.0 plugin
+
+strongswan-mod-tpm: keys and certificates held in a TPM 2.0, on libtss2, with libtpmtss. With a source patch for TPM signing keys that leave the signature scheme to each signature, as the C-360's factory identity keys do.
+
+diff --git a/net/strongswan/Makefile b/net/strongswan/Makefile
+index 07758a2..5b69fa3 100644
+--- a/net/strongswan/Makefile
++++ b/net/strongswan/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=strongswan
+ PKG_VERSION:=6.0.7
+-PKG_RELEASE:=9
++PKG_RELEASE:=10
+ 
+ PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
+ PKG_SOURCE_URL:=https://download.strongswan.org/ https://download2.strongswan.org/
+@@ -90,6 +90,7 @@ PKG_MOD_AVAILABLE:= \
+ 	sshkey \
+ 	stroke \
+ 	test-vectors \
++	tpm \
+ 	unity \
+ 	updown \
+ 	vici \
+@@ -599,6 +600,11 @@ define Plugin/eap-radius/install
+ 	$(CP) $(PKG_INSTALL_DIR)/usr/lib/ipsec/plugins/libstrongswan-eap-radius.so $(1)/usr/lib/ipsec/plugins/
+ endef
+ 
++define Plugin/tpm/install
++	$(INSTALL_DIR) $(1)/usr/lib/ipsec
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/ipsec/libtpmtss.so.* $(1)/usr/lib/ipsec/
++endef
++
+ define Plugin/attr-sql/install
+ 	$(INSTALL_DIR) $(1)/usr/lib/ipsec
+ 	$(CP) $(PKG_INSTALL_DIR)/usr/lib/ipsec/pool $(1)/usr/lib/ipsec/
+@@ -721,6 +727,7 @@ $(eval $(call BuildPlugin,sqlite,SQLite database interface,+strongswan-mod-sql +
+ $(eval $(call BuildPlugin,sshkey,SSH key decoding,))
+ $(eval $(call BuildPlugin,stroke,Stroke,+strongswan-charon +strongswan-ipsec))
+ $(eval $(call BuildPlugin,test-vectors,crypto test vectors,))
++$(eval $(call BuildPlugin,tpm,TPM 2.0 support (keys and certificates held in the TPM),+PACKAGE_strongswan-mod-tpm:libtss2))
+ $(eval $(call BuildPlugin,unity,Cisco Unity extension,))
+ $(eval $(call BuildPlugin,updown,updown firewall,+iptables +IPV6:ip6tables +iptables-mod-ipsec +kmod-ipt-ipsec))
+ $(eval $(call BuildPlugin,vici,Versatile IKE Configuration Interface,))
+diff --git a/net/strongswan/patches/0906-libtpmtss-signature-schemes-for-keys-without-a-scheme.patch b/net/strongswan/patches/0906-libtpmtss-signature-schemes-for-keys-without-a-scheme.patch
+new file mode 100644
+index 0000000..0ffbc1b
+--- /dev/null
++++ b/net/strongswan/patches/0906-libtpmtss-signature-schemes-for-keys-without-a-scheme.patch
+@@ -0,0 +1,139 @@
++Subject: [PATCH] libtpmtss: signature schemes for keys without a scheme
++
++A TPM 2.0 signing key may leave its scheme as TPM2_ALG_NULL, so that
++each TPM2_Sign names one. sign() already passes the scheme for every
++signature, but supported_signature_schemes() returned none for such a
++key, so IKEv2 could not authenticate with it ("no common hash algorithm
++found to create signature"). For an unrestricted signing key without a
++scheme, offer the schemes strongSwan uses for a key of its type and
++size whose hash the TPM implements, with the TPM's RSA-PSS salt length.
++
++---
++--- a/src/libtpmtss/tpm_tss_tss2_v2.c
+++++ b/src/libtpmtss/tpm_tss_tss2_v2.c
++@@ -27,6 +27,8 @@
++ #include <bio/bio_reader.h>
++ #include <bio/bio_writer.h>
++ #include <threading/mutex.h>
+++#include <collections/linked_list.h>
+++#include <credentials/keys/public_key.h>
++ 
++ #include <dlfcn.h>
++ #include <sys/types.h>
++@@ -689,17 +691,76 @@
++ 	return aik_pubkey;
++ }
++ 
+++/**
+++ * Destroy a list of signature schemes
+++ */
+++static void destroy_schemes(linked_list_t *schemes)
+++{
+++	schemes->destroy_function(schemes, (void*)signature_params_destroy);
+++}
+++
+++/**
+++ * The signature schemes for a signing key without a scheme of its own
+++ * (TPM2_ALG_NULL), for which sign() names the scheme of each signature: those
+++ * used for a key of this type and size, with a hash algorithm the TPM supports
+++ */
+++static enumerator_t *schemes_for_key_without_scheme(
+++	private_tpm_tss_tss2_t *this, key_type_t type, int keysize)
+++{
+++	enumerator_t *enumerator;
+++	signature_params_t *params, tpm_params;
+++	rsa_pss_params_t pss_params;
+++	linked_list_t *schemes;
+++	hash_algorithm_t hash;
+++
+++	schemes = linked_list_create();
+++	enumerator = signature_schemes_for_key(type, keysize);
+++	while (enumerator->enumerate(enumerator, &params))
+++	{
+++		tpm_params = *params;
+++		if (params->scheme == SIGN_RSA_EMSA_PSS)
+++		{
+++			/* with the salt length the TPM uses */
+++			pss_params = *(rsa_pss_params_t*)params->params;
+++			pss_params.salt_len = this->fips_186_4 ? RSA_PSS_SALT_LEN_DEFAULT :
+++													 RSA_PSS_SALT_LEN_MAX;
+++			if (!rsa_pss_params_set_salt_len(&pss_params, keysize))
+++			{
+++				continue;
+++			}
+++			tpm_params.params = &pss_params;
+++			hash = pss_params.hash;
+++		}
+++		else
+++		{
+++			hash = hasher_from_signature_scheme(params->scheme, params->params);
+++		}
+++		if (is_supported_alg(this, hash_alg_to_tpm_alg_id(hash)))
+++		{
+++			schemes->insert_last(schemes, signature_params_clone(&tpm_params));
+++		}
+++	}
+++	enumerator->destroy(enumerator);
+++
+++	return enumerator_create_cleaner(schemes->create_enumerator(schemes),
+++									 (void*)destroy_schemes, schemes);
+++}
+++
++ METHOD(tpm_tss_t, supported_signature_schemes, enumerator_t*,
++ 	private_tpm_tss_tss2_t *this, uint32_t handle)
++ {
++ 	TPM2B_PUBLIC public = { 0, };
++ 	hash_algorithm_t digest;
++ 	signature_params_t supported_scheme;
+++	bool any_scheme;
++ 
++ 	if (!read_public(this, handle, &public))
++ 	{
++ 		return enumerator_create_empty();
++ 	}
+++	/* an unrestricted signing key may leave the scheme to each signature */
+++	any_scheme = (public.publicArea.objectAttributes & TPMA_OBJECT_SIGN_ENCRYPT) &&
+++				!(public.publicArea.objectAttributes & TPMA_OBJECT_RESTRICTED);
++ 
++ 	switch (public.publicArea.type)
++ 	{
++@@ -742,6 +803,13 @@
++ 																	  KEY_RSA)),
++ 					};
++ 					break;
+++				case TPM2_ALG_NULL:
+++					if (any_scheme)
+++					{
+++						return schemes_for_key_without_scheme(this, KEY_RSA,
+++															  rsa->keyBits);
+++					}
+++					return enumerator_create_empty();
++ 				default:
++ 					return enumerator_create_empty();
++ 			}
++@@ -763,6 +831,25 @@
++ 																	KEY_ECDSA)),
++ 					};
++ 					break;
+++				case TPM2_ALG_NULL:
+++					if (!any_scheme)
+++					{
+++						return enumerator_create_empty();
+++					}
+++					switch (public.publicArea.parameters.eccDetail.curveID)
+++					{
+++						case TPM2_ECC_NIST_P256:
+++							return schemes_for_key_without_scheme(this,
+++															KEY_ECDSA, 256);
+++						case TPM2_ECC_NIST_P384:
+++							return schemes_for_key_without_scheme(this,
+++															KEY_ECDSA, 384);
+++						case TPM2_ECC_NIST_P521:
+++							return schemes_for_key_without_scheme(this,
+++															KEY_ECDSA, 521);
+++						default:
+++							return enumerator_create_empty();
+++					}
++ 				default:
++ 					return enumerator_create_empty();
++ 			}

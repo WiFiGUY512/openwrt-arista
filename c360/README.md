@@ -254,7 +254,7 @@ strongSwan can authenticate IKEv2 with one.
    then:
 
    ```
-   apk add strongswan-swanctl strongswan-mod-tpm strongswan-mod-openssl \
+   apk add strongswan-charon strongswan-swanctl strongswan-mod-tpm strongswan-mod-openssl \
    	strongswan-mod-x509 strongswan-mod-pem strongswan-mod-pkcs1 \
    	strongswan-mod-pubkey strongswan-mod-constraints \
    	strongswan-mod-random strongswan-mod-kernel-netlink \

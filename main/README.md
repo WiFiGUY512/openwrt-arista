@@ -32,9 +32,17 @@ build's packages and every kernel module, and `SHA256SUMS`. The models'
     unit on a 25.12 image can sysupgrade to main. Its port names change
     (eth0/eth1 become lan1/lan2): upgrade without settings (`sysupgrade -n`)
     or carry them over renamed.
-- `patches/feeds/packages/`: bluez-daemon depends on kmod-crypto-user
-  (bluetoothd needs AF_ALG to give an LE-only controller, such as the C-360's
-  and W-318's, its static address). Local, not yet sent upstream.
+- `patches/feeds/packages/`:
+  - 0001: bluez-daemon depends on kmod-crypto-user (bluetoothd needs AF_ALG
+    to give an LE-only controller, such as the C-360's and W-318's, its
+    static address). Local, not yet sent upstream.
+  - 0002: strongSwan's TPM 2.0 plugin (`strongswan-mod-tpm`), with the source
+    patch for keys without a fixed signature scheme, as Arista's factory
+    identity keys are: the 25.12 patch (`../c360/patches/feeds/packages/`)
+    on main's strongswan 6.0.7-r9. On main the identity authenticated IKEv2
+    on a C-360 and a W-318, RSA (RSA-PSS) and ECC (ECDSA), with ESP across
+    (`../c360/README.md`, "IPsec with the TPM identity"). Built for the feed
+    (`=m`), not in the images. Not yet sent upstream.
 - The board files (`ipq-wifi`): qca-wireless at OpenWrt's commit with the
   three board-file pull requests on it (#175 C-260, #176 C-360, #178 W-318),
   combined by the build with a fixed committer and date, so it is the same
