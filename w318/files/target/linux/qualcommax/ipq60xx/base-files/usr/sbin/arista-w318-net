@@ -333,6 +333,14 @@ lan1|lan2|lan3)
 	esac
 	apply $TAG
 	case "$mode" in
+	lan|vlan|trunk)
+		b=br-lan
+		[ "$mode" = vlan ] && ! filtering && b=br-vlan$1
+		[ "$(u -q get network.$(bridge_sec $b).stp)" = 1 ] ||
+			echo "note: $b runs no spanning tree, so a cable from $P to the uplink's switch would make a loop"
+		;;
+	esac
+	case "$mode" in
 	lan|trunk)
 		[ "$(u -q get network.lan.auto)" = 0 ] &&
 			echo "note: the LAN interface is disabled (network.lan.auto=0), so $P carries no untagged LAN"
