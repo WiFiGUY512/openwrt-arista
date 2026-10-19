@@ -2,7 +2,9 @@
 # arista-c260-net: the Arista C-260's two Ethernet ports.
 #
 # Ethernet 1 is the uplink: untagged it is the LAN (an access port), and each
-# VLAN on it is <uplink>.<id> in a bridge br-vlan<id> (a trunk). Ethernet 2 is
+# VLAN on it is <uplink>.<id> in a bridge br-vlan<id> (a trunk); on a LAN
+# bridge that filters VLANs (as a manager sets it up) they are br-lan's VLAN
+# table instead, and Ethernet 2 joins that table. Ethernet 2 is
 # free by default, in no bridge, so two cables to one switch make no loop. It
 # can be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
 # another AP), or to a VXLAN tunnel; or both ports can be one LACP bond.
@@ -105,6 +107,7 @@ detach_port2() {
 		$P2|$P2.*) drop_port "$p" ;;
 		esac
 	done
+	drop_from_vlans
 	# the VXLAN bridges and tunnels this tool made
 	u -X -q show network | sed -n "s/^network\.\(c260vx[0-9]*\)=interface$/\1/p" | while read s; do
 		u -q delete network.$s
@@ -122,6 +125,68 @@ vlan_bridge() { # id: the bridge for VLAN <id> on the uplink, made if missing
 		u set network.vlan$id.proto=none
 	fi
 	echo $b
+}
+
+# A LAN bridge that filters VLANs (bridge-vlan sections for br-lan) carries
+# every VLAN in its VLAN table, each port named with its tagging: lan1:u* is
+# untagged and the port's own VLAN, lan1:t tagged. There Ethernet 2 joins
+# br-lan and the table, under the bridge's spanning tree; a bridge per VLAN
+# would leave it in no VLAN. No globbing over the ports: u* is no file pattern.
+bridge_vlans() {
+	u -X -q show network | sed -n "s/^network\.\([^.=]*\)=bridge-vlan$/\1/p"
+}
+
+filtering() {
+	local s
+	for s in $(bridge_vlans); do
+		[ "$(u -q get network.$s.device)" = br-lan ] && return 0
+	done
+	return 1
+}
+
+# bvlan <id>: br-lan's VLAN table entry for VLAN <id>, made with the uplink
+# tagged if there is none
+bvlan() {
+	local id=$1 s
+	for s in $(bridge_vlans); do
+		[ "$(u -q get network.$s.device)" = br-lan ] && [ "$(u -q get network.$s.vlan)" = "$id" ] && { echo $s; return; }
+	done
+	s=c260bv$id
+	u set network.$s=bridge-vlan
+	u set network.$s.device=br-lan
+	u set network.$s.vlan=$id
+	u add_list network.$s.ports="$(uplink):t"
+	echo $s
+}
+
+# lan_vlan: the VLAN the uplink carries untagged in br-lan's table
+lan_vlan() {
+	local s p up=$(uplink)
+	set -f
+	for s in $(bridge_vlans); do
+		[ "$(u -q get network.$s.device)" = br-lan ] || continue
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in "$up:u"*) u -q get network.$s.vlan; set +f; return ;; esac
+		done
+	done
+	set +f
+}
+
+# Ethernet 2 out of every VLAN table entry; an entry this tool made that now
+# holds only the uplink goes
+drop_from_vlans() {
+	local s p keep
+	set -f
+	for s in $(bridge_vlans); do
+		keep=""
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in "$P2"|"$P2":*) ;; *) keep="$keep $p" ;; esac
+		done
+		u -q delete network.$s.ports
+		for p in $keep; do u add_list network.$s.ports="$p"; done
+		case "$s" in c260bv*) [ "$(u -q get network.$s.ports)" = "$(uplink):t" ] && u -q delete network.$s ;; esac
+	done
+	set +f
 }
 
 mgmt_iface() { # the interface the AP is managed through: the one with a gateway, else lan
@@ -205,6 +270,16 @@ status() {
 	done
 	local where=$(u -X -q show network | grep -E "\.ports=.*'$P2(\.[0-9]+)?'" | sed -n "s/^network\.\([^.]*\)\.ports=.*/\1/p")
 	[ -n "$where" ] || bonded || echo "Ethernet 2: in no bridge"
+	if filtering; then
+		local v vs=""
+		for v in $(bridge_vlans); do
+			case " $(u -q get network.$v.ports) " in
+			*" $P2:u*"*) vs="$vs $(u -q get network.$v.vlan) untagged" ;;
+			*" $P2:t "*) vs="$vs $(u -q get network.$v.vlan) tagged" ;;
+			esac
+		done
+		[ -n "$vs" ] && echo "Ethernet 2 in br-lan's VLAN table:$vs"
+	fi
 	[ -f $MARK ] && echo "a change is waiting for 'arista-c260-net confirm'"
 	return 0
 }
@@ -229,30 +304,62 @@ port2)
 	mode=$1
 	[ -n "$mode" ] || die "port2 off|lan|vlan <id>|trunk <id>...|vxlan <vni> <peer> [port]"
 	shift
-	detach_port2
+	# the arguments are checked before anything is staged: a stop half way
+	# would leave changes for the next commit
 	case "$mode" in
 	off) ;;
 	lan)
-		set_ports br-lan $(ports_of br-lan) $P2
+		filtering && [ -z "$(lan_vlan)" ] && die "the uplink carries no untagged VLAN: port2 vlan <id> instead"
 		;;
 	vlan)
 		[ -n "$1" ] && [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 4094 ] || die "vlan <1-4094>"
-		b=$(vlan_bridge $1)
-		set_ports $b $(ports_of $b) $P2
 		;;
 	trunk)
 		[ $# -ge 1 ] || die "trunk <id> [<id>...]"
-		set_ports br-lan $(ports_of br-lan) $P2
 		for id in "$@"; do
 			[ "$id" -ge 1 ] 2>/dev/null && [ "$id" -le 4094 ] || die "bad VLAN $id"
-			b=$(vlan_bridge $id)
-			set_ports $b $(ports_of $b) $P2.$id
 		done
 		;;
 	vxlan)
+		[ -n "$1" ] && [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 16777215 ] || die "vxlan <vni> <peer> [port]"
+		[ -n "$2" ] || die "vxlan <vni> <peer> [port]"
+		;;
+	*)
+		die "port2 off|lan|vlan <id>|trunk <id>...|vxlan <vni> <peer> [port]"
+		;;
+	esac
+	detach_port2
+	case "$mode" in
+	lan)
+		set_ports br-lan $(ports_of br-lan) $P2
+		filtering && u add_list network.$(bvlan $(lan_vlan)).ports="$P2:u*"
+		;;
+	vlan)
+		if filtering; then
+			set_ports br-lan $(ports_of br-lan) $P2
+			u add_list network.$(bvlan $1).ports="$P2:u*"
+		else
+			b=$(vlan_bridge $1)
+			set_ports $b $(ports_of $b) $P2
+		fi
+		;;
+	trunk)
+		set_ports br-lan $(ports_of br-lan) $P2
+		if filtering; then
+			lv=$(lan_vlan)
+			[ -n "$lv" ] && u add_list network.$(bvlan $lv).ports="$P2:u*"
+			for id in "$@"; do
+				[ "$id" = "$lv" ] || u add_list network.$(bvlan $id).ports="$P2:t"
+			done
+		else
+			for id in "$@"; do
+				b=$(vlan_bridge $id)
+				set_ports $b $(ports_of $b) $P2.$id
+			done
+		fi
+		;;
+	vxlan)
 		vni=$1 peer=$2 port=${3:-4789}
-		[ -n "$vni" ] && [ "$vni" -ge 1 ] 2>/dev/null && [ "$vni" -le 16777215 ] || die "vxlan <vni> <peer> [port]"
-		[ -n "$peer" ] || die "vxlan <vni> <peer> [port]"
 		s=c260vx$vni
 		u set network.$s=interface
 		u set network.$s.proto=vxlan
@@ -265,9 +372,6 @@ port2)
 		u set network.${s}br=interface
 		u set network.${s}br.device=br-$s
 		u set network.${s}br.proto=none
-		;;
-	*)
-		die "port2 off|lan|vlan <id>|trunk <id>...|vxlan <vni> <peer> [port]"
 		;;
 	esac
 	apply $TAG
@@ -352,7 +456,7 @@ bond)
 	apply $TAG
 	;;
 *)
-	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
 	exit 2
 	;;
 esac
