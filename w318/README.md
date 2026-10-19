@@ -31,10 +31,12 @@ Seen working on a unit unless marked otherwise.
   5 GHz.
 - **Ethernet.** The uplink (2.5 GbE, QCA8081) and Network 1, 2 and 3 (1 GbE,
   QCA8075) are `uplink`, `lan1`, `lan2` and `lan3`. The uplink is the LAN
-  (`br-lan`), which takes its address by DHCP; there is no WAN. Network 1-3
-  stay in no bridge, so a LAN port cabled to the uplink's switch makes no
-  loop; to use them, add them to `br-lan` (or a VLAN of their own) in LuCI or
-  `/etc/config/network`. MACs from ART: the uplink has Arista's base MAC, the
+  (`br-lan`), which takes its address by DHCP; there is no WAN. On the 25.12
+  images Network 1-3 stay in no bridge, so a LAN port cabled to the uplink's
+  switch makes no loop; to use them, add them to `br-lan` (or a VLAN of their
+  own) in LuCI or `/etc/config/network`. OpenWrt main's images put all four
+  ports in `br-lan`, as upstream has it (`arista-w318-net lan<n> off` frees
+  one). MACs from ART: the uplink has Arista's base MAC, the
   label MAC. On a unit: the uplink at 2.5 Gb/s, each LAN port at 1 Gb/s (in
   `br-lan`).
 - **Bluetooth** (`/etc/init.d/arista-w318-ble`): the nRF52833 runs Arista's
@@ -50,7 +52,8 @@ Seen working on a unit unless marked otherwise.
   IPsec with that identity is set up as on the C-360 (`../c360/README.md`),
   with its strongSwan TPM plugin.
 - **Network 1, 2 and 3** (`arista-w318-net`, as the C-360's `arista-c360-net`
-  for its Ethernet 2): free by default; each can join the LAN, a VLAN, a
+  for its Ethernet 2): free by default on 25.12, in the LAN on main; each
+  can join the LAN, a VLAN, a
   trunk or a VXLAN tunnel. On a LAN bridge that filters VLANs, as a manager
   sets it up, a port joins its VLAN table. `arista-w318-net status`; a change
   reverts after 120 s unless confirmed. On a unit on main: lan2 into VLAN 20

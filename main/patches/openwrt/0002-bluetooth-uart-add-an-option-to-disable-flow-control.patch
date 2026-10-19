@@ -1,7 +1,7 @@
-From dadc8a9c1b8f644ccc5eac9e301304fa387c723d Mon Sep 17 00:00:00 2001
+From 04dd3f58770444aa334663227eccdce1ccf69180 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 02/14] bluetooth-uart: add an option to disable flow control
+Subject: [PATCH 02/18] bluetooth-uart: add an option to disable flow control
 
 btattach enables hardware flow control unless given -N. Some
 controllers run without it: the Nordic nRF52833 on the Arista C-360
@@ -63,6 +63,3 @@ index 68d3cc97..8b38cd02 100755
  	procd_set_param respawn 3600 5 3
  	procd_set_param stdout 1
  	procd_set_param stderr 1
--- 
-2.43.0
-

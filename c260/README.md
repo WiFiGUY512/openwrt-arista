@@ -61,10 +61,13 @@ Seen working on a unit unless marked otherwise.
   - It runs on either port's power: on a unit on 802.3bt on both, Ethernet 1
     pulled, it stayed up on Ethernet 2's, without a restart. A switch powers
     either as a class 5 device.
-- **Ethernet 1 is the uplink; there is no WAN.** On a fresh install `br-lan`
-  holds Ethernet 1 only and takes its address by DHCP, so the port works as an
-  access port, and as a trunk once VLANs are added on it. Ethernet 2 is free,
-  in no bridge, so two cables to one switch make no loop. As on the C-360.
+- **Ethernet 1 is the uplink; there is no WAN.** On a fresh install of a
+  25.12 image `br-lan` holds Ethernet 1 only and takes its address by DHCP,
+  so the port works as an access port, and as a trunk once VLANs are added on
+  it. Ethernet 2 is free, in no bridge, so two cables to one switch make no
+  loop. As on the C-360. OpenWrt main's images put both ports in `br-lan`, as
+  upstream has it: cable one, or free Ethernet 2 with
+  `arista-c260-net port2 off`.
 - **Ethernet 2, or a bond, with `arista-c260-net`** (the C-360's
   `arista-c360-net`, the same script under the C-260's name):
 

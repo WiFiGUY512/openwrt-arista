@@ -1,0 +1,62 @@
+From a94e5b95a1c92a6e6cea51094460029ce3a3b5ad Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 19 Oct 2026 14:19:01 -0500
+Subject: [PATCH 16/18] ipq40xx: w-118: attach the BLE controller
+
+The W-118's NXP Bluetooth LE controller runs NXP's HCI firmware (H:4,
+115200 baud, no flow control) on blsp1_uart2 (/dev/ttyMSM1); its reset
+is held released by a gpio-export in the device tree. Attach it with
+bluetooth-uart, configured from uci-defaults as on the Arista C-360 and
+W-318.
+
+The controller has a public address (88:b1:e1:...), set by the
+vendor.
+
+Tested on a unit: hci0 attaches at boot, powers on and scans LE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../base-files/etc/uci-defaults/03_bluetooth   | 18 ++++++++++++++++++
+ target/linux/ipq40xx/image/generic.mk          |  3 ++-
+ 2 files changed, 20 insertions(+), 1 deletion(-)
+ create mode 100755 target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth
+
+diff --git a/target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth b/target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth
+new file mode 100755
+index 00000000..62d4080e
+--- /dev/null
++++ b/target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth
+@@ -0,0 +1,18 @@
++#!/bin/sh
++
++. /lib/functions.sh
++
++[ "$(board_name)" = "arista,w-118" ] || exit 0
++[ "$(uci -q get bluetooth-uart.main)" = "uart" ] || exit 0
++
++# Preserve an already configured UART, including a disabled one.
++[ -z "$(uci -q get bluetooth-uart.main.device)" ] || exit 0
++
++# The NXP controller's UART has no flow control.
++uci -q batch <<-EOF
++	set bluetooth-uart.main.device='/dev/ttyMSM1'
++	set bluetooth-uart.main.protocol='h4'
++	set bluetooth-uart.main.speed='115200'
++	set bluetooth-uart.main.flow_control='0'
++	set bluetooth-uart.main.enabled='1'
++EOF
+diff --git a/target/linux/ipq40xx/image/generic.mk b/target/linux/ipq40xx/image/generic.mk
+index 8799b227..cbe80d27 100644
+--- a/target/linux/ipq40xx/image/generic.mk
++++ b/target/linux/ipq40xx/image/generic.mk
+@@ -170,7 +170,8 @@ define Device/arista_w-118
+ 	SOC := qcom-ipq4019
+ 	BLOCKSIZE := 128k
+ 	PAGESIZE := 2048
+-	DEVICE_PACKAGES := ipq-wifi-arista_w-118 ath10k-firmware-qca988x-ct
++	DEVICE_PACKAGES := ipq-wifi-arista_w-118 ath10k-firmware-qca988x-ct \
++		bluetooth-uart
+ endef
+ TARGET_DEVICES += arista_w-118
+ 

@@ -1,0 +1,63 @@
+#!/bin/sh /etc/rc.common
+# Arista W-118: reset the NXP BLE controller and power it on, as Arista's
+# system does at every boot. The controller was once found answering HCI
+# commands but reporting no LE advertisements, a state that survived a host
+# reboot and that only a reset on GPIO 42 (ble-nreset) cleared. After a reset
+# its ROM bootloader holds the UART for about 10 s, so bluetooth-uart is
+# restarted 12 s later. hci0 is then powered on, not advertising. The
+# controller has a public address (flashed by Arista). W-118 only.
+
+START=99
+
+# btmgmt registers stdin with its event loop: give it a pipe, and a bound.
+run_bounded() {
+	local secs=$1 pid s=0
+	shift
+	true | "$@" >/dev/null 2>&1 &
+	pid=$!
+	while kill -0 $pid 2>/dev/null; do
+		if [ $s -ge $secs ]; then
+			kill $pid 2>/dev/null
+			sleep 1
+			kill -9 $pid 2>/dev/null
+			return 124
+		fi
+		sleep 1
+		s=$((s + 1))
+	done
+	wait $pid
+}
+
+boot() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = arista,w-118 ] || return 0
+	command -v btmgmt >/dev/null || return 0
+	( exec 1000>&-
+	  G=/sys/class/gpio/ble-nreset/value
+	  if [ -w "$G" ]; then
+		/etc/init.d/bluetooth-uart stop
+		echo 0 > "$G"
+		sleep 1
+		echo 1 > "$G"
+		sleep 12
+		/etc/init.d/bluetooth-uart start
+		logger -t arista-w118-ble "controller reset"
+	  fi
+	  i=0
+	  while [ ! -d /sys/class/bluetooth/hci0 ] && [ $i -lt 60 ]; do
+		sleep 1
+		i=$((i + 1))
+	  done
+	  [ -d /sys/class/bluetooth/hci0 ] || { logger -t arista-w118-ble "no hci0"; exit 0; }
+	  i=0
+	  until run_bounded 5 btmgmt --index 0 info; do
+		i=$((i + 1))
+		[ $i -ge 30 ] && { logger -t arista-w118-ble "hci0 never became available to mgmt"; exit 0; }
+		sleep 1
+	  done
+	  if run_bounded 10 btmgmt --index 0 power on; then
+		logger -t arista-w118-ble "hci0 powered on (not advertising)"
+	  else
+		logger -t arista-w118-ble "hci0 power on failed or timed out"
+	  fi
+	) &
+}

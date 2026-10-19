@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=airscan
 PKG_VERSION:=0.2
-PKG_RELEASE:=9
+PKG_RELEASE:=10
 PKG_LICENSE:=GPL-2.0-only
 
 include $(INCLUDE_DIR)/package.mk
@@ -22,6 +22,7 @@ define Package/airscan/description
  publishes the results on ubus (object "airscan") and in /tmp/airscan.
  Arista C-360: the QCN9074 multifunction radio (PCI 0001:01:00.0).
  Arista C-260: the QCA988x third radio (PCI 0000:01:00.0).
+ Arista W-118: the QCA9882 third radio (PCI 0000:01:00.0).
 endef
 
 define Package/airscan/conffiles

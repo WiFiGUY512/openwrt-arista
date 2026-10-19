@@ -1,7 +1,7 @@
-From b37809d097576cf69bd191b363dfa2b0a3c11027 Mon Sep 17 00:00:00 2001
+From c78ad6828ab99539ae67a4b3b6c670f0bdcba16c Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 00:07:16 -0500
-Subject: [PATCH 07/14] qualcommax: ipq807x: add support for Arista C-260
+Subject: [PATCH 07/18] qualcommax: ipq807x: add support for Arista C-260
 
 Hardware specification:
 - SoC: Qualcomm IPQ8078A, 4x Cortex-A53 at 2.2 GHz (HK01 reference design)
@@ -64,8 +64,9 @@ MAC addresses:
 - lan2: 0:art 0x1e (label - 1)
 - WLAN: from the calibration data
 
-lan1 alone is in the LAN by default, so that both ports cabled to one switch (as
-for PoE redundancy) make no loop; add lan2 to br-lan, or bond the two, as needed.
+Both ports are in the LAN by default, with DHCP, as on the Netgear
+WAX630. Each Ethernet LED is green while its port has a link, as
+Arista's stock firmware lights it.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
@@ -74,10 +75,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/firmware/ipq-wifi/Makefile            |   2 +
  target/linux/qualcommax/dts/ipq8074-c-260.dts | 510 ++++++++++++++++++
  target/linux/qualcommax/image/ipq807x.mk      |  14 +
- .../ipq807x/base-files/etc/board.d/01_leds    |   6 +
+ .../ipq807x/base-files/etc/board.d/01_leds    |   1 +
  .../ipq807x/base-files/etc/board.d/02_network |   1 +
  .../base-files/lib/upgrade/platform.sh        |   1 +
- 7 files changed, 535 insertions(+)
+ 7 files changed, 530 insertions(+)
  create mode 100644 target/linux/qualcommax/dts/ipq8074-c-260.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
@@ -654,24 +655,19 @@ index 5e139921..2059c5f9 100644
  	$(call Device/FitImage)
  	$(call Device/UbiFit)
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-index 19991138..0ffe947a 100644
+index a0ccfab9..b5d988ed 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-@@ -11,6 +11,12 @@ arcadyan,aw1000)
+@@ -11,6 +11,7 @@ arcadyan,aw1000)
  	ucidef_set_led_netdev "wan" "WAN" "green:internet" "wan"
  	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:1c:green:wan" "wan" "tx rx link_10 link_100 link_1000 link_2500"
  	;;
-+arista,c-260)
-+	ucidef_set_led_netdev "lan1-mgig" "LAN1-MGIG" "green:lan-1" "lan1" "link_2500 link_5000"
-+	ucidef_set_led_netdev "lan1" "LAN1" "orange:lan-1" "lan1" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan2-mgig" "LAN2-MGIG" "green:lan-2" "lan2" "link_2500 link_5000"
-+	ucidef_set_led_netdev "lan2" "LAN2" "orange:lan-2" "lan2" "link_10 link_100 link_1000"
-+	;;
++arista,c-260|\
  arista,c-360)
- 	ucidef_set_led_netdev "lan1-mgig" "LAN1-MGIG" "green:lan-1" "lan1" "link_2500 link_5000 link_10000"
- 	ucidef_set_led_netdev "lan1" "LAN1" "orange:lan-1" "lan1" "link_10 link_100 link_1000"
+ 	ucidef_set_led_netdev "lan1" "LAN1" "green:lan-1" "lan1" "link"
+ 	ucidef_set_led_netdev "lan2" "LAN2" "green:lan-2" "lan2" "link"
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
-index 5b8a261c..b6c369ee 100644
+index 2f9a64b2..3810c474 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 @@ -19,6 +19,7 @@ ipq807x_setup_interfaces()
@@ -680,7 +676,7 @@ index 5b8a261c..b6c369ee 100644
  		;;
 +	arista,c-260|\
  	arista,c-360)
- 		ucidef_set_interface_lan "lan1" "dhcp"
+ 		ucidef_set_interface_lan "lan1 lan2" "dhcp"
  		;;
 diff --git a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 index 3294521c..0b1a8538 100644
@@ -694,6 +690,3 @@ index 3294521c..0b1a8538 100644
  	arista,c-360)
  		CI_UBIPART="rootfs"
  		nand_do_upgrade "$1"
--- 
-2.43.0
-

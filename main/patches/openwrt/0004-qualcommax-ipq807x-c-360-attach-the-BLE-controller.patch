@@ -1,15 +1,15 @@
-From 3d27fb4936134f10f9e83241ddf38bbf5124fcfe Mon Sep 17 00:00:00 2001
+From b4c224bb66bdb0bb0fb071d75ca39c495fb94b00 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 04/14] qualcommax: ipq807x: c-360: attach the BLE controller
+Subject: [PATCH 04/18] qualcommax: ipq807x: c-360: attach the BLE controller
 
 The C-360's Nordic nRF52833 runs a Zephyr HCI UART controller (H:4,
 115200 baud, no flow control) on blsp1_uart3 (/dev/ttyMSM1); its reset
 is held released by a gpio-export in the device tree. Attach it with
 bluetooth-uart, configured from uci-defaults as on the Linksys LN6001.
 
-The controller has no public address. bluetoothd (bluez-daemon, which
-pulls in kmod-crypto-user) gives it a static random address.
+The controller has no public address. bluetoothd (bluez-daemon) gives
+it a static random address.
 
 Tested on a unit: hci0 attaches at boot, and with bluez-daemon the
 controller powers on and scans LE.
@@ -59,6 +59,3 @@ index 00000000..abe01eff
 +	set bluetooth-uart.main.flow_control='0'
 +	set bluetooth-uart.main.enabled='1'
 +EOF
--- 
-2.43.0
-

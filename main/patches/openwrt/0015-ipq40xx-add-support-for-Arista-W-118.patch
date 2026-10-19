@@ -1,0 +1,628 @@
+From 8c34b4edae17135c53f37d1fa694709498c864ba Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 19 Oct 2026 14:19:01 -0500
+Subject: [PATCH 15/18] ipq40xx: add support for Arista W-118
+
+Arista W-118 is a Wi-Fi 5 wall-plate access point with a third radio, a
+1 GbE PoE uplink and three 1 GbE LAN ports.
+
+Hardware specification:
+- SoC: Qualcomm IPQ4019 (4x Cortex-A7)
+- RAM: 512 MiB DDR3L
+- Flash: 32 MiB SPI NOR (Macronix MX25L25635E), 256 MiB SLC NAND
+  (Micron MT29F2G08ABAEA)
+- Ethernet (the IPQ4019's switch, QCA8075 PHYs):
+  - uplink: 1 GbE, PoE in (802.3af/at)
+  - lan1-lan3: 1 GbE; lan3 can supply PoE (802.3af)
+  - two RJ-45 jacks wired only to each other (pass-through)
+- Wi-Fi:
+  - IPQ4019: 2.4 GHz 2x2 802.11n and 5 GHz 2x2 802.11ac
+  - QCA9882 (PCIe): 2.4 or 5 GHz 2x2 802.11ac, the stock firmware's
+    scanning radio
+- Bluetooth LE: NXP Kinetis controller (HCI over UART)
+- LEDs: power, uplink, 2.4 GHz, 5 GHz, scanning radio, one for the
+  three LAN ports (all green)
+- Button: reset
+- Power: PoE or 12 V DC
+- UART: internal 4-pin header J12, 3.3 V TTL, 115200 8N1; pin 1 is
+  3.3 V (leave it unconnected), pin 2 GND, pins 3 and 4 TX and RX
+
+MAC addresses:
+- uplink: 0:ART 0x0 (label)
+- lan1-lan3: 0:ART 0x6 (label - 1)
+- Wi-Fi: from the calibration data
+
+Calibration data for the three radios is read from 0:ART through NVMEM
+cells (0x1000 and 0x5000 for the IPQ4019, 0x9000 for the QCA9882).
+
+The panel's LAN 1-3 are switch ports 2-4; port 1 is not wired. The
+uplink and LAN 1-3 are all in the LAN by default, with DHCP. The
+uplink's LED is green while it has a link, as on the Arista W-318.
+
+Flash layout: the stock firmware keeps two slots, each a kernel in SPI
+NOR (0:HLOS, 0:HLOS1) and a root in NAND (the first and second 64 MiB).
+It does not use the upper 128 MiB of the NAND. OpenWrt takes that half
+as UBI, with the kernel in a volume, and leaves both stock slots as
+they are.
+
+Flash instructions (console needed):
+1. Stop U-Boot: any key stops it, but it shows no countdown, so send
+   keys from power-on. Do not let the stock firmware boot meanwhile:
+   its boot script saves the U-Boot environment on every boot.
+2. Boot the initramfs from a TFTP server (nothing is saved):
+     setenv ipaddr <AP address>; setenv serverip <TFTP server>
+     setenv bootargs console=ttyMSM0,115200n8
+     tftpboot 0x84000000 openwrt-ipq40xx-generic-arista_w-118-initramfs-zImage.itb
+     bootm 0x84000000
+3. Back up all MTD partitions; 0:ART holds the unit's calibration data
+   and MAC addresses and exists nowhere else.
+4. Set the boot command, in one environment write:
+     fw_setenv -s - <<'EOF'
+     owrt_args console=ttyMSM0,115200n8
+     owrt_ubi setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x8000000@0x8000000(ubi)
+     owrt_load ubi part ubi && ubi read 0x84000000 kernel && iminfo 0x84000000
+     owrt_boot run owrt_ubi && run owrt_load && bootm 0x84000000
+     bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run ubootscript
+     EOF
+5. Copy the sysupgrade image to /tmp, write it and reboot:
+     sysupgrade -n /tmp/openwrt-ipq40xx-generic-arista_w-118-squashfs-sysupgrade.bin
+   It creates the UBI in the free half of the NAND.
+
+If OpenWrt's kernel volume is missing or fails its check, the stock
+boot script (ubootscript) runs as before. Later upgrades are ordinary
+sysupgrades.
+
+Return to stock: fw_setenv bootcmd 'run ubootscript', then reboot.
+
+The kernel is a zImage in an uncompressed FIT: this U-Boot has no LZMA,
+and the zImage also fits a stock 5 MiB kernel slot.
+
+Known limitations:
+- lan3's PoE output (GPIO 28) stays off.
+- The LAN LED has no trigger: it stands for three ports, and the
+  netdev trigger follows one.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../uboot-tools/uboot-envtools/files/ipq40xx  |   3 +
+ package/firmware/ipq-wifi/Makefile            |   2 +
+ .../ipq40xx/base-files/etc/board.d/01_leds    |   3 +
+ .../ipq40xx/base-files/etc/board.d/02_network |   3 +
+ .../base-files/lib/upgrade/platform.sh        |   1 +
+ .../linux/ipq40xx/dts/qcom-ipq4019-w-118.dts  | 428 ++++++++++++++++++
+ target/linux/ipq40xx/image/generic.mk         |  12 +
+ 7 files changed, 452 insertions(+)
+ create mode 100644 target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/ipq40xx b/package/boot/uboot-tools/uboot-envtools/files/ipq40xx
+index 25e0d5e3..ffe95370 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/ipq40xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/ipq40xx
+@@ -30,6 +30,9 @@ sophos,apx120|\
+ ubnt,utr)
+ 	ubootenv_add_uci_config "/dev/mtd5" "0x0" "0x10000" "0x10000"
+ 	;;
++arista,w-118)
++	ubootenv_add_mtd "0:appsblenv" "0x0" "0x10000" "0x10000"
++	;;
+ aruba,ap-303)
+ 	ubootenv_add_uci_config "/dev/mtd13" "0x0" "0x10000" "0x10000"
+ 	;;
+diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
+index 8098035e..1c4d9761 100644
+--- a/package/firmware/ipq-wifi/Makefile
++++ b/package/firmware/ipq-wifi/Makefile
+@@ -34,6 +34,7 @@ ALLWIFIBOARDS:= \
+ 	arcadyan_aw1000 \
+ 	arista_c-260 \
+ 	arista_c-360 \
++	arista_w-118 \
+ 	arista_w-318 \
+ 	askey_sbe1v1k \
+ 	asus_rt-ax89x \
+@@ -248,6 +249,7 @@ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
+ $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
+ $(eval $(call generate-ipq-wifi-package,arista_c-260,Arista C-260))
+ $(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
++$(eval $(call generate-ipq-wifi-package,arista_w-118,Arista W-118))
+ $(eval $(call generate-ipq-wifi-package,arista_w-318,Arista W-318))
+ $(eval $(call generate-ipq-wifi-package,askey_sbe1v1k,Askey SBE1V1K))
+ $(eval $(call generate-ipq-wifi-package,asus_rt-ax89x,Asus RT-AX89X))
+diff --git a/target/linux/ipq40xx/base-files/etc/board.d/01_leds b/target/linux/ipq40xx/base-files/etc/board.d/01_leds
+index 78d84d56..3896bd14 100644
+--- a/target/linux/ipq40xx/base-files/etc/board.d/01_leds
++++ b/target/linux/ipq40xx/base-files/etc/board.d/01_leds
+@@ -12,6 +12,9 @@ case "$board" in
+ alfa-network,ap120c-ac)
+ 	ucidef_set_led_netdev "wan" "WAN" "amber:wan" "wan"
+ 	;;
++arista,w-118)
++	ucidef_set_led_netdev "uplink" "UPLINK" "green:uplink" "uplink" "link"
++	;;
+ asus,rt-ac42u)
+ 	ucidef_set_led_netdev "lan1" "LAN1" "blue:lan-1" "lan1"
+ 	ucidef_set_led_netdev "lan2" "LAN2" "blue:lan-2" "lan2"
+diff --git a/target/linux/ipq40xx/base-files/etc/board.d/02_network b/target/linux/ipq40xx/base-files/etc/board.d/02_network
+index 5193c6cc..f0f0566f 100644
+--- a/target/linux/ipq40xx/base-files/etc/board.d/02_network
++++ b/target/linux/ipq40xx/base-files/etc/board.d/02_network
+@@ -56,6 +56,9 @@ ipq40xx_setup_interfaces()
+ 	zte,mf289f)
+ 		ucidef_set_interfaces_lan_wan "lan" "wan"
+ 		;;
++	arista,w-118)
++		ucidef_set_interface_lan "uplink lan1 lan2 lan3" "dhcp"
++		;;
+ 	aruba,ap-303|\
+ 	aruba,ap-365|\
+ 	avm,fritzrepeater-1200|\
+diff --git a/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh b/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
+index 29f77ab9..098df167 100644
+--- a/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
+@@ -106,6 +106,7 @@ platform_do_upgrade_mikrotik_nand() {
+ platform_do_upgrade() {
+ 	case "$(board_name)" in
+ 	8dev,jalapeno|\
++	arista,w-118|\
+ 	aruba,ap-303|\
+ 	aruba,ap-303h|\
+ 	aruba,ap-365|\
+diff --git a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+new file mode 100644
+index 00000000..a05eb0fd
+--- /dev/null
++++ b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+@@ -0,0 +1,428 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/dts-v1/;
++
++#include "qcom-ipq4019.dtsi"
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++#include <dt-bindings/soc/qcom,tcsr.h>
++
++/ {
++	model = "Arista W-118";
++	compatible = "arista,w-118", "qcom,ipq4019";
++
++	aliases {
++		serial0 = &blsp1_uart1;
++		serial1 = &blsp1_uart2;
++		led-boot = &led_power;
++		led-failsafe = &led_power;
++		led-running = &led_power;
++		led-upgrade = &led_power;
++		label-mac-device = &swport5;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++		bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
++	};
++
++	soc {
++		ess_tcsr@1953000 {
++			qcom,ess-interface-select = <TCSR_ESS_PSGMII>;
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		reset {
++			label = "reset";
++			gpios = <&tlmm 18 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_power: led-0 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&tlmm 49 GPIO_ACTIVE_LOW>;
++		};
++
++		led-1 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = "uplink";
++			gpios = <&tlmm 41 GPIO_ACTIVE_LOW>;
++		};
++
++		/* "Network 1/2/3": one LED for the three LAN ports */
++		led-2 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_LAN;
++			gpios = <&tlmm 10 GPIO_ACTIVE_LOW>;
++		};
++
++		led-3 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_2GHZ;
++			gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
++		};
++
++		led-4 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_5GHZ;
++			gpios = <&tlmm 22 GPIO_ACTIVE_LOW>;
++		};
++
++		/* the QCA9882 */
++		led-5 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN;
++			gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	gpio-export {
++		compatible = "gpio-export";
++
++		ble-nreset {
++			gpio-export,name = "ble-nreset";
++			gpio-export,output = <1>;
++			gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
++		};
++
++		/* PoE output on lan3 */
++		pse-enable {
++			gpio-export,name = "pse-enable";
++			gpio-export,output = <0>;
++			gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
++		};
++
++		poe-af {
++			gpio-export,name = "poe-af";
++			gpio-export,input = <0>;
++			gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
++		};
++
++		dc-in {
++			gpio-export,name = "dc-in";
++			gpio-export,input = <0>;
++			gpios = <&tlmm 43 GPIO_ACTIVE_HIGH>;
++		};
++	};
++};
++
++&prng {
++	status = "okay";
++};
++
++&blsp_dma {
++	status = "okay";
++};
++
++&blsp1_uart1 {
++	pinctrl-0 = <&serial_0_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++/* the NXP BLE controller */
++&blsp1_uart2 {
++	pinctrl-0 = <&serial_1_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&blsp1_spi1 {
++	pinctrl-0 = <&spi_0_pins>;
++	pinctrl-names = "default";
++	cs-gpios = <&tlmm 12 GPIO_ACTIVE_LOW>;
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <24000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "0:sbl1";
++				reg = <0x0 0x40000>;
++				read-only;
++			};
++
++			partition@40000 {
++				label = "0:mibib";
++				reg = <0x40000 0x20000>;
++				read-only;
++			};
++
++			partition@60000 {
++				label = "0:qsee";
++				reg = <0x60000 0x60000>;
++				read-only;
++			};
++
++			partition@c0000 {
++				label = "0:cdt";
++				reg = <0xc0000 0x10000>;
++				read-only;
++			};
++
++			partition@d0000 {
++				label = "0:ddrparams";
++				reg = <0xd0000 0x10000>;
++				read-only;
++			};
++
++			partition@e0000 {
++				label = "0:appsbl";
++				reg = <0xe0000 0x80000>;
++				read-only;
++			};
++
++			partition@160000 {
++				label = "0:appsblenv";
++				reg = <0x160000 0x10000>;
++			};
++
++			partition@170000 {
++				label = "0:art";
++				reg = <0x170000 0x10000>;
++				read-only;
++
++				nvmem-layout {
++					compatible = "fixed-layout";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					macaddr_art_0: macaddr@0 {
++						reg = <0x0 0x6>;
++					};
++
++					macaddr_art_6: macaddr@6 {
++						reg = <0x6 0x6>;
++					};
++
++					precal_art_1000: precal@1000 {
++						reg = <0x1000 0x2f20>;
++					};
++
++					precal_art_5000: precal@5000 {
++						reg = <0x5000 0x2f20>;
++					};
++
++					cal_art_9000: cal@9000 {
++						reg = <0x9000 0x844>;
++					};
++				};
++			};
++
++			/* the stock firmware's two kernel slots */
++			partition@180000 {
++				label = "0:hlos";
++				reg = <0x180000 0x500000>;
++				read-only;
++			};
++
++			partition@680000 {
++				label = "0:hlos1";
++				reg = <0x680000 0x500000>;
++				read-only;
++			};
++
++			partition@b80000 {
++				label = "0:uconfig";
++				reg = <0xb80000 0x400000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&qpic_bam {
++	status = "okay";
++};
++
++&nand {
++	pinctrl-0 = <&nand_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	nand@0 {
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			/*
++			 * The stock firmware's two root slots. Not labelled
++			 * "rootfs": OpenWrt would take that as its own root.
++			 */
++			partition@0 {
++				label = "arista_rootfs";
++				reg = <0x0 0x4000000>;
++				read-only;
++			};
++
++			partition@4000000 {
++				label = "arista_rootfs2";
++				reg = <0x4000000 0x4000000>;
++				read-only;
++			};
++
++			/* unused by the stock firmware */
++			partition@8000000 {
++				label = "ubi";
++				reg = <0x8000000 0x8000000>;
++			};
++		};
++	};
++};
++
++&tlmm {
++	mdio_pins: mdio_pinmux {
++		mux_1 {
++			pins = "gpio6";
++			function = "mdio";
++			bias-pull-up;
++		};
++
++		mux_2 {
++			pins = "gpio7";
++			function = "mdc";
++			bias-pull-up;
++		};
++	};
++
++	serial_0_pins: serial_pinmux {
++		mux {
++			pins = "gpio16", "gpio17";
++			function = "blsp_uart0";
++			bias-disable;
++		};
++	};
++
++	serial_1_pins: serial1_pinmux {
++		mux {
++			pins = "gpio8", "gpio9";
++			function = "blsp_uart1";
++			bias-disable;
++		};
++	};
++
++	spi_0_pins: spi_0_pinmux {
++		pinmux {
++			function = "blsp_spi0";
++			pins = "gpio13", "gpio14", "gpio15";
++			drive-strength = <12>;
++			bias-disable;
++		};
++
++		pinmux_cs {
++			function = "gpio";
++			pins = "gpio12";
++			drive-strength = <2>;
++			bias-disable;
++			output-high;
++		};
++	};
++
++	nand_pins: nand_pins {
++		pullups {
++			pins = "gpio53", "gpio58", "gpio59";
++			function = "qpic";
++			bias-pull-up;
++		};
++
++		pulldowns {
++			pins = "gpio54", "gpio55", "gpio56",
++				"gpio57", "gpio60", "gpio61",
++				"gpio62", "gpio63", "gpio64",
++				"gpio65", "gpio66", "gpio67",
++				"gpio68", "gpio69";
++			function = "qpic";
++			bias-pull-down;
++		};
++	};
++};
++
++&mdio {
++	pinctrl-0 = <&mdio_pins>;
++	pinctrl-names = "default";
++	reset-gpios = <&tlmm 47 GPIO_ACTIVE_LOW>;
++	reset-delay-us = <2000>;
++	status = "okay";
++};
++
++&gmac {
++	nvmem-cells = <&macaddr_art_6>;
++	nvmem-cell-names = "mac-address";
++	status = "okay";
++};
++
++&switch {
++	status = "okay";
++};
++
++&swport2 {
++	label = "lan1";
++	status = "okay";
++};
++
++&swport3 {
++	label = "lan2";
++	status = "okay";
++};
++
++&swport4 {
++	label = "lan3";
++	status = "okay";
++};
++
++&swport5 {
++	label = "uplink";
++	nvmem-cells = <&macaddr_art_0>;
++	nvmem-cell-names = "mac-address";
++	status = "okay";
++};
++
++&pcie0 {
++	perst-gpios = <&tlmm 48 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 46 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
++&pcie_bridge0 {
++	wifi@0,0 {
++		compatible = "qcom,ath10k";
++		reg = <0x00010000 0 0 0 0>;
++		nvmem-cells = <&cal_art_9000>;
++		nvmem-cell-names = "calibration";
++	};
++};
++
++&wifi0 {
++	nvmem-cells = <&precal_art_1000>;
++	nvmem-cell-names = "pre-calibration";
++	qcom,ath10k-calibration-variant = "Arista-W118";
++	status = "okay";
++};
++
++&wifi1 {
++	nvmem-cells = <&precal_art_5000>;
++	nvmem-cell-names = "pre-calibration";
++	qcom,ath10k-calibration-variant = "Arista-W118";
++	status = "okay";
++};
++
++&watchdog {
++	status = "okay";
++};
+diff --git a/target/linux/ipq40xx/image/generic.mk b/target/linux/ipq40xx/image/generic.mk
+index 4005cc83..8799b227 100644
+--- a/target/linux/ipq40xx/image/generic.mk
++++ b/target/linux/ipq40xx/image/generic.mk
+@@ -162,6 +162,18 @@ define Device/alfa-network_ap120c-ac
+ endef
+ TARGET_DEVICES += alfa-network_ap120c-ac
+ 
++define Device/arista_w-118
++	$(call Device/FitzImage)
++	$(call Device/UbiFit)
++	DEVICE_VENDOR := Arista
++	DEVICE_MODEL := W-118
++	SOC := qcom-ipq4019
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	DEVICE_PACKAGES := ipq-wifi-arista_w-118 ath10k-firmware-qca988x-ct
++endef
++TARGET_DEVICES += arista_w-118
++
+ define Device/aruba_glenmorangie
+ 	$(call Device/FitImageLzma)
+ 	DEVICE_VENDOR := Aruba

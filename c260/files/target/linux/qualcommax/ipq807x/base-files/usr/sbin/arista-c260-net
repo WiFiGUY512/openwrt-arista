@@ -4,9 +4,10 @@
 # Ethernet 1 is the uplink: untagged it is the LAN (an access port), and each
 # VLAN on it is <uplink>.<id> in a bridge br-vlan<id> (a trunk); on a LAN
 # bridge that filters VLANs (as a manager sets it up) they are br-lan's VLAN
-# table instead, and Ethernet 2 joins that table. Ethernet 2 is
-# free by default, in no bridge, so two cables to one switch make no loop. It
-# can be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
+# table instead, and Ethernet 2 joins that table. On the 25.12 images
+# Ethernet 2 is free by default, in no bridge, so two cables to one switch
+# make no loop; OpenWrt main's images put it in the LAN, as upstream has it,
+# and "port2 off" frees it. It can be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
 # another AP), or to a VXLAN tunnel; or both ports can be one LACP bond.
 #
 #	arista-c260-net status

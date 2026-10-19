@@ -4,9 +4,10 @@
 # The uplink port is the AP's own link: untagged it is the LAN, and each VLAN
 # on it is uplink.<id> in a bridge br-vlan<id>; on a LAN bridge that filters
 # VLANs (as a manager sets it up) they are br-lan's VLAN table instead, and a
-# LAN port joins that table. LAN 1, 2 and 3 are free by default, in no
-# bridge, so a cable from one to the uplink's switch makes no loop. Each can
-# be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
+# LAN port joins that table. On the 25.12 images LAN 1, 2 and 3 are free by
+# default, in no bridge, so a cable from one to the uplink's switch makes no
+# loop; OpenWrt main's images put them in the LAN, as upstream has it, and
+# "lan<n> off" frees one. Each can be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
 # another AP), or to a VXLAN tunnel.
 #
 #	arista-w318-net status

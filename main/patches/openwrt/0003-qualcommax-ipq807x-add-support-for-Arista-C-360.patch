@@ -1,7 +1,7 @@
-From fe4927110fa8ef0f11ecf74e339ee40d0a182fd3 Mon Sep 17 00:00:00 2001
+From f1e35482cf013146ab0f854f1b3f44e54e90cc4d Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 03/14] qualcommax: ipq807x: add support for Arista C-360
+Subject: [PATCH 03/18] qualcommax: ipq807x: add support for Arista C-360
 
 Arista C-360 is a Wi-Fi 6E enterprise access point with four radios and
 two 10 GbE ports that both take PoE.
@@ -32,9 +32,9 @@ MAC addresses:
 Calibration data for all three Wi-Fi chips is read from 0:art through
 NVMEM cells (0x1000, 0x26800 and 0x4c000).
 
-Ethernet 1 alone is in the LAN by default, so that both ports cabled to
-one switch (as for PoE redundancy) make no loop; add lan2 to br-lan, or
-bond the two, as needed.
+Both ports are in the LAN by default, with DHCP, as on the Netgear
+WAX630. Each Ethernet LED is green while its port has a link, as
+Arista's stock firmware lights it.
 
 Flash layout: the stock firmware keeps two NAND slots of 384 MiB,
 "rootfs" (slot 0) and "rootfs_1" (slot 1), their kernels in SPI NOR
@@ -106,10 +106,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/firmware/ipq-wifi/Makefile            |   2 +
  target/linux/qualcommax/dts/ipq8074-c-360.dts | 576 ++++++++++++++++++
  target/linux/qualcommax/image/ipq807x.mk      |  14 +
- .../ipq807x/base-files/etc/board.d/01_leds    |   6 +
+ .../ipq807x/base-files/etc/board.d/01_leds    |   4 +
  .../ipq807x/base-files/etc/board.d/02_network |   3 +
  .../base-files/lib/upgrade/platform.sh        |   4 +
- 7 files changed, 606 insertions(+)
+ 7 files changed, 604 insertions(+)
  create mode 100644 target/linux/qualcommax/dts/ipq8074-c-360.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
@@ -752,24 +752,22 @@ index de722576..d276cf24 100644
  	DEVICE_VENDOR := Asus
  	DEVICE_MODEL := RT-AX89X
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-index b49c47fe..19991138 100644
+index b49c47fe..a0ccfab9 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-@@ -11,6 +11,12 @@ arcadyan,aw1000)
+@@ -11,6 +11,10 @@ arcadyan,aw1000)
  	ucidef_set_led_netdev "wan" "WAN" "green:internet" "wan"
  	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:1c:green:wan" "wan" "tx rx link_10 link_100 link_1000 link_2500"
  	;;
 +arista,c-360)
-+	ucidef_set_led_netdev "lan1-mgig" "LAN1-MGIG" "green:lan-1" "lan1" "link_2500 link_5000 link_10000"
-+	ucidef_set_led_netdev "lan1" "LAN1" "orange:lan-1" "lan1" "link_10 link_100 link_1000"
-+	ucidef_set_led_netdev "lan2-mgig" "LAN2-MGIG" "green:lan-2" "lan2" "link_2500 link_5000 link_10000"
-+	ucidef_set_led_netdev "lan2" "LAN2" "orange:lan-2" "lan2" "link_10 link_100 link_1000"
++	ucidef_set_led_netdev "lan1" "LAN1" "green:lan-1" "lan1" "link"
++	ucidef_set_led_netdev "lan2" "LAN2" "green:lan-2" "lan2" "link"
 +	;;
  asus,rt-ax89x)
  	ucidef_set_led_netdev "aqr" "AQR" "white:aqr10g" "10g-copper"
  	ucidef_set_led_netdev "sfp" "SFP" "white:sfp" "10g-sfp"
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
-index de072424..5b8a261c 100644
+index de072424..2f9a64b2 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 @@ -19,6 +19,9 @@ ipq807x_setup_interfaces()
@@ -777,7 +775,7 @@ index de072424..5b8a261c 100644
  		ucidef_set_interfaces_lan_wan "lan" "wan"
  		;;
 +	arista,c-360)
-+		ucidef_set_interface_lan "lan1" "dhcp"
++		ucidef_set_interface_lan "lan1 lan2" "dhcp"
 +		;;
  	asus,rt-ax89x)
  		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 lan7 lan8 10g-sfp 10g-copper" "wan"
@@ -797,6 +795,3 @@ index b9a25bc7..3294521c 100644
  	asus,rt-ax89x)
  		CI_UBIPART="UBI_DEV"
  		CI_KERNPART="linux"
--- 
-2.43.0
-

@@ -1,7 +1,7 @@
-From 4b29fb57e0068f6347921f81f692cbadb71fb97b Mon Sep 17 00:00:00 2001
+From 4301088b2c9af87f168edefbcae3a275dfd65aae Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 14:07:09 -0500
-Subject: [PATCH 14/14] LOCAL: openwrt-arista: sysupgrade from the port's 25.12
+Subject: [PATCH 18/18] LOCAL: openwrt-arista: sysupgrade from the port's 25.12
  images
 
 The port's OpenWrt 25.12 images named the boards arista,c360, arista,c260
@@ -46,6 +46,3 @@ index 2059c5f9..4d086a89 100644
  endef
  TARGET_DEVICES += arista_c-360
  
--- 
-2.43.0
-

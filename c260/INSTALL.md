@@ -154,7 +154,9 @@ to Arista for good: `fw_setenv bootcmd 'run ubootscript'` from OpenWrt (or
   leases. It uses the unit's base MAC, the one on its label.
 * **Ethernet 2 is free**, in no bridge, so a second cable to the same switch
   makes no loop. `arista-c260-net` puts it on the LAN, on a VLAN or a VXLAN,
-  or bonds both ports (README.md).
+  or bonds both ports (README.md). That is the 25.12 images' default; OpenWrt
+  main's images put Ethernet 2 in `br-lan` too, as upstream has it: cable one
+  port, or free it with `arista-c260-net port2 off`.
 * **Wi-Fi is off** until you turn it on, and SSH and LuCI have no password:
   set one first.
 * **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device: press `f`

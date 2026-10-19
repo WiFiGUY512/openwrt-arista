@@ -30,10 +30,12 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - Both ports link at 10 Gb/s and at 2.5 Gb/s, and pass traffic both ways.
   - MACs and radio calibration are read from the unit's own ART partition.
   - Not yet measured: throughput at 10G.
-- **Ethernet 1 is the uplink; there is no WAN.** On a fresh install `br-lan`
-  holds Ethernet 1 only and takes its address by DHCP, so the port works as an
-  access port, and as a trunk once VLANs are added on it. Ethernet 2 is free,
-  in no bridge, so two cables to one switch make no loop.
+- **Ethernet 1 is the uplink; there is no WAN.** On a fresh install of a
+  25.12 image `br-lan` holds Ethernet 1 only and takes its address by DHCP,
+  so the port works as an access port, and as a trunk once VLANs are added on
+  it. Ethernet 2 is free, in no bridge, so two cables to one switch make no
+  loop. OpenWrt main's images put both ports in `br-lan`, as upstream has it:
+  cable one, or free Ethernet 2 with `arista-c360-net port2 off`.
 - **Ethernet 2, or a bond, with `arista-c360-net`:**
 
   | command | what it does |

@@ -26,6 +26,7 @@ start_service() {
 	case "$(board_name)" in
 	arista,c260|arista,c-260|\
 	arista,c360|arista,c-360|\
+	arista,w-118|\
 	arista,w318|arista,w-318) ;;
 	*) return 0 ;;
 	esac

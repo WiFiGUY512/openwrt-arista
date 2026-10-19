@@ -1,20 +1,21 @@
-From 41430686f9783a73b0cef16bc9d3cf1b76199941 Mon Sep 17 00:00:00 2001
+From 6c13048e2658fdd1313d5d14586ecbc97580e710 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 05/14] qualcommax: ipq807x: c-360: copy the vendor QCN9074
+Subject: [PATCH 05/18] qualcommax: ipq807x: c-360: copy the vendor QCN9074
  firmware
 
-The C-360's two QCN9074 cards start only with Arista's own build of
-their firmware (WLAN.HK.2.5.r4). With every public ath11k-firmware
-build tested, 2.5.0.1 to 2.9.0.1, the firmware stops answering at the
-QMI capability request. That build cannot be shipped, but every C-360
-carries it in the Arista system kept in its second NAND slot.
+The C-360's QCN9074 and QCN9072 cards start only with Arista's own build
+of the QCN9074 firmware (WLAN.HK.2.5.r4). With every public
+ath11k-firmware build tested, 2.5.0.1 to 2.9.0.1, the firmware stops
+answering at the QMI capability request. That build cannot be shipped,
+but every C-360 carries it in the Arista system kept in its second NAND
+slot.
 
 When ath11k asks for a QCN9074 amss.bin or m3.bin that is missing, copy
 both, unmodified, from that system, as the caldata hotplug scripts do
 for calibration data. The slot is attached read-only. Arista's squashfs
 stores xz compressor options the kernel rejects, so unsquashfs reads
-it. Without the Arista system the QCN9074 radios stay down.
+it. Without the Arista system both cards stay down.
 
 ath11k-firmware-qcn9074 is no longer installed, since its files would
 be used instead.
@@ -108,6 +109,3 @@ index 00000000..bd2b1718
 +	esac
 +	;;
 +esac
--- 
-2.43.0
-

@@ -271,7 +271,9 @@ in your DHCP server's leases. It uses the unit's own MAC, the one on its
 label.
 - **Ethernet 2 is free**, in no bridge, so a second cable to the same switch
   makes no loop. `arista-c360-net` puts it on the LAN, on a VLAN or a VXLAN,
-  or bonds both ports (README.md).
+  or bonds both ports (README.md). That is the 25.12 images' default; OpenWrt
+  main's images put Ethernet 2 in `br-lan` too, as upstream has it: cable one
+  port, or free it with `arista-c360-net port2 off`.
 - **Wi-Fi is off** until you turn it on, and SSH and LuCI have no password:
   set one first.
 - **Failsafe mode** is at 192.168.1.1, as on any OpenWrt device. Enter it

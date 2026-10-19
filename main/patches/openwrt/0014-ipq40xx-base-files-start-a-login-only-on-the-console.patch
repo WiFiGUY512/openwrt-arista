@@ -1,0 +1,35 @@
+From 872a50f5a3c1f78f06951d2a5be211deaa08a74d Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 19 Oct 2026 14:19:01 -0500
+Subject: [PATCH 14/18] ipq40xx: base-files: start a login only on the console
+
+The target's inittab starts a login prompt on ttyMSM1 as well as on
+ttyMSM0, whatever ttyMSM1 is wired to. On the Arista W-118 it is the
+UART of the Bluetooth LE controller: the login took the controller's
+HCI replies, so btattach's HCI Reset timed out, and it wrote its
+"Please press Enter" prompt into the controller.
+
+Drop the target's inittab for the default one, whose askconsole runs
+the login on the kernel console, wherever console= points.
+
+/etc/inittab is a conffile, so systems upgraded with their settings
+kept keep the old one.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/ipq40xx/base-files/etc/inittab | 5 -----
+ 1 file changed, 5 deletions(-)
+ delete mode 100644 target/linux/ipq40xx/base-files/etc/inittab
+
+diff --git a/target/linux/ipq40xx/base-files/etc/inittab b/target/linux/ipq40xx/base-files/etc/inittab
+deleted file mode 100644
+index 3181021a..00000000
+--- a/target/linux/ipq40xx/base-files/etc/inittab
++++ /dev/null
+@@ -1,5 +0,0 @@
+-# Copyright (c) 2013 The Linux Foundation. All rights reserved.
+-::sysinit:/etc/init.d/rcS S boot
+-::shutdown:/etc/init.d/rcS K shutdown
+-ttyMSM0::askfirst:/usr/libexec/login.sh
+-ttyMSM1::askfirst:/usr/libexec/login.sh

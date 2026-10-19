@@ -1,7 +1,7 @@
-From cb7cf7bdd489c04c846f5d69c8401e1e86bc2103 Mon Sep 17 00:00:00 2001
+From 498c3c9418c8ef2f9c1e14127da1ce4ea9e23627 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 08:54:37 -0500
-Subject: [PATCH 12/14] qualcommax: ipq60xx: w-318: light the radio LEDs
+Subject: [PATCH 12/18] qualcommax: ipq60xx: w-318: light the radio LEDs
 
 The 2.4, 5 and 6 LEDs had no trigger. Phy numbers follow the order the
 radios were first found in, which can differ between units, so board.d
@@ -55,6 +55,3 @@ index 00000000..34a439ba
 +esac
 +
 +echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
--- 
-2.43.0
-

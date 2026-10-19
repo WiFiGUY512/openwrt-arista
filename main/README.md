@@ -1,6 +1,6 @@
 # OpenWrt main
 
-The C-360, C-260 and W-318 on OpenWrt main, as the lab units run them. Main
+The C-360, C-260, W-318 and W-118 on OpenWrt main, as the lab units run them. Main
 has the new Ethernet driver (qca_edma with multi-queue RX and TX: 9.3 Gb/s
 up and 4.5 Gb/s down at 10G on the C-360, against 1.4 and 2.05 on 25.12),
 and the devices' upstream pull requests are written for it.
@@ -8,30 +8,46 @@ and the devices' upstream pull requests are written for it.
 ```
 main/build-main.sh ipq807x     # the C-360 and the C-260
 main/build-main.sh ipq60xx     # the W-318
+main/build-main.sh ipq40xx     # the W-118 (target ipq40xx)
 ```
 
-Out, in `out/main/<version>/`: `c360/`, `c260/`, `w318/` with each model's
-images (including the C-360's USB stick image), `feed-<subtarget>/` with the
-build's packages and every kernel module, and `SHA256SUMS`. The models'
-`INSTALL.md` cover installing; main's images are named `arista_c-360`,
-`arista_c-260` and `arista_w-318`, and their board names are `arista,c-360`,
-`arista,c-260` and `arista,w-318`.
+Out, in `out/main/<version>/`: `c360/`, `c260/`, `w318/`, `w118/` with each
+model's images (including the C-360's USB stick image), `feed-<subtarget>/`
+with the build's packages and every kernel module, and `SHA256SUMS`. The
+models' `INSTALL.md` cover installing; main's images are named
+`arista_c-360`, `arista_c-260`, `arista_w-318` and `arista_w-118`, and their
+board names are `arista,c-360`, `arista,c-260`, `arista,w-318` and
+`arista,w-118`.
+
+**Every network port is in the LAN by default**, as upstream review settled
+for all four models: on a fresh install the C-360's and C-260's Ethernet 1
+and 2, the W-318's uplink and Network 1-3, the W-118's uplink and LAN 1-3
+are all in `br-lan`, which runs no spanning tree. Two of them cabled to the
+same switch make a loop: cable one, or turn on STP, or take the others out
+of the bridge (the port tools do). Upgrades keep a unit's own settings.
 
 ## What it is built from
 
 - `openwrt.lock`: OpenWrt main and its feeds, pinned; and the board files.
 - `patches/openwrt/`, applied in order:
-  - 0001-0012: the devices, as their pull requests stand
+  - 0001-0012: the qualcommax devices, as their pull requests stand
     ([#25941](https://github.com/openwrt/openwrt/pull/25941) C-360,
     [#25937](https://github.com/openwrt/openwrt/pull/25937) C-260,
     [#25947](https://github.com/openwrt/openwrt/pull/25947) W-318). Where two
     add to the same list, the C-360's and C-260's entries are joined.
   - 0013: the ath11k monitor trim message at debug level
     ([#25988](https://github.com/openwrt/openwrt/pull/25988)).
-  - 0014, local: the 25.12 images' board names in `SUPPORTED_DEVICES`, so a
+  - 0014-0017: the W-118 ([#26028](https://github.com/openwrt/openwrt/pull/26028));
+    0014 is also sent alone
+    ([#26027](https://github.com/openwrt/openwrt/pull/26027): ipq40xx's
+    inittab ran a login on ttyMSM1, the W-118's Bluetooth UART).
+  - 0018, local: the 25.12 images' board names in `SUPPORTED_DEVICES`, so a
     unit on a 25.12 image can sysupgrade to main. Its port names change
     (eth0/eth1 become lan1/lan2): upgrade without settings (`sysupgrade -n`)
     or carry them over renamed.
+  - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
+    pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
+    3a0b0a79, W-118 d41cbf7d).
 - `patches/feeds/packages/`:
   - 0001 is gone. It made bluez-daemon depend on kmod-crypto-user, because
     25.12's bluetoothd needed AF_ALG to give an LE-only controller its
@@ -46,7 +62,8 @@ build's packages and every kernel module, and `SHA256SUMS`. The models'
     (`../c360/README.md`, "IPsec with the TPM identity"). Built for the feed
     (`=m`), not in the images. Not yet sent upstream.
 - The board files (`ipq-wifi`): qca-wireless at OpenWrt's commit with the
-  three board-file pull requests on it (#175 C-260, #176 C-360, #178 W-318),
+  four board-file pull requests on it (#175 C-260, #176 C-360, #178 W-318,
+  #179 W-118),
   combined by the build with a fixed committer and date, so it is the same
   commit (`QCA_COMMIT`) for everyone.
 - `<model>/files/`: the models' packages and scripts: airscan and its LuCI

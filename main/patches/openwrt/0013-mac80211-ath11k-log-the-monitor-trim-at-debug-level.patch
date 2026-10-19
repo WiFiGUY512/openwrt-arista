@@ -1,7 +1,7 @@
-From f884fb9a382bf779f061b35d0a661ae01cdac6ac Mon Sep 17 00:00:00 2001
+From 7a52d897332c28e2ce6e6985d55484a66d1853fb Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 11:20:28 -0500
-Subject: [PATCH 13/14] mac80211: ath11k: log the monitor trim at debug level
+Subject: [PATCH 13/18] mac80211: ath11k: log the monitor trim at debug level
 
 The monitor rx length fix (949-wifi-ath11k-fix-monitor-rx-pktlen.patch)
 logs every frame it trims with ath11k_warn. A monitor interface on
@@ -51,6 +51,3 @@ index 4d4a6f18..6d349f6c 100644
  +		}
  +
   		skb_next = mon_skb->next;
--- 
-2.43.0
-

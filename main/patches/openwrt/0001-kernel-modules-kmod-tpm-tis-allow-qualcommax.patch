@@ -1,7 +1,7 @@
-From 8fc2b5d57b9fb63fe481172161d6ac1fab4e4a62 Mon Sep 17 00:00:00 2001
+From c633545e0d7301b7fab7f70d04f166abdceb7753 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 01/14] kernel: modules: kmod-tpm-tis: allow qualcommax
+Subject: [PATCH 01/18] kernel: modules: kmod-tpm-tis: allow qualcommax
 
 Some qualcommax boards carry a TPM 2.0 on SPI, as the Arista C-360 (an
 Infineon SLB 9670). tpm_tis_spi needs tpm_tis_core from kmod-tpm-tis.
@@ -25,6 +25,3 @@ index e2d1c384..67f0c5b0 100644
    KCONFIG:= CONFIG_TCG_TIS
    FILES:= \
  	$(LINUX_DIR)/drivers/char/tpm/tpm_tis.ko \
--- 
-2.43.0
-

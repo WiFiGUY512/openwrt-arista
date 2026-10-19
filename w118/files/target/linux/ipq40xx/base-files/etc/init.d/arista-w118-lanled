@@ -1,0 +1,22 @@
+#!/bin/sh /etc/rc.common
+# Arista W-118: one LED, "Network 1/2/3", for the three LAN ports: green
+# while one of them has a link, at any speed, off with none (as the W-318's
+# and the uplink's). The kernel's netdev trigger follows one port, so this
+# follows the three. Stop and disable it to drive the LED (green:lan) some
+# other way.
+
+START=96
+USE_PROCD=1
+
+start_service() {
+	. /lib/functions.sh
+	[ "$(board_name)" = arista,w-118 ] || return 0
+	procd_open_instance
+	procd_set_param command /bin/sh /usr/libexec/arista-w118-lanled
+	procd_set_param respawn
+	procd_close_instance
+}
+
+stop_service() {
+	echo 0 > /sys/class/leds/green:lan/brightness 2>/dev/null
+}

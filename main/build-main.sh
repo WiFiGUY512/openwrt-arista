@@ -1,11 +1,12 @@
 #!/bin/bash
 # build-main.sh: build the Arista images on OpenWrt main from source.
 #
-#	main/build-main.sh <ipq807x|ipq60xx> [OpenWrt directory]
+#	main/build-main.sh <ipq807x|ipq60xx|ipq40xx> [OpenWrt directory]
 #
 # ipq807x builds the C-360 and the C-260 (one multi-profile build: one
-# kernel, one module feed), ipq60xx the W-318. What it builds from, all in
-# this repository:
+# kernel, one module feed), ipq60xx the W-318 (both target qualcommax), and
+# ipq40xx the W-118 (target ipq40xx, subtarget generic). What it builds from,
+# all in this repository:
 #   main/openwrt.lock        OpenWrt main, the feeds, and the board files'
 #                            qca-wireless commits
 #   main/patches/openwrt/    the devices as their upstream pull requests
@@ -21,8 +22,8 @@
 # Every kernel module is built (CONFIG_ALL_KMODS), so the modules form a
 # package feed for exactly this kernel. Out, in out/main/<this repo's
 # version>/: <model>/ with its images, feed-<subtarget>/ with the build's
-# packages, and SHA256SUMS. The tree defaults to build/main/openwrt; both
-# subtargets can share it, one after the other.
+# packages, and SHA256SUMS. The tree defaults to build/main/openwrt; all
+# three can share it, one after the other.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,9 +31,10 @@ MAIN=$HERE/main
 [ $# -ge 1 ] || { sed -n '4p' "$0" | sed 's/^#\t*//' >&2; exit 2; }
 SUB=$1
 case $SUB in
-ipq807x) MODELS="c360 c260" DEVICES="arista_c-360 arista_c-260" ;;
-ipq60xx) MODELS="w318" DEVICES="arista_w-318" ;;
-*) echo "no subtarget $SUB (ipq807x or ipq60xx)" >&2; exit 2 ;;
+ipq807x) TARGET=qualcommax PROFILE=ipq807x MODELS="c360 c260" DEVICES="arista_c-360 arista_c-260" ;;
+ipq60xx) TARGET=qualcommax PROFILE=ipq60xx MODELS="w318" DEVICES="arista_w-318" ;;
+ipq40xx) TARGET=ipq40xx PROFILE=generic MODELS="w118" DEVICES="arista_w-118" ;;
+*) echo "no subtarget $SUB (ipq807x, ipq60xx or ipq40xx)" >&2; exit 2 ;;
 esac
 W=$(realpath -m "${2:-$HERE/build/main/openwrt}")
 VERSION=$(git -C "$HERE" describe --tags --always --dirty 2>/dev/null || echo unversioned)
@@ -140,7 +142,7 @@ say "board files: qca-wireless ${QCA_COMMIT:0:12}"
 S=$W/.main-files.d
 rm -rf "$S"
 mkdir -p "$S"
-for m in c360 c260 w318; do
+for m in c360 c260 w318 w118; do
 	cp -rp "$HERE/$m/files/." "$S/"
 done
 rm -rf "$S/package/kernel/qca-nss-dp" \
@@ -153,7 +155,8 @@ cp -rp "$MAIN/files/." "$S/"
 model_files "$S" . .main-files
 for f in target/linux/qualcommax/*/base-files/etc/init.d/* target/linux/qualcommax/*/base-files/usr/sbin/* \
 	target/linux/qualcommax/*/base-files/etc/board.d/* \
-	target/linux/qualcommax/*/base-files/usr/libexec/*; do
+	target/linux/qualcommax/*/base-files/usr/libexec/* \
+	target/linux/ipq40xx/base-files/etc/init.d/arista-* target/linux/ipq40xx/base-files/usr/libexec/arista-*; do
 	[ -f "$f" ] && chmod 0755 "$f"
 done
 chmod 0644 target/linux/qualcommax/*/base-files/etc/hotplug.d/*/*
@@ -179,11 +182,11 @@ say "feeds: $(sed 's/^src-git \([a-z]*\) .*\^\(.\{8\}\).*/\1 \2/' feeds.conf | t
 cp "$MAIN/config/$SUB.seed" .config
 make defconfig >/dev/null
 for d in $DEVICES; do
-	grep -q "^CONFIG_TARGET_DEVICE_qualcommax_${SUB}_DEVICE_$d=y" .config ||
-		grep -q "^CONFIG_TARGET_qualcommax_${SUB}_DEVICE_$d=y" .config ||
+	grep -q "^CONFIG_TARGET_DEVICE_${TARGET}_${PROFILE}_DEVICE_$d=y" .config ||
+		grep -q "^CONFIG_TARGET_${TARGET}_${PROFILE}_DEVICE_$d=y" .config ||
 		{ echo "$d is not selected after defconfig" >&2; exit 1; }
 done
-O=bin/targets/qualcommax/$SUB
+O=bin/targets/$TARGET/$PROFILE
 rm -rf $O bin/packages
 say "building $SUB (log: $W/build-$SUB.log)"
 make -j"$(nproc)" IGNORE_ERRORS=m >build-$SUB.log 2>&1 ||
