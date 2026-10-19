@@ -1,9 +1,10 @@
 #!/bin/sh /etc/rc.common
 # Arista W-318: one LED, "Network 1/2/3", for the three LAN ports: green
-# while one of them has a link at 1 Gb/s, amber while the links there are
-# all slower, off with none. The kernel's netdev trigger follows one port,
-# so this follows the three. Stop and disable it to drive the LED's two
-# colours (green:lan, amber:lan) some other way.
+# while one of them has a link, at any speed, off with none (as the uplink's
+# and the C-360's Ethernet LEDs, upstream); amber is left off. The kernel's
+# netdev trigger follows one port, so this follows the three. Stop and
+# disable it to drive the LED's two colours (green:lan, amber:lan) some
+# other way.
 
 START=96
 USE_PROCD=1

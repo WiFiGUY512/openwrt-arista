@@ -75,9 +75,9 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   (`arista-c360-net port2 vxlan`), and the kernel's VXLAN between two network
   namespaces with a ping across the overlay.
 - **Front-panel LEDs:** power, the three Wi-Fi bands, and both Ethernet
-  ports in steady link-speed colours: green for a multi-gig link (2.5, 5 or
-  10G), orange for 1G or slower. Green at 5 and 10G is *(built, not yet on a
-  unit)*; before, it lit at 2.5G only.
+  ports, each green while it has a link, at any speed, as Arista's stock
+  firmware lights them and as upstream has it (the 25.12 images split
+  green/orange by speed).
 - **Bluetooth LE:** the nRF52833 runs Arista's own firmware unchanged (a
   Zephyr HCI controller, Bluetooth 5.3, LE only), over a UART.
   - It comes up by itself at boot: powered, with the unit's static address,

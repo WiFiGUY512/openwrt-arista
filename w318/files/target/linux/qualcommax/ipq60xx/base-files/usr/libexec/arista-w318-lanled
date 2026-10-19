@@ -10,19 +10,12 @@ done
 
 last=
 while :; do
-	now=off
+	now=0
 	for p in lan1 lan2 lan3; do
-		[ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" = 1 ] || continue
-		speed=$(cat /sys/class/net/$p/speed 2>/dev/null)
-		if [ "${speed:-0}" -ge 1000 ] 2>/dev/null; then
-			now=green
-			break
-		fi
-		now=amber
+		[ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" = 1 ] && { now=1; break; }
 	done
 	if [ "$now" != "$last" ]; then
-		[ $now = green ] && echo 1 > $L/green:lan/brightness || echo 0 > $L/green:lan/brightness
-		[ $now = amber ] && echo 1 > $L/amber:lan/brightness || echo 0 > $L/amber:lan/brightness
+		echo $now > $L/green:lan/brightness
 		last=$now
 	fi
 	sleep 2

@@ -99,9 +99,9 @@ Seen working on a unit unless marked otherwise.
   (HCI 4.2), powered on with LE on, not advertising, as the C-360's is. On a
   unit: airscan's LE survey heard 17 devices in 6 s.
 - **The LEDs.** Power is orange while booting, in failsafe and while
-  upgrading, green when running. Each Ethernet port's LED is green for a 2.5
-  or 5 Gb/s link and orange for 1 Gb/s or slower (seen on a unit: green at
-  2.5 and 5 Gb/s, orange at 1 Gb/s). Each radio's
+  upgrading, green when running. Each Ethernet port's LED is green while it
+  has a link, at any speed, as upstream has it (the 25.12 images split
+  green/orange by speed). Each radio's
   green LED (2.4 GHz, 5 GHz, scanning radio) is lit while the radio is on;
   the orange ones are left off.
 - **The button** (gpio52), as OpenWrt's reset: a short press reboots, 5 s or

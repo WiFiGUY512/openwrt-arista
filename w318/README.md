@@ -57,11 +57,11 @@ Seen working on a unit unless marked otherwise.
   and out again (netifd's VLAN table followed), no device on it yet.
 - **USB 3.0:** a stick at 5 Gb/s, 197 MB/s read.
 - **The LEDs.** Power is amber while booting, in failsafe and while
-  upgrading, green when running. The uplink's is green for a 2.5 Gb/s link
-  and orange for 1 Gb/s or slower. Each radio's green LED is lit while the
-  radio is on. Network 1/2/3 share one LED: green with a 1 Gb/s link on any
-  of them, amber with slower ones only, off with none
-  (`arista-w318-lanled`); a port in no bridge stays down, and dark.
+  upgrading, green when running. The uplink's is green while it has a link,
+  at any speed, as upstream has it (the 25.12 images split green/orange by
+  speed). Each radio's green LED is lit while the radio is on. Network 1/2/3
+  share one LED: green while any of them has a link, off with none
+  (`arista-w318-lanled`); a port that is down stays dark.
 - **The button**, the one outside, as OpenWrt's reset: a short press reboots,
   5 s or more resets the settings (presses and releases seen on a unit).
 - **Arista's PoE power policy** (`arista-w318-power`): on 802.3at (or af)
