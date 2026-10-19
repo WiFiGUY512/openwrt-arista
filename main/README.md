@@ -33,9 +33,11 @@ build's packages and every kernel module, and `SHA256SUMS`. The models'
     (eth0/eth1 become lan1/lan2): upgrade without settings (`sysupgrade -n`)
     or carry them over renamed.
 - `patches/feeds/packages/`:
-  - 0001: bluez-daemon depends on kmod-crypto-user (bluetoothd needs AF_ALG
-    to give an LE-only controller, such as the C-360's and W-318's, its
-    static address). Local, not yet sent upstream.
+  - 0001 is gone. It made bluez-daemon depend on kmod-crypto-user, because
+    25.12's bluetoothd needed AF_ALG to give an LE-only controller its
+    static address. Main's BlueZ (5.86) does not: on a C-360 with the AF_ALG
+    modules absent, bluetoothd set the static address and registered hci0
+    (2026-10-18).
   - 0002: strongSwan's TPM 2.0 plugin (`strongswan-mod-tpm`), with the source
     patch for keys without a fixed signature scheme, as Arista's factory
     identity keys are: the 25.12 patch (`../c360/patches/feeds/packages/`)
