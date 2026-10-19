@@ -99,7 +99,26 @@ options the kernel won't mount; `unsquashfs` reads it.
   a flow-control line, is the bootloader's strap, used only for the module's
   firmware updates. No public address: a static random one from ART 0x40.
 - **TPM:** TPM 2.0 (TIS over SPI) on blsp1_spi5 (gpio55-58), 500 kHz as in
-  Arista's tree.
+  Arista's tree. An Infineon SLB 9670, firmware 7.85, as on the C-360; the
+  kernel starts it ("A TPM error (256)… starting up the TPM manually").
+  - **The factory identity** is the C-360's layout (TCG IDevID), read on a
+    unit with `tpm2_nvread` and `tpm2_readpublic`:
+
+    | NV index | certificate | its key (persistent handle) |
+    |---|---|---|
+    | `0x01C90000` | RSA 2048 | `0x81020000`: signing and decryption, no fixed scheme |
+    | `0x01C90001` | ECC P-256 | `0x81020001`: signing, no fixed scheme |
+    | `0x01C90011` | ECC P-256 | `0x81020011`: restricted signing (attestation) |
+    | | | `0x81030000`: restricted decryption (a storage parent) |
+
+    - Subject `O=ARISTA, CN=<MAC>, description=W-318 access point,
+      serialNumber=<MAC>`, issued by Arista's "WiFi-TPM-Authority" CA, valid
+      for ten years (2023-2033 on the unit).
+    - Infineon's endorsement-key certificates are at `0x01C00002` (RSA) and
+      `0x01C0000A` (ECC).
+    - The keys without a fixed scheme need the C-360's strongSwan patch
+      (`../c360/patches/feeds/packages/0001-strongswan-tpm-plugin.patch`) to
+      sign in IKEv2.
 - **USB:** one USB 3.0 port on the SoC's controller; its power (VBUS) is cut
   by gpio73 low (Arista's `usb_ctrl_func`).
 

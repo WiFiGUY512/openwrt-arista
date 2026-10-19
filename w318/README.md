@@ -44,7 +44,17 @@ Seen working on a unit unless marked otherwise.
   C-360 and C-260 (`ubus call airscan ble`, LuCI's airscan BLE page): with no
   scan radio here it runs the survey alone, and its Wi-Fi survey calls answer
   "no scan radio on this board". On a unit: 13 devices, one a tracker.
-- **The TPM:** TPM 2.0 on SPI (`/dev/tpm0`, `/dev/tpmrm0`).
+- **The TPM:** TPM 2.0 on SPI (`/dev/tpm0`, `/dev/tpmrm0`), the C-360's
+  Infineon SLB 9670, with Arista's factory identity in the same layout
+  (HARDWARE.md); the images on OpenWrt main carry `tpm2-tools`, which read it.
+  IPsec with that identity is set up as on the C-360 (`../c360/README.md`),
+  with its strongSwan TPM plugin.
+- **Network 1, 2 and 3** (`arista-w318-net`, as the C-360's `arista-c360-net`
+  for its Ethernet 2): free by default; each can join the LAN, a VLAN, a
+  trunk or a VXLAN tunnel. On a LAN bridge that filters VLANs, as a manager
+  sets it up, a port joins its VLAN table. `arista-w318-net status`; a change
+  reverts after 120 s unless confirmed. On a unit on main: lan2 into VLAN 20
+  and out again (netifd's VLAN table followed), no device on it yet.
 - **USB 3.0:** a stick at 5 Gb/s, 197 MB/s read.
 - **The LEDs.** Power is amber while booting, in failsafe and while
   upgrading, green when running. The uplink's is green for a 2.5 Gb/s link
@@ -72,9 +82,10 @@ Seen working on a unit unless marked otherwise.
 
 ## What doesn't (yet)
 
-- **No spanning tree** on `br-lan`: a LAN port added to it and cabled to the
-  uplink's switch makes a loop (seen on a lab switch, whose spanning tree
-  blocked the uplink).
+- **No spanning tree** on a stock install's `br-lan`: a LAN port added to it
+  and cabled to the uplink's switch makes a loop (seen on a lab switch, whose
+  spanning tree blocked the uplink). `arista-w318-net` says so when a port
+  joins a bridge without it; a manager's layout runs RSTP.
 - The pass-through jacks (rear and right side) are wired to each other, not
   to the AP: nothing for OpenWrt to do there.
 

@@ -81,7 +81,19 @@ Seen working on a unit unless marked otherwise.
   - A device on Ethernet 2 needs power of its own: both ports are PoE in only.
   - Each change is undone after 120 s unless `arista-c260-net confirm` follows,
     so a change that cuts the AP off reverts by itself.
+  - On a LAN bridge that filters VLANs (bridge-vlan sections, as a manager
+    sets it up), the VLANs are `br-lan`'s VLAN table: `port2 lan` puts
+    Ethernet 2 untagged in the uplink's untagged VLAN, `vlan` and `trunk` add
+    it to the table (a VLAN the table lacks is added, tagged on the uplink),
+    and `bond on` moves the table's entries to the bond. Tested on main on a
+    managed unit: each mode on a copy of its config, and `port2 vlan 20`
+    applied and taken off again.
+  - The tool notes when Ethernet 2 joins a bridge with no spanning tree (a
+    stock install's): cabled to the uplink's switch, that would be a loop.
   - Bonding (`kmod-bonding`) and netifd's `vxlan` are in the image for it.
+  - On main, against an Arista switch with LACP fallback: Ethernet 2 at
+    2.5G, 2.35 Gb/s each way (iperf3); `bond on`, both ports in one
+    aggregator with the switch.
 - **Bluetooth** (`arista-c260-bluetooth`): the CSR8811 starts as Arista
   starts it, with its PS keys copied from slot 1, and is `hci0` for BlueZ
   (HCI 4.2), powered on with LE on, not advertising, as the C-360's is. On a

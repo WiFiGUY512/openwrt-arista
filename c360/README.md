@@ -49,6 +49,15 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   - A device on Ethernet 2 needs power of its own: both ports are PoE in only.
   - Each change is undone after 120 s unless `arista-c360-net confirm` follows,
     so a change that cuts the AP off reverts by itself.
+  - On a LAN bridge that filters VLANs (bridge-vlan sections, as a manager
+    sets it up), the VLANs are `br-lan`'s VLAN table: `port2 lan` puts
+    Ethernet 2 untagged in the uplink's untagged VLAN, `vlan` and `trunk` add
+    it to the table (a VLAN the table lacks is added, tagged on the uplink),
+    and `bond on` moves the table's entries to the bond. Tested on main on a
+    managed unit: each mode on a copy of its config, and `port2 vlan 20`
+    applied and taken off again.
+  - The tool notes when Ethernet 2 joins a bridge with no spanning tree (a
+    stock install's): cabled to the uplink's switch, that would be a loop.
   - Tested on a unit managed on a tagged VLAN, against an Arista switch with
     LACP fallback: `bond off`, `bond on` (both links in one aggregator),
     `port2 vxlan`, and, with Ethernet 2 unplugged so nothing could loop,
