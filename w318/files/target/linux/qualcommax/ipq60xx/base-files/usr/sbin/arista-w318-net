@@ -1,0 +1,346 @@
+#!/bin/sh
+# arista-w318-net: the Arista W-318's LAN ports.
+#
+# The uplink port is the AP's own link: untagged it is the LAN, and each VLAN
+# on it is uplink.<id> in a bridge br-vlan<id>; on a LAN bridge that filters
+# VLANs (as a manager sets it up) they are br-lan's VLAN table instead, and a
+# LAN port joins that table. LAN 1, 2 and 3 are free by default, in no
+# bridge, so a cable from one to the uplink's switch makes no loop. Each can
+# be attached to the LAN, to a VLAN, to several VLANs (a trunk, to chain
+# another AP), or to a VXLAN tunnel.
+#
+#	arista-w318-net status
+#	arista-w318-net lan<n> off|lan
+#	arista-w318-net lan<n> vlan <id>             access port on VLAN <id>
+#	arista-w318-net lan<n> trunk <id> [<id>...]  the LAN untagged, VLANs tagged
+#	arista-w318-net lan<n> vxlan <vni> <peer> [<udp port>]
+#	arista-w318-net confirm                      keep the last change
+#
+# A change is applied at once, and undone after 120 s unless confirmed with
+# "arista-w318-net confirm", so a change that cuts the AP off reverts by
+# itself (W318_NET_TIMEOUT=<s> for longer). --no-rollback applies without the timer.
+
+PREV=/etc/config/network.w318-prev
+MARK=/tmp/arista-w318-net.pending
+TIMEOUT=${W318_NET_TIMEOUT:-120}	# seconds; longer when a switch is slow to follow
+UP=uplink
+PORTS="lan1 lan2 lan3"
+
+die() { echo "arista-w318-net: $*" >&2; exit 1; }
+
+# W318_NET_CONFDIR (tests only): edit that config directory, apply nothing
+u() { uci ${W318_NET_CONFDIR:+-c $W318_NET_CONFDIR -t $W318_NET_CONFDIR/.uci} "$@"; }
+
+[ -n "${W318_NET_CONFDIR:-}" ] ||
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+arista,w318|arista,w-318) ;;
+*) die "this is not an Arista W-318" ;;
+esac
+
+# the bridge device section with the given name, if any
+bridge_sec() {
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.name='$1'$/\1/p" | head -1
+}
+
+# ports of a bridge, as a list
+ports_of() {
+	local s=$(bridge_sec "$1")
+	[ -n "$s" ] && u -q get network.$s.ports
+}
+
+set_ports() { # bridge port...
+	local b=$1 s
+	shift
+	s=$(bridge_sec "$b")
+	if [ -z "$s" ]; then
+		s=$(echo "$b" | sed 's/[^a-zA-Z0-9_]/_/g')
+		u set network.$s=device
+		u set network.$s.name="$b"
+		u set network.$s.type=bridge
+	fi
+	u -q delete network.$s.ports
+	for p in "$@"; do u add_list network.$s.ports="$p"; done
+}
+
+# remove port $1 (exact name) from every bridge
+drop_port() {
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.type='bridge'$/\1/p" | while read s; do
+		local keep="" p
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in
+			"$1") ;;
+			*) keep="$keep $p" ;;
+			esac
+		done
+		u -q delete network.$s.ports
+		for p in $keep; do u add_list network.$s.ports="$p"; done
+	done
+}
+
+# A LAN bridge that filters VLANs (bridge-vlan sections for br-lan) carries
+# every VLAN in its VLAN table, each port named with its tagging: uplink:u*
+# is untagged and the port's own VLAN, uplink:t tagged. There a LAN port joins
+# br-lan and the table, under the bridge's spanning tree; a bridge per VLAN
+# would leave it in no VLAN. No globbing over the ports: u* is no file pattern.
+bridge_vlans() {
+	u -X -q show network | sed -n "s/^network\.\([^.=]*\)=bridge-vlan$/\1/p"
+}
+
+filtering() {
+	local s
+	for s in $(bridge_vlans); do
+		[ "$(u -q get network.$s.device)" = br-lan ] && return 0
+	done
+	return 1
+}
+
+# bvlan <id>: br-lan's VLAN table entry for VLAN <id>, made with the uplink
+# tagged if there is none
+bvlan() {
+	local id=$1 s
+	for s in $(bridge_vlans); do
+		[ "$(u -q get network.$s.device)" = br-lan ] && [ "$(u -q get network.$s.vlan)" = "$id" ] && { echo $s; return; }
+	done
+	s=w318bv$id
+	u set network.$s=bridge-vlan
+	u set network.$s.device=br-lan
+	u set network.$s.vlan=$id
+	u add_list network.$s.ports="$UP:t"
+	echo $s
+}
+
+# lan_vlan: the VLAN the uplink carries untagged in br-lan's table
+lan_vlan() {
+	local s p
+	set -f
+	for s in $(bridge_vlans); do
+		[ "$(u -q get network.$s.device)" = br-lan ] || continue
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in "$UP:u"*) u -q get network.$s.vlan; set +f; return ;; esac
+		done
+	done
+	set +f
+}
+
+# port $1 out of every VLAN table entry; an entry this tool made that now
+# holds only the uplink goes
+drop_from_vlans() {
+	local s p keep
+	set -f
+	for s in $(bridge_vlans); do
+		keep=""
+		for p in $(u -q get network.$s.ports); do
+			case "$p" in "$1"|"$1":*) ;; *) keep="$keep $p" ;; esac
+		done
+		u -q delete network.$s.ports
+		for p in $keep; do u add_list network.$s.ports="$p"; done
+		case "$s" in w318bv*) [ "$(u -q get network.$s.ports)" = "$UP:t" ] && u -q delete network.$s ;; esac
+	done
+	set +f
+}
+
+# every port of every bridge that is port $1, or a VLAN on it; then the VXLAN
+# tunnels this tool made that no LAN port uses any more
+detach() {
+	local p s
+	for p in $(u -X -q show network | sed -n "s/^network\.[^.]*\.ports='\(.*\)'$/\1/p" | tr "'" ' '); do
+		case "$p" in
+		$1|$1.*) drop_port "$p" ;;
+		esac
+	done
+	drop_from_vlans $1
+	for s in $(u -X -q show network | sed -n "s/^network\.\(w318vx[0-9]*\)=interface$/\1/p"); do
+		[ "$(ports_of br-$s)" = "$s" ] || continue
+		u -q delete network.$s
+		u -q delete network.${s}br
+		u -q delete network.br_$s
+	done
+}
+
+vlan_bridge() { # id: the bridge for VLAN <id> on the uplink, made if missing
+	local id=$1 b=br-vlan$1
+	if [ -z "$(bridge_sec $b)" ]; then
+		set_ports $b $UP.$id
+		u set network.vlan$id=interface
+		u set network.vlan$id.device=$b
+		u set network.vlan$id.proto=none
+	fi
+	echo $b
+}
+
+mgmt_iface() { # the interface the AP is managed through: the one with a gateway, else lan
+	local m=$(u -X -q show network | sed -n "s/^network\.\([^.]*\)\.gateway=.*/\1/p" | head -1)
+	echo ${m:-lan}
+}
+
+apply() {
+	u changes network | grep -q . || { echo "no change"; u revert network; return 0; }
+	if [ -n "$W318_NET_CONFDIR" ]; then
+		u commit network
+		echo "committed to $W318_NET_CONFDIR (test: nothing applied)"
+		return 0
+	fi
+	[ -f $MARK ] || cp /etc/config/network $PREV
+	u commit network
+	/etc/init.d/network reload
+	if [ "$NOROLLBACK" = 1 ]; then
+		rm -f $MARK $PREV
+		echo "applied"
+		return 0
+	fi
+	# the timer outlives the SSH session that started it
+	( trap '' HUP
+	  sleep $TIMEOUT
+	  if [ "$(cat $MARK 2>/dev/null)" = "$1" ]; then
+		cp $PREV /etc/config/network && rm -f $MARK $PREV
+		/etc/init.d/network reload
+		logger -t arista-w318-net "not confirmed in ${TIMEOUT}s: the previous network config is back"
+	  fi ) </dev/null >/dev/null 2>&1 &
+	echo $! > $MARK.timer
+	echo $1 > $MARK
+	echo "applied; run 'arista-w318-net confirm' within ${TIMEOUT}s, or it is undone"
+}
+
+status() {
+	local p s v vs where
+	echo "uplink: $UP; LAN ports: $PORTS"
+	u -X -q show network | sed -n "s/^network\.\([^.]*\)\.type='bridge'$/\1/p" | while read s; do
+		echo "  $(u -q get network.$s.name): $(u -q get network.$s.ports)"
+	done
+	for p in $PORTS; do
+		where=$(u -X -q show network | grep -E "\.ports=.*'$p(\.[0-9]+)?'" | sed -n "s/^network\.\([^.]*\)\.ports=.*/\1/p")
+		vs=""
+		if filtering; then
+			for v in $(bridge_vlans); do
+				case " $(u -q get network.$v.ports) " in
+				*" $p:u*"*) vs="$vs $(u -q get network.$v.vlan) untagged" ;;
+				*" $p:t "*) vs="$vs $(u -q get network.$v.vlan) tagged" ;;
+				esac
+			done
+		fi
+		if [ -z "$where" ]; then
+			echo "$p: in no bridge"
+		elif [ -n "$vs" ]; then
+			echo "$p: in br-lan's VLAN table:$vs"
+		fi
+	done
+	[ -f $MARK ] && echo "a change is waiting for 'arista-w318-net confirm'"
+	return 0
+}
+
+NOROLLBACK=0
+[ "$1" = --no-rollback ] && { NOROLLBACK=1; shift; }
+TAG=$(date +%s)$$
+USAGE="lan1|lan2|lan3 off|lan|vlan <id>|trunk <id>...|vxlan <vni> <peer> [port]"
+
+case "$1" in
+status|"")
+	status
+	;;
+confirm)
+	[ -f $MARK ] || { echo "nothing to confirm"; exit 0; }
+	kill $(cat $MARK.timer 2>/dev/null) 2>/dev/null
+	rm -f $MARK $MARK.timer $PREV
+	echo "confirmed"
+	;;
+lan1|lan2|lan3)
+	P=$1
+	shift
+	mode=$1
+	[ -n "$mode" ] || die "$USAGE"
+	shift
+	# the arguments are checked before anything is staged: a stop half way
+	# would leave changes for the next commit
+	case "$mode" in
+	off) ;;
+	lan)
+		filtering && [ -z "$(lan_vlan)" ] && die "the uplink carries no untagged VLAN: $P vlan <id> instead"
+		;;
+	vlan)
+		[ -n "$1" ] && [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 4094 ] || die "vlan <1-4094>"
+		;;
+	trunk)
+		[ $# -ge 1 ] || die "trunk <id> [<id>...]"
+		for id in "$@"; do
+			[ "$id" -ge 1 ] 2>/dev/null && [ "$id" -le 4094 ] || die "bad VLAN $id"
+		done
+		;;
+	vxlan)
+		[ -n "$1" ] && [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 16777215 ] || die "vxlan <vni> <peer> [port]"
+		[ -n "$2" ] || die "vxlan <vni> <peer> [port]"
+		# another LAN port on this VNI keeps its tunnel's peer
+		for p in $(ports_of br-w318vx$1); do
+			case "$p" in w318vx$1|$P) ;; *)
+				[ "$(u -q get network.w318vx$1.peeraddr)" = "$2" ] ||
+					die "VNI $1 tunnels to $(u -q get network.w318vx$1.peeraddr) for $p"
+			;; esac
+		done
+		;;
+	*)
+		die "$USAGE"
+		;;
+	esac
+	detach $P
+	case "$mode" in
+	lan)
+		set_ports br-lan $(ports_of br-lan) $P
+		filtering && u add_list network.$(bvlan $(lan_vlan)).ports="$P:u*"
+		;;
+	vlan)
+		if filtering; then
+			set_ports br-lan $(ports_of br-lan) $P
+			u add_list network.$(bvlan $1).ports="$P:u*"
+		else
+			b=$(vlan_bridge $1)
+			set_ports $b $(ports_of $b) $P
+		fi
+		;;
+	trunk)
+		set_ports br-lan $(ports_of br-lan) $P
+		if filtering; then
+			lv=$(lan_vlan)
+			[ -n "$lv" ] && u add_list network.$(bvlan $lv).ports="$P:u*"
+			for id in "$@"; do
+				[ "$id" = "$lv" ] || u add_list network.$(bvlan $id).ports="$P:t"
+			done
+		else
+			for id in "$@"; do
+				b=$(vlan_bridge $id)
+				set_ports $b $(ports_of $b) $P.$id
+			done
+		fi
+		;;
+	vxlan)
+		# one tunnel per VNI: a second LAN port on the same VNI joins its bridge
+		vni=$1 peer=$2 port=${3:-4789}
+		s=w318vx$vni
+		if [ -n "$(bridge_sec br-$s)" ]; then
+			set_ports br-$s $(ports_of br-$s) $P
+		else
+			u set network.$s=interface
+			u set network.$s.proto=vxlan
+			u set network.$s.peeraddr="$peer"
+			u set network.$s.vid="$vni"
+			u set network.$s.port="$port"
+			m=$(mgmt_iface)
+			[ -n "$m" ] && u set network.$s.tunlink="$m"
+			u set network.${s}br=interface
+			u set network.${s}br.device=br-$s
+			u set network.${s}br.proto=none
+			set_ports br-$s $s $P
+		fi
+		;;
+	esac
+	apply $TAG
+	case "$mode" in
+	lan|trunk)
+		[ "$(u -q get network.lan.auto)" = 0 ] &&
+			echo "note: the LAN interface is disabled (network.lan.auto=0), so $P carries no untagged LAN"
+		;;
+	esac
+	;;
+*)
+	sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+	exit 2
+	;;
+esac
