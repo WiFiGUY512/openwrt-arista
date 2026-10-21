@@ -204,6 +204,16 @@ function resolve_radio() {
 	if (radio.driver == "ath10k") radio.per_trigger = 255;
 	radio.debugfs = `/sys/kernel/debug/ieee80211/${radio.phy}/${radio.driver}`;
 	radio.spectral = !!fs.access(`${radio.debugfs}/spectral_scan_ctl`, "w");
+	// ath10k-ct adds 8 dB (2.4 GHz) or 12 dB (5 GHz) to every beacon's level
+	// while ofdm_peak_power_rssi is on, its default; off, they read as the
+	// neighbours hear this radio. Set before every job, since a driver reload
+	// turns it back on. Monitor-mode data frames (client levels) still read
+	// about 20 dB low on a QCA988x; the cause is not known.
+	if (radio.driver == "ath10k") {
+		let f = `${radio.debugfs}/ofdm_peak_power_rssi`;
+		if (fs.access(f, "w") && trim(fs.readfile(f) || "") != "0" && fs.writefile(f, "0\n") != null)
+			log(`${radio.phy}: ofdm_peak_power_rssi turned off`);
+	}
 	return true;
 }
 
