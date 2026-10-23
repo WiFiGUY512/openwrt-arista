@@ -92,3 +92,9 @@ There is no root password yet.
 To boot Arista once: stop U-Boot and `run arista_boot` (it boots slot 1, and
 its own boot then saves the environment). To go back to Arista for good:
 `fw_setenv bootcmd 'run ubootscript'`.
+
+## Updating
+
+`sysupgrade` with `...-squashfs-sysupgrade.bin` writes slot 0 again and
+keeps the settings (and the Bluetooth PS keys file); the U-Boot environment
+is not touched.

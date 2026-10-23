@@ -1,0 +1,38 @@
+#!/bin/sh /etc/rc.common
+# Apply the C-230's PoE power policy once Ethernet 1 has link: the PoE
+# controller's class pin is only settled then (Arista reads it likewise).
+# Then keep watching: the power a switch allocates by LLDP arrives later, and
+# a supply can change while the AP runs.
+
+START=99
+USE_PROCD=1
+
+start_service() {
+	. /lib/functions.sh
+	[ "$(board_name)" = arista,c-230 ] || return 0
+	# not in the RAM installer: its root is a tmpfs (the device tree puts
+	# ubi.mtd= on every boot's command line, so that does not tell)
+	case "$(awk '$2 == "/" {print $3; exit}' /proc/mounts)" in
+	tmpfs|rootfs|ramfs) return 0 ;;
+	esac
+	procd_open_instance
+	procd_set_param command /bin/sh -c '
+		for i in $(seq 1 60); do
+			for p in lan1 lan2; do
+				[ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" = 1 ] && break 2
+			done
+			sleep 2
+		done
+		/usr/sbin/arista-c230-power apply
+		exec /usr/sbin/arista-c230-power monitor'
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger arista-c230-power
+}
+
+reload_service() {
+	/usr/sbin/arista-c230-power apply
+}

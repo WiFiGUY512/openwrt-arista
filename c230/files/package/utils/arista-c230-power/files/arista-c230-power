@@ -1,0 +1,340 @@
+#!/bin/sh
+# arista-c230-power: the Arista C-230's PoE power policy, as Arista's own
+# system applies it (/sbin/8023af.sh, /etc/poe_prof.cfg), on the lines of
+# arista-c360-power.
+#
+# The C-230 has one PoE input, Ethernet 1. Its PoE controller sets gpio54 to
+# 1 on 802.3af and to 0 on 802.3at; gpio64 is 0 when a DC supply is plugged
+# in. 802.3at or a DC supply is full power (the C-230 draws 26 W at most).
+# On 802.3af without a DC supply, as on Arista's system: the 5 GHz radio uses
+# 2 of its 4 chains (mask 48, TX and RX), the serving radios' transmit power
+# is capped (Arista's values, 20 dBm at 2.4 GHz and 22.5 dBm at 5 GHz, to the
+# whole dBm below: mac80211 takes no halves), and the USB port and the
+# Bluetooth controller are turned off. Arista also turns the scan radio and
+# the 5 GHz channel width down; this leaves them alone.
+#
+# Without a DC supply, the power a switch reports by LLDP that it allocated
+# on Ethernet 1 (lldpd, Power via MDI TLV) decides its class instead of the
+# pin, as on Arista's system: 25 W or more is 802.3at, less 802.3af.
+#
+#	arista-c230-power status	what the inputs read, and what is applied
+#	arista-c230-power apply		read the inputs, apply the policy
+#	arista-c230-power radios	apply the radio caps again (after Wi-Fi restarts)
+#	arista-c230-power monitor	apply again whenever the inputs change
+
+STATE=/var/run/arista-c230-power
+BT_INIT=/etc/init.d/arista-c230-bluetooth
+USBDRV=/sys/bus/platform/drivers/dwc3-qcom
+USB=8a00000.usb
+# uci writes are staged in a save directory of their own, so they never show
+# among anyone else's changes. A commit still takes what is staged in
+# /tmp/.uci too (uci reads both), so nothing is committed while someone has
+# changes to the same config staged there (others_staged).
+UCI="uci -q -t /var/run/arista-c230-power.uci"
+
+log() { logger -t arista-c230-power "$*"; }
+
+others_staged() { [ -n "$(uci -q changes $1)" ]; }
+
+opt() { uci -q get arista-c230-power.main.$1 || echo "$2"; }
+
+scan_section() { ubus call airscan status 2>/dev/null | jsonfilter -e '@.section' 2>/dev/null; }
+
+wifi_devices() { uci -q show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"; }
+
+tlmm_base() {
+	local c
+	for c in /sys/class/gpio/gpiochip*; do
+		[ "$(cat $c/label 2>/dev/null)" = 1000000.pinctrl ] && { cat $c/base; return; }
+	done
+}
+
+gpio() { # gpio <tlmm gpio>: its number in /sys/class/gpio, exported
+	local n=$(( $(tlmm_base) + $1 ))
+	[ -e /sys/class/gpio/gpio$n ] || echo $n > /sys/class/gpio/export 2>/dev/null
+	echo $n
+}
+
+pin() { # pin <tlmm gpio>: its level, as an input
+	local n=$(gpio $1)
+	[ "$(cat /sys/class/gpio/gpio$n/direction 2>/dev/null)" = in ] ||
+		echo in > /sys/class/gpio/gpio$n/direction 2>/dev/null
+	cat /sys/class/gpio/gpio$n/value 2>/dev/null
+}
+
+class() {
+	case "$1" in
+	1) echo 802.3af ;;
+	0) echo 802.3at ;;
+	*) echo none ;;
+	esac
+}
+
+# Ethernet 1: lan1 with DSA port names, eth0 without
+port1() {
+	local p
+	for p in lan1 eth0; do
+		[ -e /sys/class/net/$p ] && { echo $p; return; }
+	done
+}
+
+lldp_mw() { # lldp_mw <port>: the power (mW) a switch allocated on it, by LLDP
+	local kv mw
+	if [ -n "$C230_POWER_LLDP" ]; then
+		# test hook: C230_POWER_LLDP=15400
+		mw=$C230_POWER_LLDP
+	else
+		command -v lldpcli > /dev/null || return 0
+		kv=$(lldpcli -f keyvalue show neighbors ports "$1" details 2>/dev/null)
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.device-type=PSE$" || return 0
+		echo "$kv" | grep -q "^lldp\.$1\.port\.power\.enabled=yes$" || return 0
+		mw=$(echo "$kv" | sed -n "s/^lldp\.$1\.port\.power\.allocated=\([0-9]*\)$/\1/p" | head -1)
+	fi
+	[ "${mw:-0}" -gt 0 ] 2>/dev/null && echo $mw
+}
+
+mw_class() { # Arista's threshold (8023af.sh)
+	if [ $1 -ge 25000 ]; then echo 802.3at
+	else echo 802.3af
+	fi
+}
+
+read_inputs() {
+	PIN=$(pin 54)
+	POE=$(class $PIN) LLDP=
+	DC=0
+	[ "$(pin 64)" = 0 ] && DC=1
+	if [ $DC = 0 ] && [ "$(opt lldp 1)" = 1 ]; then
+		LLDP=$(lldp_mw "$(port1)")
+		[ -n "$LLDP" ] && POE=$(mw_class $LLDP)
+	fi
+	if [ $DC = 0 ] && [ $POE = 802.3af ]; then
+		LEVEL=limited
+	else
+		LEVEL=full    # DC, 802.3at, or nothing readable: never degrade on a guess
+	fi
+	# test hook: act as on another supply (C230_POWER_LEVEL=limited|full)
+	[ -n "$C230_POWER_LEVEL" ] && LEVEL=$C230_POWER_LEVEL
+}
+
+usb_set() { # on|off
+	local bound=0
+	[ -e $USBDRV/$USB ] && bound=1
+	if [ $1 = off ] && [ $bound = 1 ]; then
+		echo $USB > $USBDRV/unbind && log "USB port off"
+	elif [ $1 = on ] && [ $bound = 0 ]; then
+		echo $USB > $USBDRV/bind && log "USB port on"
+	fi
+}
+
+# The Bluetooth controller: off is arista-c230-bluetooth stopped and the
+# chip held in reset (gpio51 low, as Arista's ble_ctrl_func); on is the
+# service started again, which resets the chip and loads it.
+bt_set() { # on|off
+	[ -x $BT_INIT ] || return 0
+	local n
+	if [ $1 = off ] && [ ! -e $STATE.bt-off ]; then
+		$BT_INIT stop
+		n=$(gpio 51)
+		echo out > /sys/class/gpio/gpio$n/direction
+		echo 0 > /sys/class/gpio/gpio$n/value
+		touch $STATE.bt-off
+		log "Bluetooth off"
+	elif [ $1 = on ] && [ -e $STATE.bt-off ]; then
+		rm -f $STATE.bt-off
+		$BT_INIT enabled && $BT_INIT start
+		log "Bluetooth on"
+	fi
+}
+
+band_cap() { # band_cap <phy>: the cap in dBm for the phy's band
+	if iw phy $1 info 2>/dev/null | grep -q "Band 2:"; then opt txpower_5g 22
+	else opt txpower_2g 20
+	fi
+}
+
+# The caps, on every serving radio; a lower txpower set in uci is kept.
+# mac80211.sh sets each radio's power again when Wi-Fi restarts, so this runs
+# again then (hotplug).
+radios_apply() {
+	local level=$(cat $STATE.level 2>/dev/null || echo full)
+	local scan=$(scan_section)
+	local sec phy cap user
+	rm -f $STATE.caps.new
+	for sec in $(wifi_devices); do
+		[ "$sec" = "$scan" ] && continue
+		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
+		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
+		user=$(uci -q get wireless.$sec.txpower)
+		if [ $level = limited ] && [ "$(opt radios 1)" = 1 ]; then
+			cap=$(band_cap $phy)
+			[ -n "$user" ] && [ "$user" -le "$cap" ] 2>/dev/null && continue
+			iw phy $phy set txpower limit $((cap * 100)) && echo "$sec $phy $cap" >> $STATE.caps.new
+		elif grep -q "^$sec " $STATE.caps 2>/dev/null; then
+			# was capped: back to what the config says
+			if [ -n "$user" ]; then iw phy $phy set txpower fixed $((user * 100))
+			else iw phy $phy set txpower auto
+			fi
+		fi
+	done
+	mv -f $STATE.caps.new $STATE.caps 2>/dev/null || : > $STATE.caps
+}
+
+# The 5 GHz serving radio's chains. A radio's antennas can change only while
+# it is down, and Wi-Fi sets them from the config whenever it starts a radio,
+# so they go into the radio's config (txantenna/rxantenna) and Wi-Fi reloads
+# that radio. Wi-Fi builds hostapd's VHT capabilities from the radio as it
+# was before the antennas are set, and with 4 chains it offers a sounding
+# dimension of 4, which hostapd refuses on 2 ("exceeds max value supported
+# by the driver"): so the beamformer's antennas go to 2 with them
+# (beamformer_antennas). What the radio had before is kept in this package's
+# config (section 'chains') and put back on full power, unless the antennas
+# were changed in the meantime. A radio with antennas of its own in the
+# config is left alone. Runs from apply, and again from monitor while it
+# waits for changes someone else has staged to wireless or this package's
+# config to be committed or reverted. A Wi-Fi restart does not bring it back.
+chains_apply() { # chains_apply limited|full
+	local level=$1 mask=$(opt chains_5g 48) bfa=$(opt beamformer_5g 2) scan=$(scan_section)
+	local sec saved tx rx bf wifi=0 own=0
+	if others_staged wireless || others_staged arista-c230-power; then
+		[ -e $STATE.chains-wait ] ||
+			log "changes to wireless or arista-c230-power are staged and not committed: the 5 GHz chains wait"
+		echo $level > $STATE.chains-wait
+		return 0
+	fi
+	rm -f $STATE.chains-wait
+	mkdir -p /var/run/arista-c230-power.uci
+	for sec in $(wifi_devices); do
+		[ "$sec" = "$scan" ] && continue
+		[ "$(uci -q get wireless.$sec.band)" = 5g ] || continue
+		# the IPQ8074's 5 GHz radio, not the QCA9882 (when airscan is off)
+		case "$(uci -q get wireless.$sec.path)" in */c000000.wifi) ;; *) continue ;; esac
+		saved=$(uci -q get arista-c230-power.chains.$sec)
+		tx=$(uci -q get wireless.$sec.txantenna)
+		rx=$(uci -q get wireless.$sec.rxantenna)
+		bf=$(uci -q get wireless.$sec.beamformer_antennas)
+		if [ $level = limited ] && [ "$(opt chains 1)" = 1 ]; then
+			[ -n "$saved" ] && continue
+			case "${tx:-all} ${rx:-all}" in
+			"all all") ;;
+			*) log "$sec keeps the antennas it is configured with ($tx/$rx)"; continue ;;
+			esac
+			uci -q get arista-c230-power.chains > /dev/null || $UCI set arista-c230-power.chains=state
+			$UCI set arista-c230-power.chains.$sec="${tx:--} ${rx:--} ${bf:--}"
+			$UCI set wireless.$sec.txantenna=$mask
+			$UCI set wireless.$sec.rxantenna=$mask
+			[ -n "$bf" ] && [ "$bf" -le "$bfa" ] 2>/dev/null || $UCI set wireless.$sec.beamformer_antennas=$bfa
+			log "$sec: 5 GHz chains to mask $mask"
+			wifi=1 own=1
+		elif [ -n "$saved" ]; then
+			if [ "$tx" = "$mask" ] && [ "$rx" = "$mask" ]; then
+				set -- $saved
+				tx=$1 rx=$2 bf=${3:--}
+				if [ "$tx" = - ]; then $UCI delete wireless.$sec.txantenna; else $UCI set wireless.$sec.txantenna=$tx; fi
+				if [ "$rx" = - ]; then $UCI delete wireless.$sec.rxantenna; else $UCI set wireless.$sec.rxantenna=$rx; fi
+				if [ "$bf" = - ]; then $UCI delete wireless.$sec.beamformer_antennas
+				else $UCI set wireless.$sec.beamformer_antennas=$bf
+				fi
+				log "$sec: 5 GHz chains back to the configured antennas"
+				wifi=1
+			else
+				log "$sec: antennas changed since the reduction ($tx/$rx), kept"
+			fi
+			$UCI delete arista-c230-power.chains.$sec
+			own=1
+		fi
+	done
+	if [ $own = 1 ]; then
+		$UCI commit arista-c230-power
+		# the section goes once no radio is reduced
+		[ "$(uci -q show arista-c230-power.chains | wc -l)" = 1 ] &&
+			$UCI delete arista-c230-power.chains && $UCI commit arista-c230-power
+	fi
+	[ $wifi = 1 ] && $UCI commit wireless && wifi reload
+	return 0
+}
+
+# The power LED shows the level: green at full power, orange while the power
+# is reduced. Option led '0' leaves it green. OpenWrt lights it green once
+# the boot is done; this runs after that.
+power_led() { # power_led full|limited
+	local g=/sys/class/leds/green:power o=/sys/class/leds/orange:power on off
+	[ -e $g ] && [ -e $o ] || return 0
+	[ "$(opt led 1)" = 1 ] || set -- full
+	if [ $1 = limited ]; then on=$o off=$g; else on=$g off=$o; fi
+	echo none > $off/trigger
+	echo 0 > $off/brightness
+	echo none > $on/trigger
+	cat $on/max_brightness > $on/brightness
+	on=${on##*/}
+	echo ${on%:power} > $STATE.led
+}
+
+apply() {
+	read_inputs
+	echo $LEVEL > $STATE.level
+	if [ "$(opt enabled 1)" != 1 ]; then
+		echo full > $STATE.level
+		usb_set on
+		bt_set on
+		chains_apply full
+		radios_apply
+		power_led full
+		log "disabled: full power regardless (Ethernet 1 $POE, DC $DC)"
+		return
+	fi
+	log "power: $LEVEL (Ethernet 1 $POE, DC $DC)"
+	if [ $LEVEL = limited ] && [ "$(opt usb 1)" = 1 ]; then usb_set off; else usb_set on; fi
+	if [ $LEVEL = limited ] && [ "$(opt bluetooth 1)" = 1 ]; then bt_set off; else bt_set on; fi
+	chains_apply $LEVEL
+	radios_apply
+	power_led $LEVEL
+	{
+		echo "level=$LEVEL"
+		echo "poe=$POE"
+		echo "dc=$DC"
+	} > $STATE
+}
+
+# Read the inputs every 30 s; apply again once a new level has been read twice
+# in a row, so LLDP that arrives after boot, or a supply that changes, takes
+# effect without a flap on one odd reading.
+monitor() {
+	local seen= applied
+	while :; do
+		sleep $(opt interval 30)
+		[ "$(opt enabled 1)" = 1 ] || { seen=; continue; }
+		[ -e $STATE.chains-wait ] && chains_apply "$(cat $STATE.chains-wait)"
+		read_inputs
+		applied=$(cat $STATE.level 2>/dev/null)
+		if [ "$LEVEL" = "$applied" ]; then
+			seen=
+		elif [ "$LEVEL" = "$seen" ]; then
+			apply
+			seen=
+		else
+			seen=$LEVEL
+		fi
+	done
+}
+
+status() {
+	read_inputs
+	echo "Ethernet 1: $POE (gpio54 $PIN${LLDP:+, LLDP $LLDP mW allocated})"
+	echo "DC supply: $([ $DC = 1 ] && echo yes || echo no)"
+	echo "power: $LEVEL (applied: $(cat $STATE.level 2>/dev/null || echo nothing yet))"
+	echo "USB port: $([ -e $USBDRV/$USB ] && echo on || echo off)"
+	echo "Bluetooth: $([ -e $STATE.bt-off ] && echo off || echo on)"
+	echo "power LED: $(cat $STATE.led 2>/dev/null || echo not set)"
+	[ -s $STATE.caps ] && sed 's/^\(.*\) \(.*\) \(.*\)$/radio \1 (\2): capped at \3 dBm/' $STATE.caps
+	uci -q show arista-c230-power.chains | sed -n "s/^arista-c230-power\.chains\.\([^=]*\)=.*/radio \1: 5 GHz chains reduced to mask $(opt chains_5g 48)/p"
+	return 0
+}
+
+case "$1" in
+apply) apply ;;
+radios) radios_apply ;;
+monitor) monitor ;;
+status|"") status ;;
+*) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
