@@ -1,4 +1,4 @@
-From c78ad6828ab99539ae67a4b3b6c670f0bdcba16c Mon Sep 17 00:00:00 2001
+From f487bf03a012293e274647364a1364828339ae6a Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 00:07:16 -0500
 Subject: [PATCH 07/18] qualcommax: ipq807x: add support for Arista C-260
@@ -73,12 +73,12 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  .../uboot-envtools/files/qualcommax_ipq807x   |   1 +
  package/firmware/ipq-wifi/Makefile            |   2 +
- target/linux/qualcommax/dts/ipq8074-c-260.dts | 510 ++++++++++++++++++
+ target/linux/qualcommax/dts/ipq8074-c-260.dts | 499 ++++++++++++++++++
  target/linux/qualcommax/image/ipq807x.mk      |  14 +
  .../ipq807x/base-files/etc/board.d/01_leds    |   1 +
  .../ipq807x/base-files/etc/board.d/02_network |   1 +
  .../base-files/lib/upgrade/platform.sh        |   1 +
- 7 files changed, 530 insertions(+)
+ 7 files changed, 519 insertions(+)
  create mode 100644 target/linux/qualcommax/dts/ipq8074-c-260.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
@@ -115,10 +115,10 @@ index 641c0543..2d72d646 100644
  $(eval $(call generate-ipq-wifi-package,asus_rt-ax89x,Asus RT-AX89X))
 diff --git a/target/linux/qualcommax/dts/ipq8074-c-260.dts b/target/linux/qualcommax/dts/ipq8074-c-260.dts
 new file mode 100644
-index 00000000..6461ce11
+index 00000000..722d02c5
 --- /dev/null
 +++ b/target/linux/qualcommax/dts/ipq8074-c-260.dts
-@@ -0,0 +1,510 @@
+@@ -0,0 +1,499 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 +
 +/dts-v1/;
@@ -152,17 +152,6 @@ index 00000000..6461ce11
 +	memory@40000000 {
 +		device_type = "memory";
 +		reg = <0x0 0x40000000 0x0 0x40000000>;
-+	};
-+
-+	reserved-memory {
-+		#address-cells = <2>;
-+		#size-cells = <2>;
-+		ranges;
-+
-+		wifi_dump@51100000 {
-+			reg = <0x0 0x51100000 0x0 0x600000>;
-+			no-map;
-+		};
 +	};
 +
 +	keys {

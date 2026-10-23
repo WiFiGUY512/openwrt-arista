@@ -70,19 +70,11 @@
 	 * The vendor tree's reserved spans: ipq8074.dtsi already reserves its
 	 * nss, tzapp, wcnss, q6_etr_dump and m3_dump (U-Boot has loaded NSS
 	 * firmware into the first, and the Wi-Fi spans belong to the radios'
-	 * firmware); only wifi_dump is added here. It covers the vendor's
-	 * overlapping wigig_dump, and the QCN9000's vendor base-addr.
+	 * firmware). Its wifi_dump and the overlapping wigig_dump are left
+	 * out: wifi_dump is the base-addr of QCN9000 nodes the vendor tree
+	 * leaves disabled (the third radio is a QCA9882), and nothing here
+	 * uses either.
 	 */
-	reserved-memory {
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
-
-		wifi_dump@51100000 {
-			reg = <0x0 0x51100000 0x0 0x600000>;
-			no-map;
-		};
-	};
 };
 
 /* The console: ttyMSM0, by its serial0 alias. */
