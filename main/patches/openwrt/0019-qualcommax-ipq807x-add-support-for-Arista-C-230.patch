@@ -1,4 +1,4 @@
-From 92a71ff818f940a50c388af19d611239d44b42b8 Mon Sep 17 00:00:00 2001
+From 169f90cf63a0fd8da4d5559e36b35dcc983a14e5 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 22 Oct 2026 20:45:53 -0500
 Subject: [PATCH 19/20] qualcommax: ipq807x: add support for Arista C-230
@@ -82,12 +82,12 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  .../uboot-envtools/files/qualcommax_ipq807x   |   1 +
  package/firmware/ipq-wifi/Makefile            |   2 +
- target/linux/qualcommax/dts/ipq8071-c-230.dts | 556 ++++++++++++++++++
+ target/linux/qualcommax/dts/ipq8071-c-230.dts | 545 ++++++++++++++++++
  target/linux/qualcommax/image/ipq807x.mk      |  14 +
  .../ipq807x/base-files/etc/board.d/01_leds    |   1 +
  .../ipq807x/base-files/etc/board.d/02_network |   1 +
  .../base-files/lib/upgrade/platform.sh        |   1 +
- 7 files changed, 576 insertions(+)
+ 7 files changed, 565 insertions(+)
  create mode 100644 target/linux/qualcommax/dts/ipq8071-c-230.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
@@ -124,10 +124,10 @@ index 1c4d9761..08c9e742 100644
  $(eval $(call generate-ipq-wifi-package,arista_w-118,Arista W-118))
 diff --git a/target/linux/qualcommax/dts/ipq8071-c-230.dts b/target/linux/qualcommax/dts/ipq8071-c-230.dts
 new file mode 100644
-index 00000000..98c972a9
+index 00000000..36cc1c90
 --- /dev/null
 +++ b/target/linux/qualcommax/dts/ipq8071-c-230.dts
-@@ -0,0 +1,556 @@
+@@ -0,0 +1,545 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 +
 +/dts-v1/;
@@ -161,17 +161,6 @@ index 00000000..98c972a9
 +	memory@40000000 {
 +		device_type = "memory";
 +		reg = <0x0 0x40000000 0x0 0x40000000>;
-+	};
-+
-+	reserved-memory {
-+		#address-cells = <2>;
-+		#size-cells = <2>;
-+		ranges;
-+
-+		wifi_dump@51100000 {
-+			reg = <0x0 0x51100000 0x0 0x600000>;
-+			no-map;
-+		};
 +	};
 +
 +	keys {

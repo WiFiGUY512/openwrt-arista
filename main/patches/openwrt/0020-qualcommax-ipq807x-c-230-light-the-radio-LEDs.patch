@@ -1,4 +1,4 @@
-From 469ea2ba9c4f78e60828610ee7017584375b6625 Mon Sep 17 00:00:00 2001
+From 8a13aba9d37f3cce67a601e0a1d91bb59dcb9b89 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 22 Oct 2026 20:45:53 -0500
 Subject: [PATCH 20/20] qualcommax: ipq807x: c-230: light the radio LEDs
