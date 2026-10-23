@@ -1,0 +1,125 @@
+#!/bin/sh
+#
+# Arista C-230: the IPQ8074's board data, from the Arista system in NAND slot
+# 1, when ath11k first asks for it, as 13-arista-c260-board-data does on the
+# C-260. The calibration comes from ART (the device tree's nvmem cell); this
+# is the board data that goes with it.
+#
+# Arista keeps it per country group in /lib/boarddata and copies the matching
+# file over the stock one at every boot (link_board_data in its
+# /etc/rc.d/platform_init.sh, with the codes of /etc/country_map.cfg):
+# bdwlan_IC.bin for Canada, bdwlan_BZ.bin for Brazil, bdwlan_AU.bin for the
+# countries of its AU list, and bdwlan.bin for every other (Korea too: the
+# C-230 has no file of its own for it). This takes the same file, by the
+# country of the wireless configuration, and writes it as board.bin and as
+# board-2.bin, which ath11k reads first, in place of ipq-wifi-arista_c-230's
+# (Arista's bdwlan.bin). The file written gets a .source next to it.
+#
+# A fresh install has no country yet, so its first boot takes bdwlan.bin.
+# Run with REFRESH=1 (by /etc/init.d/arista-c230-board-data, at boot and
+# whenever the wireless configuration changes) it replaces the file when the
+# country now wants another; the radio reads it at its next start (a reboot).
+# Where the new file cannot be had, the one there stays. The C-230E's
+# external-antenna files (EXT_*) are not used: no C-230E was at hand.
+
+case "$FIRMWARE" in
+"ath11k/IPQ8074/hw2.0/board-2.bin")
+	[ -e "/lib/firmware/$FIRMWARE" ] && [ -z "$REFRESH" ] && exit 0
+	FIRMWARE=ath11k/IPQ8074/hw2.0/board.bin
+	;;
+"ath11k/IPQ8074/hw2.0/board.bin") ;;
+*) exit 0 ;;
+esac
+[ -e "/lib/firmware/$FIRMWARE" ] && [ -e "/lib/firmware/${FIRMWARE%.bin}-2.bin.source" ] &&
+	[ -z "$REFRESH" ] && exit 0
+
+. /lib/functions.sh
+[ "$(board_name)" = arista,c-230 ] || exit 0
+
+le32() {
+	# busybox ash does not expand "\\$(...)", so an inner printf builds the escapes
+	printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $((($1 >> 8) & 255)) \
+		$((($1 >> 16) & 255)) $((($1 >> 24) & 255)))"
+}
+
+# padding to 4 bytes, with ath11k-bdencoder's padding byte
+pad4() {
+	local n=$(((4 - $1 % 4) % 4))
+	[ $n -eq 0 ] || printf 'mmm' | head -c $n
+}
+
+# one board-2.bin BOARD element: { 0, len, { 0 (NAME), len, name }, { 1 (DATA), len, data } }
+board_ie() {
+	local name="$1" file="$2" nlen dlen
+	nlen=${#name}
+	dlen=$(wc -c < "$file")
+	le32 0
+	le32 $((8 + nlen + (4 - nlen % 4) % 4 + 8 + dlen + (4 - dlen % 4) % 4))
+	le32 0; le32 $nlen; printf %s "$name"; pad4 $nlen
+	le32 1; le32 $dlen; cat "$file"; pad4 $dlen
+}
+
+# board2 <dir> <name>...: <dir>/board.bin as <dir>/board-2.bin too, under
+# each name. ath11k reads board-2.bin before board.bin, and the image has
+# ipq-wifi's; this one, in the overlay, takes its place.
+board2() {
+	local d=$1 n
+	shift
+	[ -s $d/board.bin ] || return 0
+	{
+		printf 'QCA-ATH11K-BOARD'; printf '\000'; pad4 17
+		for n; do board_ie "$n" $d/board.bin; done
+	} > $d/board-2.bin.tmp && mv $d/board-2.bin.tmp $d/board-2.bin &&
+		cp $d/board.bin.source $d/board-2.bin.source
+}
+
+country=$(uci -q show wireless | sed -n "s/^wireless\.[^.]*\.country='\([A-Z][A-Z]\)'$/\1/p" | head -n 1)
+case "$country" in
+CA) file=bdwlan_IC.bin ;;
+BR) file=bdwlan_BZ.bin ;;
+AU|AT|BE|BG|HR|CY|CZ|DK|EE|FI|FR|DE|GR|HU|IE|IT|LV|LT|LU|MT|NL|PL|PT|RO|SK|SI|ES|SE)
+	file=bdwlan_AU.bin ;;
+*) file=bdwlan.bin ;;
+esac
+[ -n "$REFRESH" ] && [ -e "/lib/firmware/$FIRMWARE" ] &&
+	[ "$(cut -d' ' -f2 "/lib/firmware/$FIRMWARE.source" 2>/dev/null)" = "lib/boarddata/$file" ] &&
+	[ "$(cut -d' ' -f2 "/lib/firmware/${FIRMWARE%.bin}-2.bin.source" 2>/dev/null)" = "lib/boarddata/$file" ] && exit 0
+
+mtd=$(find_mtd_index rootfs_1)
+[ -n "$mtd" ] || exit 0
+# Another reader of slot 1 may hold it at this moment (at boot, one
+# service's script and another's run side by side): try for 30 s.
+for i in $(seq 30); do
+	ubi=$(ubiattach -m "$mtd" 2>/dev/null | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+	[ -n "$ubi" ] && break
+	sleep 1
+done
+[ -n "$ubi" ] || exit 0
+vol=
+for v in /sys/class/ubi/ubi${ubi}_*; do
+	[ "$(cat "$v/name" 2>/dev/null)" = ubi_rootfs ] && vol=${v##*/}
+done
+tmp=$(mktemp -d)
+if [ -n "$vol" ]; then
+	node=/dev/$vol
+	[ -c "$node" ] || mknod "$node" c $(sed 's/:/ /' /sys/class/ubi/$vol/dev)
+	unsquashfs -n -d "$tmp/fs" "$node" "lib/boarddata/$file" > /dev/null 2>&1
+fi
+ubidetach -d "$ubi" > /dev/null 2>&1
+if [ -s "$tmp/fs/lib/boarddata/$file" ]; then
+	mkdir -p /lib/firmware/ath11k/IPQ8074/hw2.0
+	if cp "$tmp/fs/lib/boarddata/$file" "/lib/firmware/$FIRMWARE.tmp" &&
+	   mv "/lib/firmware/$FIRMWARE.tmp" "/lib/firmware/$FIRMWARE"; then
+		echo "Arista lib/boarddata/$file (country ${country:-unset})" > "/lib/firmware/$FIRMWARE.source"
+		board2 "/lib/firmware/${FIRMWARE%/*}" "bus=ahb,qmi-chip-id=0,qmi-board-id=255,variant=Arista-C230" \
+			"bus=ahb,qmi-chip-id=0,qmi-board-id=255"
+		if [ -n "$REFRESH" ]; then
+			logger -t arista-c230-board-data "IPQ8074 board data: Arista $file, for country ${country:-unset}, from the radio's next start (reboot)"
+		else
+			logger -t arista-c230-board-data "IPQ8074 board data: Arista $file"
+		fi
+	fi
+else
+	logger -t arista-c230-board-data "no lib/boarddata/$file in the Arista system"
+fi
+rm -rf "$tmp"

@@ -13,6 +13,7 @@ first boot.
 |---|---|---|---|
 | [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the scan radio, both 10 GbE ports |
 | [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12, main | Working: all radios, the scan radio, Bluetooth, both Ethernet ports (5 Gb/s, PoE in on either), LEDs, button, USB, PoE power policy, install and sysupgrade |
+| [C-230](c230/README.md) | Qualcomm IPQ8071A + QCA9882 | main | Installed on one unit: both Ethernet ports, LEDs, button, USB, TPM; all radios found (no access point run yet); Bluetooth by hand; no power policy yet |
 | [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [W-118](w118/README.md) | Qualcomm IPQ4019 + QCA9882 | main | Working: all radios, Bluetooth LE, Ethernet, LEDs, button, PoE out, install and sysupgrade; the scan radio's airscan not yet run |
 

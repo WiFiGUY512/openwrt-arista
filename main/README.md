@@ -1,23 +1,23 @@
 # OpenWrt main
 
-The C-360, C-260, W-318 and W-118 on OpenWrt main, as the lab units run them. Main
+The C-360, C-260, C-230, W-318 and W-118 on OpenWrt main, as the lab units run them. Main
 has the new Ethernet driver (qca_edma with multi-queue RX and TX: 9.3 Gb/s
 up and 4.5 Gb/s down at 10G on the C-360, against 1.4 and 2.05 on 25.12),
 and the devices' upstream pull requests are written for it.
 
 ```
-main/build-main.sh ipq807x     # the C-360 and the C-260
+main/build-main.sh ipq807x     # the C-360, the C-260 and the C-230
 main/build-main.sh ipq60xx     # the W-318
 main/build-main.sh ipq40xx     # the W-118 (target ipq40xx)
 ```
 
-Out, in `out/main/<version>/`: `c360/`, `c260/`, `w318/`, `w118/` with each
-model's images (including the C-360's USB stick image), `feed-<subtarget>/`
-with the build's packages and every kernel module, and `SHA256SUMS`. The
-models' `INSTALL.md` cover installing; main's images are named
-`arista_c-360`, `arista_c-260`, `arista_w-318` and `arista_w-118`, and their
-board names are `arista,c-360`, `arista,c-260`, `arista,w-318` and
-`arista,w-118`.
+Out, in `out/main/<version>/`: `c360/`, `c260/`, `c230/`, `w318/`, `w118/`
+with each model's images (including the C-360's USB stick image),
+`feed-<subtarget>/` with the build's packages and every kernel module, and
+`SHA256SUMS`. The models' `INSTALL.md` cover installing; main's images are
+named `arista_c-360`, `arista_c-260`, `arista_c-230`, `arista_w-318` and
+`arista_w-118`, and their board names are `arista,c-360`, `arista,c-260`,
+`arista,c-230`, `arista,w-318` and `arista,w-118`.
 
 **Every network port is in the LAN by default**, as upstream review settled
 for all four models: on a fresh install the C-360's and C-260's Ethernet 1
@@ -45,6 +45,9 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     unit on a 25.12 image can sysupgrade to main. Its port names change
     (eth0/eth1 become lan1/lan2): upgrade without settings (`sysupgrade -n`)
     or carry them over renamed.
+  - 0019-0020: the C-230 (device, radio LEDs), its pull request not yet
+    sent; made on top of 0001-0018, so it joins the C-260's and C-360's
+    entries in the shared lists.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

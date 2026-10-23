@@ -47,7 +47,7 @@ import * as uci from 'uci';
 import * as struct from 'struct';
 import * as socket from 'socket';
 
-const BOARDS = { "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0" };
+const BOARDS = { "arista,c-230": "0000:01:00.0", "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0" };
 // boards with a BLE controller and no scan radio: the BLE survey alone
 const BLE_BOARDS = { "arista,w318": true, "arista,w-318": true };
 const OUT = "/tmp/airscan";

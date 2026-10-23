@@ -3,8 +3,8 @@
 #
 #	main/build-main.sh <ipq807x|ipq60xx|ipq40xx> [OpenWrt directory]
 #
-# ipq807x builds the C-360 and the C-260 (one multi-profile build: one
-# kernel, one module feed), ipq60xx the W-318 (both target qualcommax), and
+# ipq807x builds the C-360, the C-260 and the C-230 (one multi-profile build:
+# one kernel, one module feed), ipq60xx the W-318 (both target qualcommax), and
 # ipq40xx the W-118 (target ipq40xx, subtarget generic). What it builds from,
 # all in this repository:
 #   main/openwrt.lock        OpenWrt main, the feeds, and the board files'
@@ -31,7 +31,7 @@ MAIN=$HERE/main
 [ $# -ge 1 ] || { sed -n '4p' "$0" | sed 's/^#\t*//' >&2; exit 2; }
 SUB=$1
 case $SUB in
-ipq807x) TARGET=qualcommax PROFILE=ipq807x MODELS="c360 c260" DEVICES="arista_c-360 arista_c-260" ;;
+ipq807x) TARGET=qualcommax PROFILE=ipq807x MODELS="c360 c260 c230" DEVICES="arista_c-360 arista_c-260 arista_c-230" ;;
 ipq60xx) TARGET=qualcommax PROFILE=ipq60xx MODELS="w318" DEVICES="arista_w-318" ;;
 ipq40xx) TARGET=ipq40xx PROFILE=generic MODELS="w118" DEVICES="arista_w-118" ;;
 *) echo "no subtarget $SUB (ipq807x, ipq60xx or ipq40xx)" >&2; exit 2 ;;
@@ -142,7 +142,7 @@ say "board files: qca-wireless ${QCA_COMMIT:0:12}"
 S=$W/.main-files.d
 rm -rf "$S"
 mkdir -p "$S"
-for m in c360 c260 w318 w118; do
+for m in c360 c260 c230 w318 w118; do
 	cp -rp "$HERE/$m/files/." "$S/"
 done
 rm -rf "$S/package/kernel/qca-nss-dp" \

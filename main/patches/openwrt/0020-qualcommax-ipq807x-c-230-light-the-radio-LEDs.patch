@@ -1,0 +1,56 @@
+From 10307f7ebd18f01a9f1abf5e3f691bec5465702b Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 22 Oct 2026 20:45:53 -0500
+Subject: [PATCH 20/20] qualcommax: ipq807x: c-230: light the radio LEDs
+
+The 2.4, 5 and WLAN LEDs had no trigger. Phy numbers follow the order the
+radios were first found in, and they differ between units, as on the Arista
+C-260. So board.d cannot name them. A hotplug script ties each LED to its
+radio by device path instead, with the radio's phyNradio trigger: the LED
+is lit while the radio is enabled.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../hotplug.d/ieee80211/12-arista-c-230-leds  | 29 +++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+ create mode 100755 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-230-leds
+
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-230-leds b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-230-leds
+new file mode 100755
+index 00000000..8fb21bc7
+--- /dev/null
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-230-leds
+@@ -0,0 +1,29 @@
++#!/bin/sh
++# Arista C-230: each radio LED follows its radio, found by device path.
++# Phy numbers follow the order the radios were first found in, which
++# differs between units. 2.4 and 5 are the IPQ8074's radios, WLAN is the
++# QCA9882 on pcie0. "phyNradio" lights the LED while the radio is enabled.
++
++[ "$ACTION" = add ] || exit 0
++
++. /lib/functions.sh
++
++[ "$(board_name)" = arista,c-230 ] || exit 0
++
++case "$(readlink "/sys/class/ieee80211/$DEVICENAME/device")" in
++*/c000000.wifi)
++	if iw phy "$DEVICENAME" info | grep -q "Band 1:"; then
++		led=green:wlan-2ghz
++	else
++		led=green:wlan-5ghz
++	fi
++	;;
++*/0000:01:00.0)
++	led=green:wlan
++	;;
++*)
++	exit 0
++	;;
++esac
++
++echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
+-- 
+2.43.0
+
