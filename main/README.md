@@ -48,6 +48,14 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
   - 0019-0020: the C-230 (device, radio LEDs), its pull request not yet
     sent; made on top of 0001-0018, so it joins the C-260's and C-360's
     entries in the shared lists.
+  - 0021: ath11k checks a monitor MSDU's buffer address against the
+    buffer its cookie names (ath11k patch 102, meant for upstream). The
+    device sometimes lists a buffer it handed back already, whose buf_id
+    names a new buffer it still holds; ath11k freed that one, and the
+    device wrote a frame into freed memory: the C-360's monitor-mode
+    memory corruption (782 times in 32 minutes on the Living Room unit,
+    2026-10-24; `c360/mon-corruption-2026-10-23/` in the Desktop
+    workspace).
   - 0022, local: ath10k-ct anchors a QCA988x's rx levels to -95, as
     upstream ath10k does, not to the firmware's noise floor (unset for 2 s
     after each firmware start, -98 to -108 after), which made a scan

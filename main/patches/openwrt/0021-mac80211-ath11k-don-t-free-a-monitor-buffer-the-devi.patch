@@ -1,0 +1,127 @@
+From ee9304e29601d204b4d66b60d34e633c8a0a7895 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 24 Oct 2026 00:40:00 +0000
+Subject: [PATCH] mac80211: ath11k: don't free a monitor buffer the device
+ still holds
+
+ath11k finds a monitor MSDU's buffer by the buf_id in the cookie of the
+MSDU link descriptor alone. The device sometimes lists a buffer it handed
+back a few milliseconds earlier, whose buf_id the driver has given to a
+new buffer since; the driver then frees that new buffer while the device
+still holds it, and the device writes a frame into freed memory.
+
+On an Arista C-360 (ipq807x) with a monitor interface on each serving
+radio this happened 782 times in 32 minutes (1.75 million monitor
+buffers), with mac80211's WARN_ON(!sband) from the garbage this hands
+up; on 25.12 the same use crashed the AP several times a day, on
+corrupted skb shared info and Ethernet receive buffers.
+
+Add the ath11k patch that checks the buffer address in the link
+descriptor against the buffer the cookie names (meant for upstream), and
+bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...onitor-buffer-the-device-still-holds.patch | 75 +++++++++++++++++++
+ 2 files changed, 76 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/102-wifi-ath11k-don-t-free-a-monitor-buffer-the-device-still-holds.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 5015864..eab0371 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=9
++PKG_RELEASE:=10
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/102-wifi-ath11k-don-t-free-a-monitor-buffer-the-device-still-holds.patch b/package/kernel/mac80211/patches/ath11k/102-wifi-ath11k-don-t-free-a-monitor-buffer-the-device-still-holds.patch
+new file mode 100644
+index 0000000..ac95b2d
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/102-wifi-ath11k-don-t-free-a-monitor-buffer-the-device-still-holds.patch
+@@ -0,0 +1,75 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: don't free a monitor buffer the device still holds
++
++ath11k_dp_rx_mon_mpdu_pop() finds each MSDU's buffer by the buf_id in the
++cookie of the MSDU link descriptor, and never looks at the buffer address
++beside it. The device sometimes lists a buffer that it handed back a few
++milliseconds earlier. By then the driver has replenished the ring, and
++idr_alloc() has given that buf_id to a new buffer, still posted to the
++device. The driver unmaps and frees that buffer, and the device writes a
++received frame into it later, into memory that belongs to something else
++by then. The duplicate check in ath11k_dp_rx_mon_mpdu_pop() only catches
++the same cookie twice in a row.
++
++On an IPQ8074 with a monitor interface on each radio, the device did this
++about once in 3,600 monitor buffers, e.g.:
++
++  device wrote 0x6ac8d040, handed back 0 ms (3 buffers) earlier as buf_id 1002
++  buf_id 1002 now at 0x709d6e40, still posted to the device
++
++and the AP crashed several times a day, on corrupted skb shared info
++and Ethernet receive buffers.
++
++Take the buffer address from the link descriptor too, and when the
++buffer the cookie names is not at that address, leave it to the device
++and drop the MPDU.
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/hal_rx.h
+++++ b/drivers/net/wireless/ath/ath11k/hal_rx.h
++@@ -463,6 +463,7 @@ struct hal_rx_msdu_list {
++ 	struct hal_rx_msdu_desc_info msdu_info[HAL_RX_NUM_MSDU_DESC];
++ 	u32 sw_cookie[HAL_RX_NUM_MSDU_DESC];
++ 	u8 rbm[HAL_RX_NUM_MSDU_DESC];
+++	dma_addr_t paddr[HAL_RX_NUM_MSDU_DESC];
++ };
++ 
++ void ath11k_hal_reo_status_queue_stats(struct ath11k_base *ab, u32 *reo_desc,
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -4639,6 +4639,11 @@ static void ath11k_hal_rx_msdu_list_get(
++ 		msdu_list->sw_cookie[i] =
++ 			FIELD_GET(BUFFER_ADDR_INFO1_SW_COOKIE,
++ 				  msdu_details[i].buf_addr_info.info1);
+++		msdu_list->paddr[i] =
+++			((u64)FIELD_GET(BUFFER_ADDR_INFO1_ADDR,
+++					msdu_details[i].buf_addr_info.info1) << 32) |
+++			FIELD_GET(BUFFER_ADDR_INFO0_ADDR,
+++				  msdu_details[i].buf_addr_info.info0);
++ 		tmp = FIELD_GET(BUFFER_ADDR_INFO1_RET_BUF_MGR,
++ 				msdu_details[i].buf_addr_info.info1);
++ 		msdu_list->rbm[i] = tmp;
++@@ -4785,6 +4790,21 @@ u32 ath11k_dp_rx_mon_mpdu_pop(struct ath
++ 				goto next_msdu;
++ 			}
++ 			rxcb = ATH11K_SKB_RXCB(msdu);
+++			if (unlikely(rxcb->paddr != msdu_list.paddr[i])) {
+++				/* The cookie names a buffer other than the one
+++				 * the device wrote, one it still holds: the
+++				 * report is stale and the buf_id has been given
+++				 * to a new buffer since. Leave that buffer to the
+++				 * device and drop the MPDU.
+++				 */
+++				ath11k_dbg(ar->ab, ATH11K_DBG_DATA,
+++					   "msdu_pop: buf_id %d is at %pad, not %pad\n",
+++					   buf_id, &rxcb->paddr, &msdu_list.paddr[i]);
+++				pmon->rx_mon_stats.dup_mon_buf_cnt++;
+++				pmon->mon_last_buf_cookie = msdu_list.sw_cookie[i];
+++				drop_mpdu = true;
+++				continue;
+++			}
++ 			if (!rxcb->unmapped) {
++ 				dma_unmap_single(ar->ab->dev, rxcb->paddr,
++ 						 msdu->len +
+-- 
+2.43.0
+
