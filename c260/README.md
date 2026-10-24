@@ -142,7 +142,8 @@ Seen working on a unit unless marked otherwise.
 README.md, INSTALL.md, HARDWARE.md
 model.sh, openwrt.lock, config/      for ../build.sh
 patches/openwrt/                     the device, calibration, sysupgrade,
-                                     LEDs, network roles, fw_setenv
+                                     LEDs, network roles, fw_setenv, the
+                                     scan radio's levels (ath10k-ct)
 files/                               the device tree, the board-data and
                                      radio-LED hotplugs, the board data's
                                      country refresh, the

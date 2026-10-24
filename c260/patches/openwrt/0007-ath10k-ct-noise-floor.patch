@@ -1,0 +1,118 @@
+Subject: ath10k-ct: use the nominal noise floor on QCA988x and QCA9887
+
+ath10k-ct anchors rx levels to the per-chain noise floor CT firmware
+reports. On the C-260's QCA9882 that floor is not dBm (chain 0 reads
+-107 at 2437/2462 MHz, below the thermal floor of 20 MHz), and it is
+unset, so -95, for 2 s after each firmware start: airscan's beacon
+levels and client levels came out up to 20 dB apart. Patch 990 uses
+-95 on QCA988x/QCA9887, as upstream ath10k does. The same change as
+main 0022, for 25.12's ath10k-ct (bb84e159, ath10k-6.18).
+
+diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+index 48514a6..6e0f9b2 100644
+--- a/package/kernel/ath10k-ct/Makefile
++++ b/package/kernel/ath10k-ct/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ath10k-ct
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_LICENSE:=GPLv2
+ PKG_LICENSE_FILES:=
+diff --git a/package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch b/package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch
+new file mode 100644
+index 0000000..9e64499
+--- /dev/null
++++ b/package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch
+@@ -0,0 +1,89 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ath10k-ct: use the nominal noise floor on QCA988x and QCA9887
++
++ath10k-ct anchors rx levels to the per-chain noise floor that CT firmware
++reports in its pdev ext stats, which the nop work fetches every 2 s, and
++uses -95 while that is unset. On QCA988x this gives levels that are low
++and that jump:
++
++- The values are not dBm. On a QCA9882 (10.1-ct-8x-__fW-023) chain 0
++  reads -106 to -108 at 2437 and 2462 MHz and chain 1 -98 to -100;
++  -107 is below the thermal floor of a 20 MHz channel (-101 dBm). Levels
++  anchored to it read 6 to 13 dB below what the same frames give with
++  -95, the floor upstream ath10k and ath11k use.
++- It is unset for the first 2 s after each firmware start
++  (ath10k_debug_start), when levels use -95, and afterwards it is the
++  floor of whatever channel the radio was on at the last fetch. Two
++  passive scans of the same three channels a few seconds apart, the
++  first right after the interface came up, read the same beacons 14 dB
++  apart at 2.4 GHz and 4 to 6 dB apart at 5 GHz.
++
++On QCA988x and QCA9887 use the nominal noise floor for the rx signal
++(htt and wmi) and the ack signal, as upstream ath10k does. Other chips
++keep the firmware's noise floor.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/ath10k-6.18/core.c
+++++ b/ath10k-6.18/core.c
++@@ -3640,13 +3640,27 @@ const int adjust_24[4] = {8, 4, 3, 3};
++ const int adjust_5[4] = {12, 12, 10, 10};
++ const int adjust_zero[4] = {0, 0, 0, 0};
++ 
+++/* QCA988x and QCA9887 report a per-chain noise floor that does not anchor
+++ * their rx levels in dBm: a QCA9882's chain 0 reads -107 at 2.4 GHz, below
+++ * the thermal floor of a 20 MHz channel. It also changes under the rx path:
+++ * unset (so -95) for the first 2 s after each firmware start, then taken
+++ * every 2 s on whatever channel the radio is on, so one signal reads up to
+++ * 13 dB apart from one second to the next. Use the nominal noise floor on
+++ * these chips, as upstream ath10k does.
+++ */
+++bool ath10k_use_fw_noisefloor(struct ath10k *ar)
+++{
+++	return ar->dev_id != QCA988X_2_0_DEVICE_ID &&
+++	       ar->dev_id != QCA9887_1_0_DEVICE_ID;
+++}
+++
++ /* Get noise floor of chain-1, ie for mgmt frames over wmi */
++ int ath10k_get_noisefloor(int chain, struct ath10k *ar)
++ {
++ #ifdef CONFIG_ATH10K_DEBUGFS
++ 	struct ath10k_pdev_ext_stats_ct *pes = &ar->debug.pdev_ext_stats;
++ 	s32* nfa = &(pes->chan_nf_0);
++-	if (nfa[chain] != 0x80) {
+++	if (nfa[chain] != 0x80 && ath10k_use_fw_noisefloor(ar)) {
++ 		return nfa[chain];
++ 	}
++ #endif
++--- a/ath10k-6.18/core.h
+++++ b/ath10k-6.18/core.h
++@@ -1737,6 +1737,7 @@ void ath10k_core_napi_enable(struct ath10k *ar);
++ 
++ /* Get noise floor of chain-1, ie for mgmt frames over wmi */
++ int ath10k_get_noisefloor(int chain, struct ath10k *ar);
+++bool ath10k_use_fw_noisefloor(struct ath10k *ar);
++ 
++ struct ath10k *ath10k_core_create(size_t priv_size, struct device *dev,
++ 				  enum ath10k_bus bus,
++--- a/ath10k-6.18/htt_rx.c
+++++ b/ath10k-6.18/htt_rx.c
++@@ -1283,7 +1283,7 @@ static void ath10k_htt_rx_h_signal(struct ath10k *ar,
++ 
++ 		if (rxd_ppdu_start->rssi_chains[i].pri20_mhz != 0x80) {
++ #ifdef CONFIG_ATH10K_DEBUGFS
++-			if (nfa[i] != 0x80) {
+++			if (nfa[i] != 0x80 && ath10k_use_fw_noisefloor(ar)) {
++ 				nf = nfa[i];
++ 				has_nf = true;
++ 			}
++--- a/ath10k-6.18/txrx.c
+++++ b/ath10k-6.18/txrx.c
++@@ -262,7 +262,7 @@ int ath10k_txrx_tx_unref(struct ath10k_htt *htt,
++ 		if (!ch)
++ 			ch = ar->rx_channel;
++ 
++-		if (ar->debug.nf_sum[0] != 0x80)
+++		if (ar->debug.nf_sum[0] != 0x80 && ath10k_use_fw_noisefloor(ar))
++ 			nf = ar->debug.nf_sum[0];
++ 		if (ar->debug.use_ofdm_peak_power && ch) {
++ 			if (ch->band == NL80211_BAND_5GHZ)
