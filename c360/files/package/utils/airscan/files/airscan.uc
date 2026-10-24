@@ -721,7 +721,7 @@ function run_bss(done) {
 
 // ---------------------------------------------------------------- clients
 
-let cap = { sock: null, handle: null, freq: 0, ch_list: [], ch_i: 0, deauth: {}, heard: {}, hit: {}, probed: 0, round_heard: 0, round_dwells: 0 };
+let cap = { sock: null, handle: null, freq: 0, ch_list: [], ch_i: 0, deauth: {}, heard: {}, hit: {}, sig: {}, probed: 0, round_heard: 0, round_dwells: 0 };
 const DEAUTH_FLOOD = 20;   // deauth + disassoc frames for one BSSID per second of dwell
 
 // radiotap flags (bit 1): 0x10 = frame carries its FCS, 0x40 = its FCS failed
@@ -815,12 +815,16 @@ function on_frame(pkt) {
 	};
 	c.last_seen = time();
 	c.frames++;
-	c.freq = cap.freq;
+	if (cap.freq) c.freq = cap.freq;    // between dwells the channel is not one of ours
 	if (bssid && !(hex(substr(bssid, 0, 2)) & 1)) c.bssid = bssid;
-	if (tx_is_sta) {
+	if (tx_is_sta && cap.freq) {
 		let s = radiotap_signal(pkt);
 		// ath11k fills radiotap signal with its default noise floor (-95) on the C-360's radio: not a measurement
-		if (s != null && s < 0 && !(s == -95 && radio.driver == "ath11k")) c.signal = c.signal == null ? s : int(0.7 * c.signal + 0.3 * s - 0.5);
+		if (s != null && s < 0 && !(s == -95 && radio.driver == "ath11k")) {
+			let d = cap.sig[sta] ||= { sum: 0, n: 0 };
+			d.sum += s;
+			d.n++;
+		}
 	}
 	// every probe request counts, wildcard ones too (most phones name no SSID):
 	// a client that only probes is looking for a network, connected to none
@@ -887,12 +891,22 @@ function run_client_slice(done) {
 	cap.deauth = {};
 	cap.heard = {};
 	cap.hit = {};
+	cap.sig = {};
 	cap.probed = 0;
 	if (cfg.wired_probe)
 		for (let t in [ 50, int(cfg.client_dwell / 2) ])
 			later(t, () => { if (cap.freq == f) { send_probes(); cap.probed++; } });
 	later(cfg.client_dwell, () => {
 		cap.freq = 0;
+		// A client's level is the mean of one dwell, folded in once a dwell: a
+		// QCA9882 sets its receive gain anew on each visit to a channel (up to
+		// 5 dB apart at 2437/2462), so a level that followed every frame would
+		// be whatever the last visit happened to be.
+		for (let m, d in cap.sig) {
+			let c = results.clients[m];
+			if (c) c.signal = int((c.signal == null ? d.sum / d.n : 0.7 * c.signal + 0.3 * d.sum / d.n) - 0.5);
+		}
+		cap.sig = {};
 		for (let b, d in cap.deauth) {
 			if (d.frames < DEAUTH_FLOOD * cfg.client_dwell / 1000.0) continue;
 			let known = filter(results.bss?.list || [], (x) => x.bssid == b)[0];
