@@ -48,6 +48,12 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
   - 0019-0020: the C-230 (device, radio LEDs), its pull request not yet
     sent; made on top of 0001-0018, so it joins the C-260's and C-360's
     entries in the shared lists.
+  - 0022, local: ath10k-ct anchors a QCA988x's rx levels to -95, as
+    upstream ath10k does, not to the firmware's noise floor (unset for 2 s
+    after each firmware start, -98 to -108 after), which made a scan
+    radio's client levels read up to 20 dB under its beacon levels. Tested
+    on a C-260 with the module built from it (`c260/RECORD.md` in the
+    Desktop workspace).
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

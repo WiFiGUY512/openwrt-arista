@@ -207,8 +207,10 @@ function resolve_radio() {
 	// ath10k-ct adds 8 dB (2.4 GHz) or 12 dB (5 GHz) to every beacon's level
 	// while ofdm_peak_power_rssi is on, its default; off, they read as the
 	// neighbours hear this radio. Set before every job, since a driver reload
-	// turns it back on. Monitor-mode data frames (client levels) still read
-	// about 20 dB low on a QCA988x; the cause is not known.
+	// turns it back on. Stock ath10k-ct also anchors a QCA988x's levels to a
+	// noise floor it has only from 2 s after each firmware start, so client
+	// levels (monitor dwells) read up to 20 dB under beacon levels (the start
+	// of a look); the port's ath10k-ct patch (main 0022) anchors both to -95.
 	if (radio.driver == "ath10k") {
 		let f = `${radio.debugfs}/ofdm_peak_power_rssi`;
 		if (fs.access(f, "w") && trim(fs.readfile(f) || "") != "0" && fs.writefile(f, "0\n") != null)
