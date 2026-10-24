@@ -62,6 +62,11 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     radio's client levels read up to 20 dB under its beacon levels. Tested
     on a C-260 with the module built from it (`c260/RECORD.md` in the
     Desktop workspace).
+  - 0023: ath11k no longer takes a monitor PPDU ID change to 0 (at a wrap)
+    for no change (ath11k patch 103, meant for upstream). Before, the MPDU
+    chain it had built was neither delivered nor freed: 37 lost in 47
+    minutes with a monitor on each C-360 serving radio, none with the
+    patch (Living Room unit, 2026-10-24).
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

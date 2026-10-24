@@ -1,0 +1,99 @@
+From e18714b2e28a2460b03ab80161d46081407ca769 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 24 Oct 2026 17:25:00 +0000
+Subject: [PATCH] mac80211: ath11k: don't take a monitor PPDU ID of 0 for no
+ change
+
+ath11k's monitor destination pop takes a PPDU ID change to 0 (at a wrap)
+for no change, chains the MPDU, and the caller then leaves that chain
+neither delivered nor freed: a small leak, once per PPDU-ID wrap while a
+monitor interface is up.
+
+On an Arista C-360 (ipq807x) with a monitor interface on each serving
+radio, 37 MPDU chains were lost in 47 minutes; with this patch none in 46
+minutes at the same load.
+
+Add the ath11k patch that returns whether the PPDU ID changed (meant for
+upstream), and bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...a-monitor-PPDU-ID-of-0-for-no-change.patch | 51 +++++++++++++++++++
+ 2 files changed, 52 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index eab0371..1efdf91 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=10
++PKG_RELEASE:=11
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch b/package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch
+new file mode 100644
+index 0000000..d9b7646
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch
+@@ -0,0 +1,51 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: don't take a monitor PPDU ID of 0 for no change
++
++ath11k_dp_rx_mon_comp_ppduid() returns the PPDU ID it moved *ppdu_id to,
++and ath11k_dp_rx_mon_mpdu_pop() takes a return of 0 for "no change".
++When the destination ring's PPDU ID wraps to 0, it moves *ppdu_id to 0
++and returns 0, so mpdu_pop goes on and chains the MPDU. The caller,
++ath11k_dp_rx_mon_dest_process(), then sees its ppdu_id changed and
++breaks out with that chain neither delivered nor freed.
++
++On an IPQ8074 with a monitor interface on each radio this lost 37 MPDU
++chains in 47 minutes (2.8 million MPDUs); with this change, none in 46
++minutes at the same load (3.2 million).
++
++Return whether the PPDU ID changed.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -4651,15 +4651,13 @@ static void ath11k_hal_rx_msdu_list_get(
++ 	*num_msdus = i;
++ }
++ 
++-static u32 ath11k_dp_rx_mon_comp_ppduid(u32 msdu_ppdu_id, u32 *ppdu_id,
++-					u32 *rx_bufs_used)
+++static bool ath11k_dp_rx_mon_comp_ppduid(u32 msdu_ppdu_id, u32 *ppdu_id,
+++					 u32 *rx_bufs_used)
++ {
++-	u32 ret = 0;
++-
++ 	if ((*ppdu_id < msdu_ppdu_id) &&
++ 	    ((msdu_ppdu_id - *ppdu_id) < DP_NOT_PPDU_ID_WRAP_AROUND)) {
++ 		*ppdu_id = msdu_ppdu_id;
++-		ret = msdu_ppdu_id;
+++		return true;
++ 	} else if ((*ppdu_id > msdu_ppdu_id) &&
++ 		((*ppdu_id - msdu_ppdu_id) > DP_NOT_PPDU_ID_WRAP_AROUND)) {
++ 		/* mon_dst is behind than mon_status
++@@ -4667,9 +4665,9 @@ static u32 ath11k_dp_rx_mon_comp_ppduid(
++ 		 */
++ 		*rx_bufs_used += 1;
++ 		*ppdu_id = msdu_ppdu_id;
++-		ret = msdu_ppdu_id;
+++		return true;
++ 	}
++-	return ret;
+++	return false;
++ }
++ 
++ static void ath11k_dp_mon_get_buf_len(struct hal_rx_msdu_desc_info *info,
+-- 
+2.43.0
+
