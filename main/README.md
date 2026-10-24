@@ -67,6 +67,18 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     chain it had built was neither delivered nor freed: 37 lost in 47
     minutes with a monitor on each C-360 serving radio, none with the
     patch (Living Room unit, 2026-10-24).
+  - 0024: the survey of the channel in use (ath11k patches 104 and 105,
+    meant for upstream). 104: a channel switch (CSA, hostapd's switch_chan)
+    left ar->rx_channel at the old channel, so the survey kept flagging that
+    one as in use. 105: the in-use channel's noise floor came from the
+    firmware's bss channel info event, which sits near -109 dBm on 5 GHz
+    and -102 on 2.4 GHz on IPQ8074 (as on Arista's own firmware); it now
+    comes from the firmware's pdev stats, the measured value (-94 and -96 on
+    a C-260 at the same moment), and stays with the channel once the radio
+    leaves it. Tested 2026-10-24 on a C-260 with the modules built from it,
+    loaded from RAM: in-use survey -95/-96 against -106/-102 before, equal
+    to the firmware's pdev stats; after a CSA from channel 60 to 36 only 36
+    was in use (-92, as the firmware) and 60 kept its last measured -95.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

@@ -1,0 +1,179 @@
+From 8e6672087d26c53f62e7f1debb6d4c118cd073f5 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 24 Oct 2026 18:00:00 +0000
+Subject: [PATCH] mac80211: ath11k: the survey of the channel in use
+
+Two ath11k patches for the survey of the channel a radio is using
+(meant for upstream):
+
+- update ar->rx_channel on a channel switch: the channel-switch path
+  left it at the old channel (a TODO in ath11k_mac_update_vif_chan), so
+  after a CSA or hostapd's switch_chan the survey kept flagging the old
+  channel as in use and never refreshed the new one;
+- report the measured noise floor of the channel in use: ath11k took it
+  from the firmware's bss channel info event, which on IPQ8074 reads
+  -108/-109 dBm on 5 GHz and -101/-102 dBm on 2.4 GHz and barely moves
+  (the "-109 all the time" Arista's own firmware showed too), while the
+  firmware's pdev stats give the channel's measured noise floor (-94 and
+  -96 dBm on the C-260 at the same moment).
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...pdate-rx_channel-on-a-channel-switch.patch | 35 ++++++++
+ ...ed-noise-floor-of-the-channel-in-use.patch | 85 +++++++++++++++++++
+ 3 files changed, 121 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 1efdf91..87e0f65 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=11
++PKG_RELEASE:=12
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch b/package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch
+new file mode 100644
+index 0000000..a44a7cd
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch
+@@ -0,0 +1,35 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: update rx_channel on a channel switch
++
++ath11k keeps the radio's current channel in ar->rx_channel: survey dumps
++flag that channel as in use, and only for it is the bss channel info
++requested. ath11k_mac_op_add_chanctx() sets it, but a channel switch
++(CSA, or hostapd's switch_chan) goes through
++ath11k_mac_update_vif_chan(), which leaves it at the old channel ("TODO:
++Update ar->rx_channel"). After a switch the survey then marks the old
++channel as in use and never refreshes the new one.
++
++Set it to the new context's channel, as ath10k does in its
++ath10k_mac_update_vif_chan(). ath11k uses one channel context per radio,
++so every vif in the switch moves to the same channel.
++
++Tested on an Arista C-260 (IPQ8074).
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -7781,7 +7781,11 @@
++ 	 * should be available for the channel switch now.
++ 	 */
++ 
++-	/* TODO: Update ar->rx_channel */
+++	if (n_vifs) {
+++		spin_lock_bh(&ar->data_lock);
+++		ar->rx_channel = vifs[0].new_ctx->def.chan;
+++		spin_unlock_bh(&ar->data_lock);
+++	}
++ 
++ 	for (i = 0; i < n_vifs; i++) {
++ 		arvif = ath11k_vif_to_arvif(vifs[i].vif);
+diff --git a/package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch b/package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
+new file mode 100644
+index 0000000..5edad56
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
+@@ -0,0 +1,85 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: report the measured noise floor of the channel in use
++
++For the channel in use, ath11k fills the survey's noise from the
++firmware's pdev bss channel info event. That value is not the channel's
++measured noise floor: on IPQ8074 (WLAN.HK.2.9.0.1) it reads -108 to
++-109 dBm on 5 GHz and -101 to -102 dBm on 2.4 GHz and barely moves,
++while the firmware's pdev stats report the channel's noise floor as -94
++and -96 dBm at the same moment, and the channel info events of a scan
++give -93 to -96 dBm for the other channels. A noise floor near -109 dBm
++is not physical for an 80 MHz channel, so `iw survey dump` and anything
++built on it show the channel in use 10 to 15 dB quieter than it is.
++
++Request the pdev stats when the survey of the channel in use is read,
++and report their channel noise floor, when it is plausible, in place of
++the bss channel info one. Keep it in the channel's survey entry as well,
++so the channel shows its last measured value once the radio has left it
++rather than the bss channel info one.
++
++Tested on an Arista C-260 (IPQ8074).
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -9340,6 +9340,46 @@
++ 		ath11k_warn(ar->ab, "bss channel survey timed out\n");
++ }
++ 
+++/* The noise floor in the firmware's bss channel info event is not the
+++ * channel's measured noise floor: on IPQ8074 it reads about -109 dBm on
+++ * 5 GHz and -102 dBm on 2.4 GHz, and barely moves, while the measured value
+++ * the firmware reports in its pdev stats is -94 and -96. Report the measured
+++ * one for the channel in use, as the channel info events of a scan do for
+++ * the other channels.
+++ */
+++static void ath11k_mac_get_chan_noise_floor(struct ath11k *ar,
+++					    struct survey_info *ar_survey,
+++					    struct survey_info *survey)
+++{
+++	struct ath11k_fw_stats_pdev *pdev;
+++	s32 nf;
+++
+++	lockdep_assert_held(&ar->conf_mutex);
+++
+++	if (ar->scan.state != ATH11K_SCAN_IDLE)
+++		return;
+++
+++	if (ath11k_mac_get_fw_stats(ar, ar->pdev->pdev_id, 0,
+++				    WMI_REQUEST_PDEV_STAT))
+++		return;
+++
+++	spin_lock_bh(&ar->data_lock);
+++	pdev = list_first_entry_or_null(&ar->fw_stats.pdevs,
+++					struct ath11k_fw_stats_pdev, list);
+++	nf = pdev ? pdev->ch_noise_floor : 0;
+++	/* keep it for the channel too, so its survey shows the last measured
+++	 * value once the radio has left it
+++	 */
+++	if (nf < 0 && nf > -127)
+++		ar_survey->noise = nf;
+++	spin_unlock_bh(&ar->data_lock);
+++
+++	if (nf < 0 && nf > -127) {
+++		survey->noise = nf;
+++		survey->filled |= SURVEY_INFO_NOISE_DBM;
+++	}
+++}
+++
++ static int ath11k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
++ 				    struct survey_info *survey)
++ {
++@@ -9383,8 +9423,10 @@
++ 
++ 	survey->channel = &sband->channels[idx];
++ 
++-	if (ar->rx_channel == survey->channel)
+++	if (ar->rx_channel == survey->channel) {
++ 		survey->filled |= SURVEY_INFO_IN_USE;
+++		ath11k_mac_get_chan_noise_floor(ar, ar_survey, survey);
+++	}
++ 
++ exit:
++ 	mutex_unlock(&ar->conf_mutex);
+-- 
+2.43.0
+
