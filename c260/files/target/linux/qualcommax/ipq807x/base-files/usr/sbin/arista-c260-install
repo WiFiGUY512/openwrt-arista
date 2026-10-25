@@ -2,7 +2,7 @@
 # arista-c260-install: install OpenWrt to NAND slot 0 of an Arista C-260, from
 # the RAM installer, as arista-c360-install does on the C-360.
 #
-#	arista-c260-install [--dry-run] [--yes] [--stick DIR]
+#	arista-c260-install [--dry-run] [--yes] [--no-backup] [--stick DIR]
 #
 # Run it from the OpenWrt RAM installer (initramfs). DIR (or c260/ on a FAT32
 # USB stick) holds factory.ubi and SHA256SUMS, as c360-make-stick makes them
@@ -22,6 +22,9 @@
 #      backup-<MAC>-<time>/: each partition's checksum is taken from the
 #      flash, and the file must decompress to exactly that. The ART partition
 #      holds this unit's calibration and MACs and exists nowhere else.
+#      --no-backup skips it, for a unit whose flash was backed up and checked
+#      by other means (arista-install.py takes it over the network); the
+#      environment before and after is still kept, in /tmp/c260-install.
 #   3. (not with --dry-run) The U-Boot environment, written once with
 #      fw_setenv -s, and not at all when it is already right: the boot
 #      command, which boots OpenWrt from slot 0 and falls back to Arista's own
@@ -39,13 +42,14 @@
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-DRY=0 YES=0 STICK=
+DRY=0 YES=0 NOBACKUP=0 STICK=
 while [ $# -gt 0 ]; do
 	case $1 in
 	--dry-run) DRY=1 ;;
 	--yes) YES=1 ;;
+	--no-backup) NOBACKUP=1 ;;
 	--stick) [ $# -ge 2 ] || { echo "usage: --stick DIR" >&2; exit 2; }; STICK=$2; shift ;;
-	*) echo "usage: arista-c260-install [--dry-run] [--yes] [--stick DIR]" >&2; exit 2 ;;
+	*) echo "usage: arista-c260-install [--dry-run] [--yes] [--no-backup] [--stick DIR]" >&2; exit 2 ;;
 	esac
 	shift
 done
@@ -195,35 +199,44 @@ say "image: factory.ubi $(wc -c <"$STICK/factory.ubi") bytes, checksum ok"
 
 mac=$(tr -d ':' </sys/class/net/eth0/address 2>/dev/null)
 [ -n "$mac" ] || mac=unknown
-BK="$STICK/backup-$mac-$(date +%Y%m%d-%H%M%S)"
-need=0
-for n in $(cut -d: -f1 /proc/mtd | grep '^mtd'); do
-	need=$((need + $(printf '%d' "0x$(grep "^$n:" /proc/mtd | awk '{print $2}')")))
-done
-# Gzipped, erased flash takes almost nothing; Arista's two systems are what
-# take room, a few hundred MiB at most.
-free=$(($(df -k "$STICK" | awk 'NR == 2 {print $4}') * 1024))
-[ $free -gt $((512 * 1048576)) ] || fail "$STICK has only $((free / 1048576)) MiB free; a backup can need up to 512 MiB"
-mkdir -p "$BK" || fail "cannot write to $STICK"
-say "backing up $((need / 1048576)) MiB of flash, gzipped, to ${BK#$STICK/}"
-cp /proc/mtd "$BK/proc-mtd.txt"
-fw_printenv >"$BK/u-boot-env.txt" 2>&1
-cat /proc/cmdline /tmp/sysinfo/model >"$BK/info.txt" 2>/dev/null
-for n in $(cut -d: -f1 /proc/mtd | grep '^mtd'); do
-	name=$(grep "^$n:" /proc/mtd | sed 's/.*"\(.*\)"$/\1/' | tr ':/' '__')
-	f="$BK/$n-$name.bin.gz"
-	# The flash's checksum, then a second read compressed: the file must
-	# decompress to exactly what the flash held, both times.
-	a=$(sha256sum /dev/$n | cut -d' ' -f1)
-	[ -n "$a" ] || fail "reading $n ($name) failed"
-	gzip -c </dev/$n >"$f" || fail "writing the backup of $n ($name) failed (full?)"
-	b=$(gunzip -c "$f" | sha256sum | cut -d' ' -f1)
-	[ "$a" = "$b" ] || fail "backup of $n ($name) does not verify (flash $a, file $b)"
-	echo "$a  $n-$name.bin" >>"$BK/SHA256SUMS"
-	say "  $n $name: ok, $(($(wc -c <"$f") / 1024)) KiB"
-done
-sync
-say "backup complete and verified: ${BK#$STICK/} (gunzip each .bin.gz to restore)"
+if [ $NOBACKUP = 1 ]; then
+	BK=/tmp/c260-install
+	mkdir -p $BK
+	cp /proc/mtd "$BK/proc-mtd.txt"
+	fw_printenv >"$BK/u-boot-env.txt" 2>&1
+	cat /proc/cmdline /tmp/sysinfo/model >"$BK/info.txt" 2>/dev/null
+	say "--no-backup: no flash backup taken; the environment is kept in $BK"
+else
+	BK="$STICK/backup-$mac-$(date +%Y%m%d-%H%M%S)"
+	need=0
+	for n in $(cut -d: -f1 /proc/mtd | grep '^mtd'); do
+		need=$((need + $(printf '%d' "0x$(grep "^$n:" /proc/mtd | awk '{print $2}')")))
+	done
+	# Gzipped, erased flash takes almost nothing; Arista's two systems are what
+	# take room, a few hundred MiB at most.
+	free=$(($(df -k "$STICK" | awk 'NR == 2 {print $4}') * 1024))
+	[ $free -gt $((512 * 1048576)) ] || fail "$STICK has only $((free / 1048576)) MiB free; a backup can need up to 512 MiB"
+	mkdir -p "$BK" || fail "cannot write to $STICK"
+	say "backing up $((need / 1048576)) MiB of flash, gzipped, to ${BK#$STICK/}"
+	cp /proc/mtd "$BK/proc-mtd.txt"
+	fw_printenv >"$BK/u-boot-env.txt" 2>&1
+	cat /proc/cmdline /tmp/sysinfo/model >"$BK/info.txt" 2>/dev/null
+	for n in $(cut -d: -f1 /proc/mtd | grep '^mtd'); do
+		name=$(grep "^$n:" /proc/mtd | sed 's/.*"\(.*\)"$/\1/' | tr ':/' '__')
+		f="$BK/$n-$name.bin.gz"
+		# The flash's checksum, then a second read compressed: the file must
+		# decompress to exactly what the flash held, both times.
+		a=$(sha256sum /dev/$n | cut -d' ' -f1)
+		[ -n "$a" ] || fail "reading $n ($name) failed"
+		gzip -c </dev/$n >"$f" || fail "writing the backup of $n ($name) failed (full?)"
+		b=$(gunzip -c "$f" | sha256sum | cut -d' ' -f1)
+		[ "$a" = "$b" ] || fail "backup of $n ($name) does not verify (flash $a, file $b)"
+		echo "$a  $n-$name.bin" >>"$BK/SHA256SUMS"
+		say "  $n $name: ok, $(($(wc -c <"$f") / 1024)) KiB"
+	done
+	sync
+	say "backup complete and verified: ${BK#$STICK/} (gunzip each .bin.gz to restore)"
+fi
 
 if [ $DRY = 1 ]; then
 	say "dry run: nothing written to flash or to the U-Boot environment"
