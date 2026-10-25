@@ -79,6 +79,24 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     loaded from RAM: in-use survey -95/-96 against -106/-102 before, equal
     to the firmware's pdev stats; after a CSA from channel 60 to 36 only 36
     was in use (-92, as the firmware) and 60 kept its last measured -95.
+    All three ath11k patches (104-106) were sent upstream 2026-10-24.
+  - 0025: beacon stats with more than one started vdev (ath11k patch
+    106, sent upstream). Reading `fw_stats/beacon_stats` timed out on
+    every radio with more than one VAP: each per-vdev request reset the
+    count that completion waited on. It now completes on each reply, as
+    ath12k does. Tested 2026-10-24 on a C-260 (4 VAPs per radio), modules
+    loaded from RAM: both radios list all four VAPs at once, against
+    "Operation timed out" after 3 s before.
+  - 0026: ucode's ubus module reconnects when ubusd drops it (patches 120
+    and 121, for upstream ucode). Before, a ubusd restart left netifd's
+    `network.wireless` and hostapd's and wpa_supplicant's objects gone
+    until those processes restarted (libubus' default connection_lost does
+    nothing once uloop has dropped the socket). Now the connection retries
+    every second, and its objects and event listeners come back. Tested
+    2026-10-24 on a C-260 with the module bind-mounted: after `killall
+    ubusd`, `network.wireless`, `hostapd`, `wpa_supplicant` and the per-BSS
+    objects were back within seconds, on the same PIDs. rpcd, dnsmasq,
+    odhcpd, odhcp6c and usteerd (C daemons) still don't reconnect.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

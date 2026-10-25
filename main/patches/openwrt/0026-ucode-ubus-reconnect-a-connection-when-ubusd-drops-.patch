@@ -1,0 +1,271 @@
+From d6c90acae27239daaaa6a683349181f96695fd25 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 25 Oct 2026 15:00:00 +0000
+Subject: [PATCH] ucode: ubus: reconnect a connection when ubusd drops it
+
+Two patches to ucode's ubus module (for upstream ucode):
+
+- 120: when ubusd drops a client (ubusd restarting, or a message over
+  UBUS_MAX_MSGLEN), the module kept libubus' default connection_lost,
+  which does nothing once uloop has unregistered the socket on the
+  hangup. Everything published on the connection was gone until the
+  process restarted: netifd's network.wireless (wireless.uc), hostapd's
+  and wpa_supplicant's objects (hostapd.uc, wpa_supplicant.uc), and the
+  ubus side of any ucode daemon. Reconnect, retrying every second as
+  ubus_auto_connect() does; ubus_reconnect() registers the objects
+  again. Covers the module's shared connection and connect().
+- 121: register a connection's event listeners again after a
+  reconnect, which ubus_reconnect() does not do.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/utils/ucode/Makefile                  |   2 +-
+ ...ect-a-connection-when-ubusd-drops-it.patch | 111 ++++++++++++++++++
+ ...er-listeners-again-after-a-reconnect.patch | 101 ++++++++++++++++
+ 3 files changed, 213 insertions(+), 1 deletion(-)
+ create mode 100755 package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch
+ create mode 100755 package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch
+
+diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index eb6abd6..d05aaa4 100644
+--- a/package/utils/ucode/Makefile
++++ b/package/utils/ucode/Makefile
+@@ -8,7 +8,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ucode
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=https://github.com/jow-/ucode.git
+diff --git a/package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch b/package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch
+new file mode 100755
+index 0000000..0dcc88a
+--- /dev/null
++++ b/package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch
+@@ -0,0 +1,111 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ubus: reconnect a connection when ubusd drops it
++
++When ubusd drops a client (ubusd restarting, or a message over
++UBUS_MAX_MSGLEN), libubus calls the connection's connection_lost. The
++module keeps libubus' default there, both for the shared connection of
++the module-level functions and for connections made with connect().
++That default ends the uloop only while the socket is still registered,
++and uloop's epoll backend unregisters it on the hangup before the
++callback runs, so nothing happens: the connection stays dead and
++everything published on it is gone until the process restarts.
++
++On OpenWrt this is how netifd's network.wireless object (wireless.uc,
++shared connection) and the hostapd and wpa_supplicant objects
++(hostapd.uc and wpa_supplicant.uc, connect()) disappear after a ubusd
++restart, while netifd's own objects come back.
++
++Reconnect instead, retrying every second as ubus_auto_connect() does;
++ubus_reconnect() registers the connection's objects again. Keep the
++socket path given to connect() for that, and cancel a pending reconnect
++on disconnect() and when the connection is freed.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/lib/ubus.c
+++++ b/lib/ubus.c
++@@ -553,6 +553,8 @@
++ 	struct blob_buf buf;
++ 	int timeout;
++ 	bool fd_handle;
+++	struct uloop_timeout reconnect;
+++	char *path;
++ 
++ 	uc_vm_t *vm;
++ 	uc_value_t *res;
++@@ -905,6 +907,37 @@
++ 	return c;
++ }
++ 
+++/*
+++ * When ubusd drops a connection (ubusd restarting, or a message over its
+++ * size limit), libubus' default connection_lost does nothing: it only ends
+++ * the uloop while the socket is registered, and uloop has unregistered it
+++ * on the hangup. The connection would stay dead, and everything published
+++ * on it gone. Reconnect instead, retrying every second as libubus' auto
+++ * connection does; ubus_reconnect() registers the connection's objects
+++ * again.
+++ */
+++static void
+++uc_ubus_conn_reconnect_cb(struct uloop_timeout *timeout)
+++{
+++	uc_ubus_connection_t *c = container_of(timeout, uc_ubus_connection_t, reconnect);
+++
+++	if (ubus_reconnect(&c->ctx, c->path)) {
+++		uloop_timeout_set(timeout, 1000);
+++		return;
+++	}
+++
+++	ubus_add_uloop(&c->ctx);
+++}
+++
+++static void
+++uc_ubus_conn_lost_cb(struct ubus_context *ctx)
+++{
+++	uc_ubus_connection_t *c = container_of(ctx, uc_ubus_connection_t, ctx);
+++
+++	c->reconnect.cb = uc_ubus_conn_reconnect_cb;
+++	uloop_timeout_set(&c->reconnect, 1000);
+++}
+++
++ /**
++  * Establish a connection to the ubus bus.
++  *
++@@ -951,6 +984,11 @@
++ 
++ 	ubus_add_uloop(&c->ctx);
++ 
+++	if (socket)
+++		c->path = strdup(ucv_string_get(socket));
+++
+++	c->ctx.connection_lost = uc_ubus_conn_lost_cb;
+++
++ 	ok_return(ucv_get(c->res));
++ }
++ 
++@@ -1000,6 +1038,7 @@
++ 		}
++ 
++ 		ubus_add_uloop(&c->ctx);
+++		c->ctx.connection_lost = uc_ubus_conn_lost_cb;
++ 
++ 		uc_vm_registry_set(vm, "ubus.connection", ucv_get(c->res));
++ 	}
++@@ -3470,6 +3509,8 @@
++ 
++ 	conn_get(vm, &c);
++ 
+++	uloop_timeout_cancel(&c->reconnect);
+++
++ #ifdef HAVE_UBUS_FLUSH_REQUESTS
++ 	ubus_flush_requests(&c->ctx);
++ #endif
++@@ -3885,6 +3926,8 @@
++ static void free_connection(void *ud) {
++ 	uc_ubus_connection_t *conn = ud;
++ 
+++	uloop_timeout_cancel(&conn->reconnect);
+++	free(conn->path);
++ 	blob_buf_free(&conn->buf);
++ 
++ 	if (conn->ctx.sock.fd >= 0) {
+diff --git a/package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch b/package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch
+new file mode 100755
+index 0000000..15d9575
+--- /dev/null
++++ b/package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch
+@@ -0,0 +1,101 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ubus: register listeners again after a reconnect
++
++ubus_reconnect() adds a listener's object again but not its event
++pattern registration with ubusd, so after a reconnect the connection's
++listeners would hear nothing. Keep each connection's listeners with
++their patterns and register them again once reconnected.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/lib/ubus.c
+++++ b/lib/ubus.c
++@@ -555,6 +555,7 @@
++ 	bool fd_handle;
++ 	struct uloop_timeout reconnect;
++ 	char *path;
+++	struct list_head listeners;
++ 
++ 	uc_vm_t *vm;
++ 	uc_value_t *res;
++@@ -601,6 +602,8 @@
++ typedef struct {
++ 	struct ubus_event_handler ev;
++ 	struct ubus_context *ctx;
+++	struct list_head list;
+++	char *pattern;
++ 	uc_vm_t *vm;
++ 	uc_value_t *res;
++ } uc_ubus_listener_t;
++@@ -900,6 +903,7 @@
++ 
++ 	c->vm = vm;
++ 	c->res = res;
+++	INIT_LIST_HEAD(&c->listeners);
++ 	c->timeout = timeout ? ucv_int64_get(timeout) : 30;
++ 	if (c->timeout < 0)
++ 		c->timeout = 30;
++@@ -908,6 +912,19 @@
++ }
++ 
++ /*
+++ * ubus_reconnect() adds a listener's object again, but not its event
+++ * pattern registration with ubusd: register each listener again.
+++ */
+++static void
+++uc_ubus_conn_relisten(uc_ubus_connection_t *c)
+++{
+++	uc_ubus_listener_t *uul;
+++
+++	list_for_each_entry(uul, &c->listeners, list)
+++		ubus_register_event_handler(&c->ctx, &uul->ev, uul->pattern);
+++}
+++
+++/*
++  * When ubusd drops a connection (ubusd restarting, or a message over its
++  * size limit), libubus' default connection_lost does nothing: it only ends
++  * the uloop while the socket is registered, and uloop has unregistered it
++@@ -927,6 +944,7 @@
++ 	}
++ 
++ 	ubus_add_uloop(&c->ctx);
+++	uc_ubus_conn_relisten(c);
++ }
++ 
++ static void
++@@ -2896,8 +2914,12 @@
++ {
++ 	int rv = ubus_unregister_event_handler(uul->ctx, &uul->ev);
++ 
++-	if (rv == UBUS_STATUS_OK)
+++	if (rv == UBUS_STATUS_OK) {
+++		list_del_init(&uul->list);
+++		free(uul->pattern);
+++		uul->pattern = NULL;
++ 		uc_ubus_put_res(&uul->res);
+++	}
++ 
++ 	return rv;
++ }
++@@ -3023,6 +3045,9 @@
++ 	ucv_resource_persistent_set(res, true);
++ 	ucv_resource_value_set(res, 0, ucv_get(cb));
++ 
+++	uul->pattern = strdup(ucv_string_get(pattern));
+++	list_add_tail(&uul->list, &c->listeners);
+++
++ 	ok_return(ucv_get(res));
++ }
++ 
++@@ -3925,8 +3950,11 @@
++ 
++ static void free_connection(void *ud) {
++ 	uc_ubus_connection_t *conn = ud;
+++	uc_ubus_listener_t *uul, *tmp;
++ 
++ 	uloop_timeout_cancel(&conn->reconnect);
+++	list_for_each_entry_safe(uul, tmp, &conn->listeners, list)
+++		list_del_init(&uul->list);
++ 	free(conn->path);
++ 	blob_buf_free(&conn->buf);
++ 
+-- 
+2.43.0
+

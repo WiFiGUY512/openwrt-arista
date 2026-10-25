@@ -1,0 +1,121 @@
+From df81edb774e1dd8af603d258acb3624b9be17cde Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 25 Oct 2026 15:00:00 +0000
+Subject: [PATCH] mac80211: ath11k: fix beacon stats with more than one started
+ vdev
+
+ath11k patch 106 (sent upstream): reading fw_stats/beacon_stats timed
+out on a radio with more than one started vdev, as every Arista AP has
+(four VAPs per radio on the C-260). ath11k_open_bcn_stats() requests
+one vdev's stats at a time, but each request resets num_bcn_recvd and
+completion waited for num_bcn_recvd to reach num_started_vdevs, which
+never happens. Complete each request on its reply and drop the count,
+as ath12k does since commit 2977567b244f.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...tats-with-more-than-one-started-vdev.patch | 75 +++++++++++++++++++
+ 2 files changed, 76 insertions(+), 1 deletion(-)
+ create mode 100755 package/kernel/mac80211/patches/ath11k/106-wifi-ath11k-fix-beacon-stats-with-more-than-one-started-vdev.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 87e0f65..c37c3be 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=12
++PKG_RELEASE:=13
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/106-wifi-ath11k-fix-beacon-stats-with-more-than-one-started-vdev.patch b/package/kernel/mac80211/patches/ath11k/106-wifi-ath11k-fix-beacon-stats-with-more-than-one-started-vdev.patch
+new file mode 100755
+index 0000000..b76462b
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/106-wifi-ath11k-fix-beacon-stats-with-more-than-one-started-vdev.patch
+@@ -0,0 +1,75 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: fix beacon stats with more than one started vdev
++
++ath11k_open_bcn_stats() requests beacon stats one vdev at a time, and
++ath11k_mac_fw_stats_request() waits for fw_stats_done after each
++request. ath11k_debugfs_fw_stats_process() completes fw_stats_done only
++once num_bcn_recvd reaches num_started_vdevs, but every request resets
++num_bcn_recvd first. With more than one started vdev the count is never
++reached, the first request times out, and reading fw_stats/beacon_stats
++fails with -ETIMEDOUT.
++
++Complete fw_stats_done on each beacon stats reply and drop
++num_bcn_recvd, as ath12k does since commit 2977567b244f ("wifi: ath12k:
++Fix timeout error during beacon stats retrieval").
++
++Fixes: 9f6e82d11bb9 ("wifi: ath11k: avoid burning CPU in ath11k_debugfs_fw_stats_request()")
++Fixes: 2bcf73b2612d ("wifi: ath11k: don't use static variables in ath11k_debugfs_fw_stats_process()")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++diff -ru a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
++--- a/drivers/net/wireless/ath/ath11k/core.h
+++++ b/drivers/net/wireless/ath/ath11k/core.h
++@@ -621,7 +621,6 @@
++ 	struct list_head vdevs;
++ 	struct list_head bcn;
++ 	u32 num_vdev_recvd;
++-	u32 num_bcn_recvd;
++ };
++ 
++ struct ath11k_dbg_htt_stats {
++diff -ru a/drivers/net/wireless/ath/ath11k/debugfs.c b/drivers/net/wireless/ath/ath11k/debugfs.c
++--- a/drivers/net/wireless/ath/ath11k/debugfs.c
+++++ b/drivers/net/wireless/ath/ath11k/debugfs.c
++@@ -97,7 +97,6 @@
++ void ath11k_debugfs_fw_stats_process(struct ath11k *ar, struct ath11k_fw_stats *stats)
++ {
++ 	struct ath11k_base *ab = ar->ab;
++-	bool is_end = true;
++ 
++ 	/* WMI_REQUEST_PDEV_STAT, WMI_REQUEST_RSSI_PER_CHAIN_STAT and
++ 	 * WMI_REQUEST_VDEV_STAT requests have been already processed.
++@@ -107,18 +106,13 @@
++ 			ath11k_warn(ab, "empty bcn stats");
++ 			return;
++ 		}
++-		/* Mark end until we reached the count of all started VDEVs
++-		 * within the PDEV
+++		/* ath11k_open_bcn_stats() requests one vdev's beacon stats at
+++		 * a time, so one reply ends a request.
++ 		 */
++-		if (ar->num_started_vdevs)
++-			is_end = ((++ar->fw_stats.num_bcn_recvd) ==
++-				  ar->num_started_vdevs);
++-
++ 		list_splice_tail_init(&stats->bcn,
++ 				      &ar->fw_stats.bcn);
++ 
++-		if (is_end)
++-			complete(&ar->fw_stats_done);
+++		complete(&ar->fw_stats_done);
++ 	}
++ }
++ 
++diff -ru a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -4042,7 +4042,6 @@
++ 	ath11k_fw_stats_pdevs_free(&ar->fw_stats.pdevs);
++ 	ath11k_fw_stats_vdevs_free(&ar->fw_stats.vdevs);
++ 	ar->fw_stats.num_vdev_recvd = 0;
++-	ar->fw_stats.num_bcn_recvd = 0;
++ 	spin_unlock_bh(&ar->data_lock);
++ }
++ 
+-- 
+2.43.0
+
