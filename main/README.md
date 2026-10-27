@@ -97,6 +97,23 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     ubusd`, `network.wireless`, `hostapd`, `wpa_supplicant` and the per-BSS
     objects were back within seconds, on the same PIDs. rpcd, dnsmasq,
     odhcpd, odhcp6c and usteerd (C daemons) still don't reconnect.
+  - 0027: the C daemons the images ship reconnect when ubusd restarts too
+    (package patches, one per project, meant for upstream). rpcd and odhcpd
+    retry every second (odhcpd also renews its event and its netifd
+    subscription). odhcp6c no longer frees its context on a failed
+    reconnect, which left it polling a stale socket and freeing the context
+    twice on exit. dnsmasq no longer frees its context inside libubus'
+    callback, and wakes every quarter second until ubusd is back. ujail -u
+    binds the `/var/run/ubus` directory read-only instead of the socket
+    file, which kept a jailed dnsmasq or ntpd on the dead ubusd for good.
+    usteer is not in the images and is not covered.
+  - 0028: hostapd removes the interfaces of a phy that is gone. After an
+    ath11k module reload, hostapd kept the old phy's interfaces and their
+    `hostapd.<ifname>` objects beside the new ones: netifd's teardown for
+    the old phy reached `iface_set_config()`, which opened the phy before
+    acting on the empty config, found it gone, and returned. `wifi reconf`
+    sends no teardown at all, so `config_set` now also drops the interfaces
+    of any phy that no longer exists.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
