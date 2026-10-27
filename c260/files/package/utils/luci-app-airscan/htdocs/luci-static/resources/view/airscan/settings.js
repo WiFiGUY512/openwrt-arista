@@ -52,6 +52,12 @@ return view.extend({
 		o.default = '5';
 		o.depends('wired_probe', '1');
 
+		o = s.taboption('trust', form.Value, 'probe_refresh', _('Probe settled channels every'),
+			_('seconds. A channel is probed while a network heard there has no verdict yet, and otherwise this often: each probe is a broadcast that APs may copy to every client.'));
+		o.datatype = 'range(30,3600)';
+		o.default = '300';
+		o.depends('wired_probe', '1');
+
 		o = s.taboption('trust', form.DynamicList, 'trusted_ssid', _('Your SSIDs'),
 			_('SSIDs served by your other APs. The SSIDs this AP serves count by themselves.'));
 

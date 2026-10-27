@@ -129,6 +129,7 @@ function load_config() {
 		client_expire: +(s.client_expire || 900),
 		wired_probe: s.wired_probe != "0",
 		probe_evidence: +(s.probe_evidence || 5),
+		probe_refresh: +(s.probe_refresh || 300),
 		trusted_ssid: list(s.trusted_ssid),
 		trusted_bssid: map(list(s.trusted_bssid), (b) => lc(b)),
 		ble_enabled: s.ble_enabled != "0",
@@ -505,7 +506,7 @@ function freqs_6g() {
 // that relays it is a rogue on our wire. Each domain's probe is padded to
 // 60 + 16 * (domain index) bytes, so the size of a relayed frame tells which
 // VLAN that BSS bridges even when the frame is encrypted.
-let wp = { sock: null, domains: [], macs: {}, bss: {} };
+let wp = { sock: null, domains: [], macs: {}, bss: {}, ch: {} };
 const LLC_ARP = "\xaa\xaa\x03\x00\x00\x00\x08\x06";   // LLC/SNAP header of an ARP frame
 
 function l2_domains() {
@@ -569,6 +570,23 @@ function wired_verdict(bssid) {
 	if (!w) return null;
 	if (w.hit_windows > 0) return true;
 	return w.windows >= cfg.probe_evidence ? false : null;
+}
+
+// Whether a dwell on f sends the probe. A dwell is evidence only for the BSSes
+// it hears, so a channel whose last dwell heard none still without a verdict
+// is left alone, and probed again every probe_refresh seconds: a settled BSS
+// can start relaying, and a new one shows in the next dwell's beacons. Each
+// probe is a broadcast on every L2 domain, which an AP with multicast_to_unicast
+// copies to each of its clients; probing every dwell was 2 a second, all day.
+function probe_wanted(f) {
+	let pc = wp.ch[f];
+	if (!pc || time() - pc.at >= cfg.probe_refresh)
+		return true;
+	let mine = local_macs();
+	for (let b in pc.heard)
+		if (!(hex(substr(b, 0, 2)) & 1) && mine[b] == null && wired_verdict(b) == null)
+			return true;
+	return false;
 }
 
 // class: own, trusted, verified (ours, relays our probes), verified_sibling
@@ -893,7 +911,7 @@ function run_client_slice(done) {
 	cap.hit = {};
 	cap.sig = {};
 	cap.probed = 0;
-	if (cfg.wired_probe)
+	if (cfg.wired_probe && probe_wanted(f))
 		for (let t in [ 50, int(cfg.client_dwell / 2) ])
 			later(t, () => { if (cap.freq == f) { send_probes(); cap.probed++; } });
 	later(cfg.client_dwell, () => {
@@ -931,6 +949,11 @@ function run_client_slice(done) {
 				}
 			}
 		}
+		// what this channel holds, for whether its next dwell probes
+		let pc = wp.ch[f] ||= { at: 0 };
+		pc.heard = keys(cap.heard);
+		if (cap.probed)
+			pc.at = time();
 		cap.round_heard += length(cap.heard);
 		cap.round_dwells++;
 		if (cap.ch_i >= length(cap.ch_list)) {
