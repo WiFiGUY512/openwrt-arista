@@ -124,6 +124,13 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     in place); the jail held the `/var/run/ubus` directory read-only and saw
     the new socket. After an ath11k reload, `wifi` and `wifi reconf` both left
     only the new phy's `hostapd.*` object, with hostapd not restarted.
+  - 0030 (B87): the watchdog stays armed through a sysupgrade's reboot.
+    `upgraded` (PID 1 during a sysupgrade) fed the watchdog while stage 2
+    ran, and stage 2 does the final `reboot -f` itself, so a reboot that
+    stalled in the kernel was never reset (a C-360 hung 3 hours until it was
+    power-cycled). Stage 2 now sends SIGHUP to PID 1 before `reboot -f`, and
+    `upgraded` stops feeding the watchdog but leaves it armed. procd ignores
+    SIGHUP. Package patch 101 for upstream procd; procd PKG_RELEASE 4.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

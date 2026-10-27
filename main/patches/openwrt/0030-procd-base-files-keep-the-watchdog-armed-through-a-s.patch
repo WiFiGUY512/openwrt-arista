@@ -1,0 +1,158 @@
+From 62dc1eb9d23d4f0ea1b91052b0fab39a99c7f2b0 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 27 Oct 2026 10:00:00 -0500
+Subject: [PATCH] procd, base-files: keep the watchdog armed through a
+ sysupgrade's reboot
+
+During a sysupgrade, upgraded (PID 1) feeds the watchdog while the
+stage 2 script runs, and that script does the final "reboot -f" itself,
+so a reboot that stalled in the kernel was never reset by the watchdog:
+a C-360 hung for 3 hours after a sysupgrade until it was power-cycled.
+A plain reboot does not have this, as procd stops feeding at halt.
+
+Stage 2 (do_stage2, and nand.sh's success and failure paths) now sends
+SIGHUP to PID 1 just before "reboot -f", and upgraded then stops feeding
+the watchdog but leaves it armed, so a stalled reboot is reset within
+the watchdog's timeout. procd ignores SIGHUP, so the signal does nothing
+if it ever reaches procd.
+
+procd PKG_RELEASE 4 (package patch 101, for upstream procd).
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../base-files/files/lib/upgrade/do_stage2    |  2 +
+ package/base-files/files/lib/upgrade/nand.sh  |  4 ++
+ package/system/procd/Makefile                 |  2 +-
+ ...p-feeding-the-watchdog-at-the-reboot.patch | 71 +++++++++++++++++++
+ 4 files changed, 78 insertions(+), 1 deletion(-)
+ create mode 100644 package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch
+
+diff --git a/package/base-files/files/lib/upgrade/do_stage2 b/package/base-files/files/lib/upgrade/do_stage2
+index 0e324457..cd5aa7eb 100755
+--- a/package/base-files/files/lib/upgrade/do_stage2
++++ b/package/base-files/files/lib/upgrade/do_stage2
+@@ -20,6 +20,8 @@ sleep 1
+ 
+ v "Rebooting system..."
+ umount -a
++# upgraded (PID 1) stops feeding the watchdog: a stalled reboot is reset
++kill -HUP 1 2>/dev/null
+ reboot -f
+ sleep 5
+ echo b 2>/dev/null >/proc/sysrq-trigger
+diff --git a/package/base-files/files/lib/upgrade/nand.sh b/package/base-files/files/lib/upgrade/nand.sh
+index a768abfb..26d007cc 100644
+--- a/package/base-files/files/lib/upgrade/nand.sh
++++ b/package/base-files/files/lib/upgrade/nand.sh
+@@ -464,6 +464,8 @@ nand_do_upgrade_success() {
+ 	if nand_do_restore_config && sync; then
+ 		echo "sysupgrade successful"
+ 		umount -a
++		# upgraded (PID 1) stops feeding the watchdog: a stalled reboot is reset
++		kill -HUP 1 2>/dev/null
+ 		reboot -f
+ 	fi
+ 	nand_do_upgrade_failed
+@@ -474,6 +476,8 @@ nand_do_upgrade_failed() {
+ 	echo "sysupgrade failed"
+ 	# Should we reboot or bring up some failsafe mode instead?
+ 	umount -a
++	# upgraded (PID 1) stops feeding the watchdog: a stalled reboot is reset
++	kill -HUP 1 2>/dev/null
+ 	reboot -f
+ }
+ 
+diff --git a/package/system/procd/Makefile b/package/system/procd/Makefile
+index 7d239d9b..000c1e29 100644
+--- a/package/system/procd/Makefile
++++ b/package/system/procd/Makefile
+@@ -8,7 +8,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=procd
+-PKG_RELEASE:=3
++PKG_RELEASE:=4
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/procd.git
+diff --git a/package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch b/package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch
+new file mode 100644
+index 00000000..69893089
+--- /dev/null
++++ b/package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch
+@@ -0,0 +1,71 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Tue, 27 Oct 2026 10:00:00 -0500
++Subject: [PATCH] upgraded: stop feeding the watchdog at the reboot
++
++During a sysupgrade, upgraded (PID 1) feeds the watchdog from its loop
++for as long as the stage 2 script runs, and that script also does the
++final "reboot -f". So when the reboot stalled in the kernel (a driver's
++shutdown hook, say), upgraded went on feeding the watchdog and the board
++hung until someone power-cycled it; a C-360 sat like that for 3 hours.
++A plain reboot does not have this: procd stops feeding at halt.
++
++Stage 2 now sends SIGHUP to PID 1 just before "reboot -f". On it,
++upgraded stops feeding the watchdog and closes it without the magic
++close, so it stays armed: a reboot that stalls is reset within the
++watchdog's timeout. procd ignores SIGHUP, so the signal is harmless if
++it ever reaches procd instead.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++  upgraded/upgraded.c | 21 +++++++++++++++++++++
++  1 file changed, 21 insertions(+)
++
++diff --git a/upgraded/upgraded.c b/upgraded/upgraded.c
++index db98701..e36322c 100644
++--- a/upgraded/upgraded.c
+++++ b/upgraded/upgraded.c
++@@ -17,6 +17,7 @@
++ #include <sys/reboot.h>
++ 
++ #include <fcntl.h>
+++#include <signal.h>
++ #include <stdio.h>
++ #include <stdlib.h>
++ #include <string.h>
++@@ -34,6 +35,25 @@
++ static struct uloop_process upgrade_proc;
++ unsigned int debug = 2;
++ 
+++/*
+++ * The upgrade is written and the stage 2 script is about to reboot (it sends
+++ * SIGHUP just before "reboot -f"). Stop feeding the watchdog, but leave it
+++ * running: if the reboot then stalls in the kernel, the watchdog resets the
+++ * board. Feeding it on from here kept a board that stalled in its reboot
+++ * hanging until it was power-cycled. procd, PID 1 the rest of the time,
+++ * ignores SIGHUP.
+++ */
+++static void upgraded_rebooting(struct uloop_signal *s)
+++{
+++	fprintf(stderr, "sysupgrade: rebooting; the watchdog is no longer fed\n");
+++	watchdog_set_stopped(true);
+++}
+++
+++static struct uloop_signal reboot_signal = {
+++	.cb = upgraded_rebooting,
+++	.signo = SIGHUP,
+++};
+++
++ static void upgrade_proc_cb(struct uloop_process *proc, int ret)
++ {
++ 	if (ret)
++@@ -96,6 +116,7 @@ int main(int argc, char **argv)
++ 
++ 	uloop_init();
++ 	watchdog_init(0);
+++	uloop_signal_add(&reboot_signal);
++ 	sysupgrade(argv[1], argv[2]);
++ 
++ 	reboot(RB_AUTOBOOT);
++-- 
++2.43.0
+-- 
+2.43.0
+
