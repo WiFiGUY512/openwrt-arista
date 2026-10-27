@@ -1,0 +1,51 @@
+From 6e2ff0214d27c7d3faa2ae1d5b2d3db4289d4ddb Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 27 Oct 2026 09:40:00 -0500
+Subject: [PATCH] dnsmasq: let the dnsmasq user publish dnsmasq.dns
+
+200-ubus_dns.patch adds a second ubus object, dnsmasq.dns, but the ACL
+lets the dnsmasq user publish only "dnsmasq". At startup dnsmasq
+connects as root, before it drops privileges, so nobody noticed. On a
+reconnect (ubusd restarted) it is the dnsmasq user: ubusd refuses
+dnsmasq.dns ("Invalid argument"), and dnsmasq's main loop takes that
+error as fatal and stops using ubus for good. Seen on a C-260 after
+killall ubusd; with "dnsmasq.*" in the ACL both objects came back
+within a second, on the same PID.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/dnsmasq/Makefile               | 2 +-
+ package/network/services/dnsmasq/files/dnsmasq_acl.json | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/package/network/services/dnsmasq/Makefile b/package/network/services/dnsmasq/Makefile
+index 74af2ea7..8deb05d9 100644
+--- a/package/network/services/dnsmasq/Makefile
++++ b/package/network/services/dnsmasq/Makefile
+@@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
+ PKG_NAME:=dnsmasq
+ PKG_UPSTREAM_VERSION:=2.93
+ PKG_VERSION:=$(subst test,~~test,$(subst rc,~rc,$(PKG_UPSTREAM_VERSION)))
+-PKG_RELEASE:=5
++PKG_RELEASE:=6
+ 
+ PKG_SOURCE:=$(PKG_NAME)-$(PKG_UPSTREAM_VERSION).tar.xz
+ PKG_SOURCE_URL:=https://thekelleys.org.uk/dnsmasq/
+diff --git a/package/network/services/dnsmasq/files/dnsmasq_acl.json b/package/network/services/dnsmasq/files/dnsmasq_acl.json
+index 67c6c204..61f82663 100644
+--- a/package/network/services/dnsmasq/files/dnsmasq_acl.json
++++ b/package/network/services/dnsmasq/files/dnsmasq_acl.json
+@@ -1,6 +1,6 @@
+ {
+ 	"user": "dnsmasq",
+-	"publish": [ "dnsmasq" ],
++	"publish": [ "dnsmasq", "dnsmasq.*" ],
+ 	"access": {
+ 		"hotplug.dhcp": {
+ 			"methods": [ "call" ]
+-- 
+2.43.0
+

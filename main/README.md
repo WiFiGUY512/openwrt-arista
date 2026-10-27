@@ -114,6 +114,16 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     acting on the empty config, found it gone, and returned. `wifi reconf`
     sends no teardown at all, so `config_set` now also drops the interfaces
     of any phy that no longer exists.
+  - 0029: the dnsmasq user may publish `dnsmasq.dns`. dnsmasq first connects
+    to ubus as root, before dropping privileges; on a reconnect it is the
+    dnsmasq user, the ACL allowed only `dnsmasq`, ubusd refused
+    `dnsmasq.dns`, and dnsmasq gave up on ubus for good.
+  - Tested 2026-10-27 on a C-260 from RAM (the -44 binaries bind-mounted over
+    the installed image): after `killall ubusd` all 37 ubus objects were back
+    on the same PIDs (rpcd, odhcpd, odhcp6c, and dnsmasq once 0029's ACL was
+    in place); the jail held the `/var/run/ubus` directory read-only and saw
+    the new socket. After an ath11k reload, `wifi` and `wifi reconf` both left
+    only the new phy's `hostapd.*` object, with hostapd not restarted.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
