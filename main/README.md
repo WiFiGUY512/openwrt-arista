@@ -212,7 +212,9 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     unchanged. Tested 2026-10-28 on a C-360 with the three ath11k modules
     from RAM: the QCN9072 shows HT MCS 0-15, VHT 2 and HE 2 streams on
     2.4, 5 and 6 GHz; the IPQ8074 and QCN9074 radios are unchanged.
-    mac80211 PKG_RELEASE 18.
+    mac80211 PKG_RELEASE 18. 108 and 109 went to ath-next together on
+    2026-10-28 ([PATCH ath-next 0/2], Message-Id
+    `<20261028-b4-ath11k-qcn907x-caps-v1-0-c7daa6f1c02c@gmail.com>`).
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
