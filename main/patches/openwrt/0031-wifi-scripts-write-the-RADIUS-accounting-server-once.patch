@@ -1,0 +1,53 @@
+From 294f88ab41272bfa88e2c58f5bc42dcbac6575d5 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 28 Oct 2026 01:20:00 -0500
+Subject: [PATCH] wifi-scripts: write the RADIUS accounting server once
+
+iface_accounting_server() ran twice for an 802.1X BSS without an
+internal EAP server: inside iface_auth_type()'s eap branch, next to
+iface_authentication_server(), and again unconditionally in generate().
+Each run appends acct_server_addr/port/secret and radius_acct_req_attr,
+so hostapd kept two accounting server entries and put every
+radius_acct_req_attr (a NAS-Identifier, say) into each
+Accounting-Request twice, where RFC 2866 allows it once.
+
+Keep the unconditional call, which also serves non-EAP networks that
+use RADIUS accounting, and drop the one in the eap branch. Seen on an
+Arista C-260: 1 auth_server_addr but 2 acct_server_addr and 2
+radius_acct_req_attr per 802.1X radio config; 1 each with this change.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/wifi-scripts/Makefile                    | 2 +-
+ .../config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc  | 1 -
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index 5637a82e..e3e1b886 100644
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=4
++PKG_RELEASE:=5
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+index bebf95cb..8ee741e1 100644
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+@@ -329,7 +329,6 @@ function iface_auth_type(config, band, eht) {
+ 
+ 		if (!config.eap_server) {
+ 			iface_authentication_server(config);
+-			iface_accounting_server(config);
+ 		}
+ 
+ 		if (config.radius_das_client && config.radius_das_secret) {
+-- 
+2.43.0
+

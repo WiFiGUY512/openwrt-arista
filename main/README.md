@@ -131,6 +131,13 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     power-cycled). Stage 2 now sends SIGHUP to PID 1 before `reboot -f`, and
     `upgraded` stops feeding the watchdog but leaves it armed. procd ignores
     SIGHUP. Package patch 101 for upstream procd; procd PKG_RELEASE 4.
+  - 0031 (B93): wifi-scripts writes an 802.1X BSS's RADIUS accounting server
+    once. `iface_accounting_server()` ran in `iface_auth_type()`'s eap branch
+    and again in `generate()`, so hostapd had two accounting servers and sent
+    each `radius_acct_req_attr` (a NAS-Identifier) twice per
+    Accounting-Request. Tested 2026-10-28 on the C-260 (`ap.uc` bind-mounted):
+    one `acct_server_addr` and one `radius_acct_req_attr` per radio, all 8
+    VAPs up. wifi-scripts PKG_RELEASE 5.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
