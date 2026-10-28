@@ -161,6 +161,12 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     (the module loaded from RAM, Aeolus's roam tests, WPA2-PSK without
     PMF): NEW_KEY to authorized 0-2 ms in 13 of 13 handshakes. mac80211
     PKG_RELEASE 14.
+  - 0034 (B88): upstream f394cbd0980c, mac80211 doesn't estimate airtime
+    for rate widths it can't price (mac80211 patch 424, a backport). After
+    an OFDMA transmission ath11k reports a station's TX rate as an HE RU,
+    and the next station dump hit a `WARN_ON_ONCE` at `airtime.c:532`
+    (once per boot on two C-360s). mac80211 PKG_RELEASE 15. Not tested
+    live: the warning needs an OFDMA station and comes once a boot.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
