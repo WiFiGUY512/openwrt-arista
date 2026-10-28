@@ -82,6 +82,12 @@ function log(msg) {
 	system([ 'logger', '-t', 'dfs-look', msg ]);
 }
 
+// now: seconds on the monotonic clock. An AP's wall clock is set by NTP a
+// while after boot, often by minutes, which would end a look early.
+function now() {
+	return clock(true)[0];
+}
+
 // later: fn, once, in ms. A uloop timer that has fired is not freed until it
 // is cancelled, nor is all its callback holds; this one cancels itself.
 function later(ms, fn) {
@@ -251,14 +257,14 @@ function blocks(width, chans, list) {
 
 function barred(phy, members) {
 	for (let c in members)
-		if ((bars[`${phy} ${c}`] ?? 0) > time())
+		if ((bars[`${phy} ${c}`] ?? 0) > now())
 			return true;
 	return false;
 }
 
 function bar(phy, members, why) {
 	for (let c in members)
-		bars[`${phy} ${c}`] = time() + BARRED_FOR;
+		bars[`${phy} ${c}`] = now() + BARRED_FOR;
 	fs.writefile(BARS, sprintf('%J', bars));
 	log(`${phy}: channels ${join(',', members)} left alone for a day (${why})`);
 }
@@ -323,7 +329,7 @@ function look_airscan(r, l) {
 		l.sweep_was = s?.time ?? 0;
 		conn.call('airscan', 'scan');
 		conn.call('airscan', 'sweep', { band: '5g' });
-		l.asked = time();
+		l.asked = now();
 		return false;
 	}
 	if ((b?.time ?? 0) <= l.bss_was || (s?.time ?? 0) <= l.sweep_was)
@@ -372,7 +378,7 @@ function look_self(r, l) {
 function look_start(r) {
 	let as = conn.call('airscan', 'status');
 	let scan_radio = index(as?.features ?? [], 'lend') >= 0 && as?.spectral_supported;
-	let l = { by: scan_radio ? 'airscan' : 'self', began: time(), rates: {}, mine: own_macs(), done: 0, asked: 0,
+	let l = { by: scan_radio ? 'airscan' : 'self', began: now(), rates: {}, mine: own_macs(), done: 0, asked: 0,
 		next: 0, refused: 0, visit: null, own: own_counts(r.ifname), queue: [] };
 	for (let i = 0; i < LOOKS; i++)
 		for (let c in sort(map(keys(r.chans), (c) => +c), (a, b) => a - b))
@@ -434,7 +440,7 @@ function choose(r, l) {
 		why = 'no DFS block is clearly better than its own';
 	else if (plain && plain !== cur && far.cost + WIN_BY > plain.cost)
 		why = 'no DFS block is clearly better than the best outside DFS';
-	log(`${r.name}: looked (${l.by}, ${time() - l.began} s): on ${describe(cur)}, best outside DFS ${describe(plain)}, best DFS ${describe(far)}; ` +
+	log(`${r.name}: looked (${l.by}, ${now() - l.began} s): on ${describe(cur)}, best outside DFS ${describe(plain)}, best DFS ${describe(far)}; ` +
 		(why ? `stays: ${why}` : `goes to ${far.entry} after a radar check`));
 	return why ? null : far;
 }
@@ -449,13 +455,13 @@ function restart(name) {
 // again: the radio is looked at afresh once it is up outside DFS
 function again(r) {
 	r.state = 'wait';
-	r.since = time();
+	r.since = now();
 }
 
 // wait: for the radio to serve SETTLE seconds outside DFS, then look
 function on_wait(r, w, up) {
 	if (!up) {
-		r.since = time();
+		r.since = now();
 		return;
 	}
 	r.chans = channels(r.phy);
@@ -466,7 +472,7 @@ function on_wait(r, w, up) {
 		r.state = 'on-dfs';
 		return;
 	}
-	if (time() - r.since < SETTLE)
+	if (now() - r.since < SETTLE)
 		return;
 	r.block = filter(blocks(r.width, r.chans, []), (m) => index(m, w.channel) >= 0)[0] ?? [ w.channel ];
 	r.look = look_start(r);
@@ -481,7 +487,7 @@ function on_look(r, w, up) {
 	}
 	let l = r.look;
 	let done = l.by == 'airscan' ? look_airscan(r, l) : look_self(r, l);
-	if (!done && !l.given_up && time() - l.began > LOOK_MOST)
+	if (!done && !l.given_up && now() - l.began > LOOK_MOST)
 		l.given_up = `no look within ${LOOK_MOST} s`;
 	if (l.given_up) {
 		log(`${r.name}: stays outside DFS: ${l.given_up}`);
@@ -503,7 +509,7 @@ function on_look(r, w, up) {
 		return;
 	}
 	r.to = to;
-	r.sent = time();
+	r.sent = now();
 	r.cac = 0;
 	for (let m in to.members)
 		r.cac = max(r.cac, r.chans[`${m}`].cac);
@@ -514,16 +520,16 @@ function on_look(r, w, up) {
 // moving: until the radio is up on the DFS channel, its radar check done
 function on_moving(r, w, up, key) {
 	if (up && w.channel == r.to.entry) {
-		log(`${r.name}: up on channel ${w.channel}, ${time() - r.sent} s after the switch`);
+		log(`${r.name}: up on channel ${w.channel}, ${now() - r.sent} s after the switch`);
 		r.state = 'there';
 		r.key = key;
 		return;
 	}
-	if (time() - r.sent < r.cac + ARRIVE_MOST)
+	if (now() - r.sent < r.cac + ARRIVE_MOST)
 		return;
 	bar(r.phy, r.to.members, 'the radio did not get there');
 	if (!up) {
-		log(`${r.name}: not up ${time() - r.sent} s after the switch; it is started again`);
+		log(`${r.name}: not up ${now() - r.sent} s after the switch; it is started again`);
 		restart(r.name);
 	}
 	again(r);

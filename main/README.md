@@ -209,7 +209,9 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
   scan radio it stayed on 36-40 (10 against DFS 100-104's 2); with
   `-m 0` it moved to 124, and by its own scans (airscan stopped) it moved
   to 100 at the default margin (36-40 rated 23, 100-104 0), each up 62 s
-  after the switch, all 8 VAPs back.
+  after the switch, all 8 VAPs back. 0.1-2 times its looks on the
+  monotonic clock: on a C-360 just booted, NTP stepped the wall clock 12
+  minutes mid-look and the look was given up (2026-10-28).
 - `config/<subtarget>.seed`. Each model's own packages are `=m` and listed
   for its device, so they are in its images only; `=y` would put them in
   every image of the multi-profile build.
