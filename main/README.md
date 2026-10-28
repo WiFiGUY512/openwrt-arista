@@ -263,7 +263,12 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
   to 100 at the default margin (36-40 rated 23, 100-104 0), each up 62 s
   after the switch, all 8 VAPs back. 0.1-2 times its looks on the
   monotonic clock: on a C-360 just booted, NTP stepped the wall clock 12
-  minutes mid-look and the look was given up (2026-10-28).
+  minutes mid-look and the look was given up (2026-10-28). 0.1-3 waits for
+  hostapd's answer to the switch only to hear a refusal: for a DFS channel
+  hostapd starts the radio again there before it answers, and on C360-AP at
+  80 MHz that took over the 1 s 0.1-2 waited, so 0.1-2 logged the switch as
+  refused and barred 132-144 for a day while the radio went to 132 (the
+  Aeolus session, 2026-10-28). Whether the radio gets there decides now.
 - `config/<subtarget>.seed`. Each model's own packages are `=m` and listed
   for its device, so they are in its images only; `=y` would put them in
   every image of the multi-profile build.

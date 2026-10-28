@@ -270,17 +270,18 @@ function bar(phy, members, why) {
 }
 
 // hostapd_ctl sends one of hostapd's networks a command on its control
-// socket and returns its answer: null where none comes within a second,
-// false where it could not be sent. hostapd answers to the asking socket's
-// own path, as its own user, which must be able to write there.
-function hostapd_ctl(ifname, ask) {
+// socket and returns its answer: null where none comes within ms
+// milliseconds, false where it could not be sent. hostapd answers to the
+// asking socket's own path, as its own user, which must be able to write
+// there.
+function hostapd_ctl(ifname, ask, ms) {
 	let k = socket.create(socket.AF_UNIX, socket.SOCK_DGRAM);
 	if (!k)
 		return false;
 	fs.unlink(SOCK);
 	let answer = false;
 	if (k.bind({ path: SOCK }) && fs.chmod(SOCK, 0o666) && k.connect({ path: CTL + ifname }) && k.send(ask) != null) {
-		socket.poll(1000, [ k, socket.POLLIN ]);
+		socket.poll(ms, [ k, socket.POLLIN ]);
 		answer = k.recv(8192, socket.MSG_DONTWAIT);
 	}
 	k.close();
@@ -501,10 +502,14 @@ function on_look(r, w, up) {
 	r.state = 'done';
 	if (!to || DRY)
 		return;
+	// For a DFS channel hostapd starts the radio again there, and its radar
+	// check, before it answers (hostapd_switch_channel_fallback()), so the
+	// answer can be late: only a refusal counts as one, and whether the radio
+	// gets there tells the rest.
 	let cmd = chan_switch(to.entry, r.width, r.htmode);
-	let ans = cmd ? hostapd_ctl(r.ifname, cmd) : null;
-	if (!cmd || trim(ans || '') != 'OK') {
-		log(`${r.name}: hostapd did not take ${cmd ?? 'a channel switch for htmode ' + r.htmode}: ${ans === false ? 'not sent' : trim(ans ?? 'no answer')}`);
+	let ans = cmd ? hostapd_ctl(r.ifname, cmd, 5000) : false;
+	if (ans === false || (ans != null && trim(ans) != 'OK')) {
+		log(`${r.name}: hostapd did not take ${cmd ?? 'a channel switch for htmode ' + r.htmode}: ${ans === false ? 'not sent' : trim(ans)}`);
 		bar(r.phy, to.members, 'the switch was refused');
 		return;
 	}
@@ -514,7 +519,7 @@ function on_look(r, w, up) {
 	for (let m in to.members)
 		r.cac = max(r.cac, r.chans[`${m}`].cac);
 	r.state = 'moving';
-	log(`${r.name}: ${cmd}`);
+	log(`${r.name}: ${cmd}` + (ans == null ? ' (no answer yet; its arrival tells)' : ''));
 }
 
 // moving: until the radio is up on the DFS channel, its radar check done
