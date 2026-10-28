@@ -271,6 +271,12 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
   80 MHz that took over the 1 s 0.1-2 waited, so 0.1-2 logged the switch as
   refused and barred 132-144 for a day while the radio went to 132 (the
   Aeolus session, 2026-10-28). Whether the radio gets there decides now.
+  0.1-4: in 0.1-2 and 0.1-3 a local variable in choose() named `now`
+  hid the clock function 0.1-2 added, so every finished look stopped with
+  "left-hand side is not a function" before it chose (procd started it
+  again, and it looked again): those versions never moved a radio. Found
+  by the Aeolus session on the Living Room (-58); 0.1-4 tested from RAM on
+  the C-260 (looked 152 s, chose to stay, no error).
 - `config/<subtarget>.seed`. Each model's own packages are `=m` and listed
   for its device, so they are in its images only; `=y` would put them in
   every image of the multi-profile build.

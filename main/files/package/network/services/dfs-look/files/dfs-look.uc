@@ -398,16 +398,17 @@ function describe(b) {
 // { to, entry } or null, with what it weighed in its log.
 function choose(r, l) {
 	let rates = l.rates;
-	// The radio's own block, by its own counts while it looked
-	let now = own_counts(r.ifname);
-	if (l.own && now && now.time > l.own.time) {
-		let busy = ((now.busy - l.own.busy) - (now.tx - l.own.tx)) / (1.0 * (now.time - l.own.time));
+	// The radio's own block, by its own counts while it looked (not named
+	// now: that is the clock, which the log line below reads)
+	let own = own_counts(r.ifname);
+	if (l.own && own && own.time > l.own.time) {
+		let busy = ((own.busy - l.own.busy) - (own.tx - l.own.tx)) / (1.0 * (own.time - l.own.time));
 		for (let c in r.block) {
 			let x = rated(rates, c);
 			x.busy = busy;
 			x.busy_n = 1;
-			if (now.noise != null)
-				x.noise = now.noise;
+			if (own.noise != null)
+				x.noise = own.noise;
 		}
 	}
 	let cur = null, plain = null, far = null;
