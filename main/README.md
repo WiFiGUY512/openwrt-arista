@@ -193,7 +193,19 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     VHT only on a radio without 6 GHz; a QCN9074-family radio covering both
     had its 5 GHz band registered with HE alone, and on 5 GHz used legacy
     rates only (the C-360's QCN9072 as a client: 24-54 Mbit/s, found by the
-    Aeolus session's client tests). mac80211 PKG_RELEASE 17.
+    Aeolus session's client tests). Confirmed 2026-10-28 on a C-360 running
+    the -55 image: the QCN9072's 5 GHz band shows HT and VHT.
+    mac80211 PKG_RELEASE 17.
+  - 0038 (B98): ath11k advertises a spatial stream for every chain
+    (ath11k patch 109, for upstream). ath11k counted stream i only when
+    bit i of the chainmask was set, so a non-contiguous chainmask lost
+    streams: the C-360's QCN9072 (0x5, two chains) showed one stream on
+    every band in `iw phy`, where every other radio shows its chain count.
+    Streams now go up to the number of chains; contiguous chainmasks are
+    unchanged. Tested 2026-10-28 on a C-360 with the three ath11k modules
+    from RAM: the QCN9072 shows HT MCS 0-15, VHT 2 and HE 2 streams on
+    2.4, 5 and 6 GHz; the IPQ8074 and QCN9074 radios are unchanged.
+    mac80211 PKG_RELEASE 18.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
