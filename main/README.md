@@ -188,6 +188,12 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     again to what it already is. Tested 2026-10-28 on the C-260 from RAM
     (no regression: no redundant `iw reg set`, US kept, 8 VAPs).
     wifi-scripts PKG_RELEASE 7.
+  - 0037: ath11k gives a 6 GHz capable radio's 5 GHz band HT and VHT
+    (ath11k patch 108, for upstream). ath11k set the 5 GHz band's HT and
+    VHT only on a radio without 6 GHz; a QCN9074-family radio covering both
+    had its 5 GHz band registered with HE alone, and on 5 GHz used legacy
+    rates only (the C-360's QCN9072 as a client: 24-54 Mbit/s, found by the
+    Aeolus session's client tests). mac80211 PKG_RELEASE 17.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

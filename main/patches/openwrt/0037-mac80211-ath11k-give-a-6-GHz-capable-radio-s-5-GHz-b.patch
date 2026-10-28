@@ -1,0 +1,84 @@
+From fead79821079609a78f4eecf08deec2a68fb4ce3 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 28 Oct 2026 12:05:00 -0500
+Subject: [PATCH] mac80211: ath11k: give a 6 GHz capable radio's 5 GHz band HT
+ and VHT
+
+ath11k patch 108 (for upstream): a QCN9074-family radio covering 5 and
+6 GHz had its 5 GHz band registered with HE but without HT and VHT
+capabilities, so on 5 GHz it used legacy rates only: the C-360's
+QCN9072 associated to an 802.11ax AP at 24-54 Mbit/s as a client.
+Set the 5 GHz band's HT and VHT whenever it was registered with
+channels.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...apable-radio-s-5-GHz-band-HT-and-VHT.patch | 39 +++++++++++++++++++
+ 2 files changed, 40 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 7c8db65d1c3..5de442146fa 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=16
++PKG_RELEASE:=17
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch b/package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
+new file mode 100644
+index 00000000000..21a8361e3ed
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
+@@ -0,0 +1,39 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Wed, 28 Oct 2026 12:00:00 -0500
++Subject: [PATCH] wifi: ath11k: give a 6 GHz capable radio's 5 GHz band HT and
++ VHT
++
++ath11k_mac_setup_ht_vht_cap() sets the 5 GHz band's HT and VHT
++capabilities only for a single_pdev_only device or a radio that does
++not support 6 GHz. A QCN9074 can cover 5 GHz as well as 6 GHz, and
++ath11k_mac_setup_channels_rates() then registers its 5 GHz band too, with
++its HE capabilities (ath11k_mac_setup_he_cap() sets HE for any 5 GHz
++capable radio), but without HT and VHT. mac80211 can't use HE on 5 GHz
++without them, so on that band such a radio uses legacy rates only: on
++an Arista C-360, its QCN9072 radio associated to an 802.11ax AP on 5 GHz
++at 24-54 Mbit/s (no MCS), where `iw phy` showed its 5 GHz band with HE
++capabilities and no HT or VHT ones.
++
++Give the 5 GHz band HT and VHT whenever it was registered with channels,
++which ath11k_mac_setup_channels_rates() does before this runs.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -5765,9 +5765,12 @@
++ 						    rate_cap_rx_chainmask);
++ 	}
++ 
+++	/* A 6 GHz capable radio may cover 5 GHz as well, as a QCN9074 does:
+++	 * its 5 GHz band, where one was registered, needs HT and VHT as much
+++	 * as any other radio's.
+++	 */
++ 	if (cap->supported_bands & WMI_HOST_WLAN_5G_CAP &&
++-	    (ar->ab->hw_params.single_pdev_only ||
++-	     !ar->supports_6ghz)) {
+++	    ar->mac.sbands[NL80211_BAND_5GHZ].n_channels) {
++ 		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
++ 		ht_cap = cap->band[NL80211_BAND_5GHZ].ht_cap_info;
++ 		if (ht_cap_info)
+-- 
+2.43.0
+
