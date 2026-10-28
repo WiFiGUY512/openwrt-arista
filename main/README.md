@@ -19,6 +19,13 @@ named `arista_c-360`, `arista_c-260`, `arista_c-230`, `arista_w-318` and
 `arista_w-118`, and their board names are `arista,c-360`, `arista,c-260`,
 `arista,c-230`, `arista,w-318` and `arista,w-118`.
 
+**An image says which port build it is.** `<version>` (git describe of
+this repository) goes into OpenWrt's version code, so on any unit
+`/etc/openwrt_release`, `ubus call system board` and LuCI show, e.g.,
+`DISTRIB_DESCRIPTION='OpenWrt SNAPSHOT r0+589-bcb16b63472 (arista
+v2026.10.17.1-57-g1234567)'`. `DISTRIB_REVISION` stays the OpenWrt revision,
+and the image file names are unchanged.
+
 **Every network port is in the LAN by default**, as upstream review settled
 for all four models: on a fresh install the C-360's and C-260's Ethernet 1
 and 2, the W-318's uplink and Network 1-3, the W-118's uplink and LAN 1-3

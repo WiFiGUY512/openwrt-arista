@@ -186,7 +186,21 @@ say "feeds: $(sed 's/^src-git \([a-z]*\) .*\^\(.\{8\}\).*/\1 \2/' feeds.conf | t
 
 # 6. configure and build
 cp "$MAIN/config/$SUB.seed" .config
+# the port build in the version code: /etc/openwrt_release's
+# DISTRIB_DESCRIPTION, os-release, `ubus call system board` and LuCI then
+# say which build an AP runs, where the git revision alone does not
+# (DISTRIB_REVISION keeps it); image file names stay as they are
+cat >>.config <<EOF
+CONFIG_IMAGEOPT=y
+CONFIG_VERSIONOPT=y
+CONFIG_VERSION_CODE="$(./scripts/getver.sh) (arista $VERSION)"
+# CONFIG_VERSION_FILENAMES is not set
+# CONFIG_VERSION_CODE_FILENAMES is not set
+EOF
 make defconfig >/dev/null
+grep -q "^CONFIG_VERSION_CODE=\".*(arista $VERSION)\"" .config &&
+	! grep -qE "^CONFIG_VERSION(_CODE)?_FILENAMES=y" .config ||
+	{ echo "the version code did not take" >&2; exit 1; }
 for d in $DEVICES; do
 	grep -q "^CONFIG_TARGET_DEVICE_${TARGET}_${PROFILE}_DEVICE_$d=y" .config ||
 		grep -q "^CONFIG_TARGET_${TARGET}_${PROFILE}_DEVICE_$d=y" .config ||
