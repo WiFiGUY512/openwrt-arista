@@ -148,6 +148,19 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     a DFS channel once it has looked. `dfs_look_first '0'` is the old
     behaviour, and `acs_exclude_dfs '1'` still keeps a radio off DFS
     altogether. wifi-scripts PKG_RELEASE 6.
+  - 0033 (B94): mac80211 flushes TX for a new key only where it needs
+    tailroom (mac80211 patch 423, for upstream). Every pairwise key a
+    station got waited in `ieee80211_key_link()` for `synchronize_net()`, an
+    RCU grace period, when the AP's tailroom count went from 0 to 1: on a
+    BSS without PMF all of ath11k's keys are in the hardware and the count
+    is 0 between stations (with PMF its software BIP keys hold it at 1).
+    hostapd waited on it before letting the station on: 31-65 ms per 4-way
+    handshake on the C-260 (HZ=100). A new key isn't used before it is
+    published, after the hardware upload, so TX is now flushed then, and
+    only where the key still needs tailroom. Tested 2026-10-28 on the C-260
+    (the module loaded from RAM, Aeolus's roam tests, WPA2-PSK without
+    PMF): NEW_KEY to authorized 0-2 ms in 13 of 13 handshakes. mac80211
+    PKG_RELEASE 14.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

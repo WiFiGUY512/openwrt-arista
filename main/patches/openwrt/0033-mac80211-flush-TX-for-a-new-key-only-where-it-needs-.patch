@@ -1,0 +1,218 @@
+From fdd15f06b96a25669e499ecc09fe5d9b9aadd6d0 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 28 Oct 2026 10:00:00 -0500
+Subject: [PATCH] mac80211: flush TX for a new key only where it needs tailroom
+
+mac80211 patch 423 (for upstream): every pairwise key a station got on
+an AP whose keys are all in the hardware waited an RCU grace period in
+ieee80211_key_link(): increment_tailroom_need_count() calls
+synchronize_net() when the tailroom count goes from zero to one, and on
+such an AP (no PMF on ath11k, whose BIP keys are in software; mt76 with
+or without) the count is zero between stations. hostapd waits on it
+before the station is authorized: 31-65 ms per 4-way handshake on an
+Arista C-260 (IPQ8074, ath11k, HZ=100), 0-2 ms on the same BSS with PMF
+enabled. A new key can't be used before it is published, by which time
+it is known whether it went to the hardware needing no tailroom, so TX
+is flushed then, and only where the key still holds the count.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |   2 +-
+ ...new-key-only-where-it-needs-tailroom.patch | 169 ++++++++++++++++++
+ 2 files changed, 170 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index c37c3be8..d19562b9 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch b/package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch
+new file mode 100644
+index 00000000..5b4e5a3b
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch
+@@ -0,0 +1,169 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Wed, 28 Oct 2026 08:00:00 -0500
++Subject: [PATCH] wifi: mac80211: flush TX for a new key only where it needs
++ tailroom
++
++ieee80211_key_link() counts every new key as needing tailroom before
++ieee80211_key_replace() uploads it, and increment_tailroom_need_count()
++flushes TX with synchronize_net() when that count goes from zero to one.
++On an AP whose keys are all in the hardware (no software BIP, as without
++PMF on ath11k, or with BIP in the hardware, as on mt76), the count is
++zero between stations, so every pairwise key a station gets waits an RCU
++grace period: 31-65 ms per 4-way handshake at HZ=100 on an IPQ8074
++(ath11k), measured from hostapd's NL80211_CMD_NEW_KEY to its next step,
++against 0-2 ms on the same AP with PMF enabled, whose software IGTK
++keeps the count above zero. hostapd waits on it before the station is
++authorized, and serves no other station meanwhile.
++
++The flush is there so that no frame sized without tailroom meets a key
++that needs it in software. A new key (one replacing none) can't be met
++before ieee80211_key_replace() publishes it, and by then it is known
++whether it went to the hardware needing no tailroom, giving the count
++back. So count it as before, but flush, on the count's transition from
++zero to one, only where the key still holds the count when it is about
++to be published. A key replacing another is handled as before, as the
++old key may drop to software while in use.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/net/mac80211/key.c
+++++ b/net/mac80211/key.c
++@@ -72,6 +72,20 @@
++ 	rcu_read_unlock();
++ }
++ 
+++/*
+++ * __increment_tailroom_need_count counts a key as needing tailroom, and says
+++ * whether the count went from zero to one: then TX must be flushed before a
+++ * key that needs tailroom is used (see increment_tailroom_need_count()).
+++ */
+++static bool __increment_tailroom_need_count(struct ieee80211_sub_if_data *sdata)
+++{
+++	lockdep_assert_wiphy(sdata->local->hw.wiphy);
+++
+++	update_vlan_tailroom_need_count(sdata, 1);
+++
+++	return !sdata->crypto_tx_tailroom_needed_cnt++;
+++}
+++
++ static void increment_tailroom_need_count(struct ieee80211_sub_if_data *sdata)
++ {
++ 	/*
++@@ -93,11 +107,7 @@
++ 	 * http://mid.gmane.org/1308590980.4322.19.camel@jlt3.sipsolutions.net
++ 	 */
++ 
++-	lockdep_assert_wiphy(sdata->local->hw.wiphy);
++-
++-	update_vlan_tailroom_need_count(sdata, 1);
++-
++-	if (!sdata->crypto_tx_tailroom_needed_cnt++) {
+++	if (__increment_tailroom_need_count(sdata)) {
++ 		/*
++ 		 * Flush all XMIT packets currently using HW encryption or no
++ 		 * encryption at all if the count transition is from 0 -> 1.
++@@ -442,7 +452,8 @@
++ 				 struct sta_info *sta,
++ 				 bool pairwise,
++ 				 struct ieee80211_key *old,
++-				 struct ieee80211_key *new)
+++				 struct ieee80211_key *new,
+++				 bool flush)
++ {
++ 	struct link_sta_info *link_sta = sta ? &sta->deflink : NULL;
++ 	int link_id;
++@@ -521,6 +532,15 @@
++ 						 IEEE80211_KEY_FLAG_RESERVE_TAILROOM)))
++ 				decrease_tailroom_need_count(sdata, 1);
++ 		}
+++
+++		/*
+++		 * The new key is not visible to TX yet. If the count went
+++		 * from zero to one for it, TX is flushed now, before it is,
+++		 * unless it went to the hardware needing no tailroom and gave
+++		 * the count back: nothing can meet it in software then.
+++		 */
+++		if (!ret && flush && sdata->crypto_tx_tailroom_needed_cnt)
+++			synchronize_net();
++ 	}
++ 
++ 	if (ret)
++@@ -858,6 +878,7 @@
++ 	 * can cause warnings to appear.
++ 	 */
++ 	bool delay_tailroom = sdata->vif.type == NL80211_IFTYPE_STATION;
+++	bool flush = false;
++ 	int ret;
++ 
++ 	lockdep_assert_wiphy(sdata->local->hw.wiphy);
++@@ -938,9 +959,23 @@
++ 	if (sta && sta->sta.spp_amsdu)
++ 		key->conf.flags |= IEEE80211_KEY_FLAG_SPP_AMSDU;
++ 
++-	increment_tailroom_need_count(sdata);
+++	/*
+++	 * A key replacing another is counted, and TX flushed on the count's
+++	 * transition from zero to one, here: the old key may drop to software
+++	 * while still in use. A new key is not in use before
+++	 * ieee80211_key_replace() publishes it, which flushes TX only where
+++	 * the key still needs tailroom then. Every pairwise key a station
+++	 * gets on an AP whose keys are all in the hardware went through
+++	 * synchronize_net() before, an RCU grace period (tens of ms), with
+++	 * hostapd waiting on it before the station could send.
+++	 */
+++	if (old_key)
+++		increment_tailroom_need_count(sdata);
+++	else
+++		flush = __increment_tailroom_need_count(sdata);
++ 
++-	ret = ieee80211_key_replace(sdata, link, sta, pairwise, old_key, key);
+++	ret = ieee80211_key_replace(sdata, link, sta, pairwise, old_key, key,
+++				    flush);
++ 
++ 	if (!ret) {
++ 		ieee80211_debugfs_key_add(key);
++@@ -967,7 +1002,7 @@
++ 	if (key->sdata)
++ 		ieee80211_key_replace(key->sdata, NULL, key->sta,
++ 				      key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE,
++-				      key, NULL);
+++				      key, NULL, false);
++ 	ieee80211_key_destroy(key, delay_tailroom);
++ }
++ 
++@@ -1099,7 +1134,7 @@
++ 	list_for_each_entry_safe(key, tmp, &sdata->key_list, list) {
++ 		ieee80211_key_replace(key->sdata, NULL, key->sta,
++ 				      key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE,
++-				      key, NULL);
+++				      key, NULL, false);
++ 		list_add_tail(&key->list, keys);
++ 	}
++ 
++@@ -1120,7 +1155,7 @@
++ 			continue;
++ 		ieee80211_key_replace(key->sdata, link, key->sta,
++ 				      key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE,
++-				      key, NULL);
+++				      key, NULL, false);
++ 		list_add_tail(&key->list, keys);
++ 	}
++ }
++@@ -1197,7 +1232,7 @@
++ 			continue;
++ 		ieee80211_key_replace(key->sdata, NULL, key->sta,
++ 				      key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE,
++-				      key, NULL);
+++				      key, NULL, false);
++ 		__ieee80211_key_destroy(key, key->sdata->vif.type ==
++ 					NL80211_IFTYPE_STATION);
++ 	}
++@@ -1208,7 +1243,7 @@
++ 			continue;
++ 		ieee80211_key_replace(key->sdata, NULL, key->sta,
++ 				      key->conf.flags & IEEE80211_KEY_FLAG_PAIRWISE,
++-				      key, NULL);
+++				      key, NULL, false);
++ 		__ieee80211_key_destroy(key, key->sdata->vif.type ==
++ 					NL80211_IFTYPE_STATION);
++ 	}
+-- 
+2.43.0
+
