@@ -1,0 +1,109 @@
+From 0fbd846c27c07dd05279ef3d0ddcdfaeea14b3f2 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 28 Oct 2026 05:10:00 -0500
+Subject: [PATCH] mac80211: ath11k: don't report a QCN9074's chan-info noise
+ floor
+
+ath11k patch 107 (for upstream): on the QCN9074 family the noise floor
+in a chan-info START_RESP is a fixed value, about -107 dBm on every
+channel, busy or quiet, below the thermal noise of 20 MHz; the IPQ8074
+reads -93 to -98 on the same channels and follows them. The C-360's
+QCN9072 scan radio and its 6 GHz QCN9074 filled every off-channel survey
+entry with it. Leave the noise out of those entries (time and busy
+stay); every other chip, and every in-use channel, is unchanged.
+
+The patch adds a field to struct ath11k_hw_params, which struct
+ath11k_base embeds, so ath11k, ath11k_ahb and ath11k_pci must come from
+the same build (as in any image).
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...rt-a-QCN9074-s-chan-info-noise-floor.patch | 59 +++++++++++++++++++
+ 2 files changed, 60 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index b2873517726..7c8db65d1c3 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=15
++PKG_RELEASE:=16
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch b/package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch
+new file mode 100644
+index 00000000000..cd37d78840c
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch
+@@ -0,0 +1,59 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Wed, 28 Oct 2026 04:30:00 -0500
++Subject: [PATCH] wifi: ath11k: don't report a QCN9074's chan-info noise floor
++
++On a QCN9074 (and the QCN9072, which uses its hw_params) the noise floor
++in WMI_CHAN_INFO_EVENTID's START_RESP is a fixed value, not a
++measurement. On an Arista C-360 the QCN9072 scan radio read -107 dBm
+++-1 on every 2.4, 5 and 6 GHz channel it visited (150 ms dwells), busy or
++quiet: 5540 at 52 % busy read -110, its lowest. The IPQ8074's own radios,
++on the same channels at the same time, read -95 to -98 and followed the
++channel (-96, -97, -96 on 5200/5220/5240; -95 on 5785, -98 on 5885),
++where the QCN9072 read -108, -107, -107, -107 and -106. -107 is also
++below the ~-101 dBm thermal noise of 20 MHz.
++
++Leave the noise out of a QCN9074's off-channel survey entries, so that
++nothing takes the placeholder for a noise floor; their time and busy
++counts are unchanged, as is every other chip.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/core.c
+++++ b/drivers/net/wireless/ath/ath11k/core.c
++@@ -474,6 +474,7 @@
++ 		.cfr_support = false,
++ 		.cfr_num_stream_bufs = 0,
++ 		.cfr_stream_buf_size = 0,
+++		.chan_info_nf_invalid = true,
++ 	},
++ 	{
++ 		.name = "wcn6855 hw2.0",
++--- a/drivers/net/wireless/ath/ath11k/hw.h
+++++ b/drivers/net/wireless/ath/ath11k/hw.h
++@@ -236,6 +236,8 @@
++ 	bool cfr_support;
++ 	u32 cfr_num_stream_bufs;
++ 	u32 cfr_stream_buf_size;
+++	/* chan-info's noise floor is a fixed value, not a measurement */
+++	bool chan_info_nf_invalid;
++ };
++ 
++ struct ath11k_hw_ops {
++--- a/drivers/net/wireless/ath/ath11k/wmi.c
+++++ b/drivers/net/wireless/ath/ath11k/wmi.c
++@@ -8004,9 +8004,11 @@
++ 	if (ch_info_ev.cmd_flags == WMI_CHAN_INFO_START_RESP) {
++ 		survey = &ar->survey[idx];
++ 		memset(survey, 0, sizeof(*survey));
++-		survey->noise = ch_info_ev.noise_floor;
++-		survey->filled = SURVEY_INFO_NOISE_DBM | SURVEY_INFO_TIME |
++-				 SURVEY_INFO_TIME_BUSY;
+++		survey->filled = SURVEY_INFO_TIME | SURVEY_INFO_TIME_BUSY;
+++		if (!ab->hw_params.chan_info_nf_invalid) {
+++			survey->noise = ch_info_ev.noise_floor;
+++			survey->filled |= SURVEY_INFO_NOISE_DBM;
+++		}
++ 		survey->time = div_u64(ch_info_ev.cycle_count, cc_freq_hz);
++ 		survey->time_busy = div_u64(ch_info_ev.rx_clear_count, cc_freq_hz);
++ 	}
+-- 
+2.43.0
+

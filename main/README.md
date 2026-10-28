@@ -167,6 +167,17 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     and the next station dump hit a `WARN_ON_ONCE` at `airtime.c:532`
     (once per boot on two C-360s). mac80211 PKG_RELEASE 15. Not tested
     live: the warning needs an OFDMA station and comes once a boot.
+  - 0035 (B90): ath11k doesn't report a QCN9074's chan-info noise floor
+    (ath11k patch 107, for upstream). On the QCN9074 family (the C-360's
+    6 GHz card and its QCN9072 scan radio) every off-channel survey entry
+    read about -107 dBm, busy or quiet, below thermal noise, where the
+    IPQ8074 read -93 to -98 on the same channels and followed them. Those
+    entries now carry time and busy but no noise; other chips and in-use
+    channels are unchanged. Tested 2026-10-28 on a C-360 with the three
+    ath11k modules loaded from RAM (it adds to struct ath11k_hw_params,
+    which struct ath11k_base embeds, so ath11k_ahb and ath11k_pci must come
+    from the same build: with only ath11k.ko swapped, the C-360 rebooted).
+    mac80211 PKG_RELEASE 16.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
