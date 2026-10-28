@@ -26,7 +26,6 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  .../files-ucode/lib/netifd/wireless/mac80211.sh            | 7 ++++++-
  .../files-ucode/usr/share/ucode/wifi/hostapd.uc            | 3 ++-
  3 files changed, 9 insertions(+), 3 deletions(-)
- mode change 100755 => 100644 package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
 
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
 index a2c88bffdbd..da7cfa6f887 100644
@@ -42,9 +41,7 @@ index a2c88bffdbd..da7cfa6f887 100644
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
-old mode 100755
-new mode 100644
-index 506be9f47a4..c100ec1fa0a
+index 506be9f47a4..c100ec1fa0a 100755
 --- a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
 +++ b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
 @@ -70,7 +70,12 @@ function setup_phy(phy, config, data) {

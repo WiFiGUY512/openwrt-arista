@@ -77,6 +77,12 @@ apply_patches() {
 	mkdir -p "$saved"
 	for p in "$@"; do
 		[ -e "$p" ] || continue
+		# a patch made from files edited through Windows can drop a script's x
+		# bit (0036 once did: netifd then had no Wi-Fi handler)
+		if grep -q '^old mode ' "$p"; then
+			echo "$(basename "$p") changes a file's mode; a port patch must not" >&2
+			exit 1
+		fi
 		git -C "$dir" apply --whitespace=nowarn "$p" || { echo "$(basename "$p") does not apply to $dir" >&2; exit 1; }
 		cp "$p" "$saved/"
 	done
