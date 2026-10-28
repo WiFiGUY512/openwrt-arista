@@ -138,6 +138,16 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     Accounting-Request. Tested 2026-10-28 on the C-260 (`ap.uc` bind-mounted):
     one `acct_server_addr` and one `radius_acct_req_attr` per radio, all 8
     VAPs up. wifi-scripts PKG_RELEASE 5.
+  - 0032: an automatic 5 GHz channel starts outside DFS. hostapd's ACS
+    could pick a DFS channel at every start (a reboot, a config change, a
+    `wifi` reload), and the radio then sent nothing for its 60 s radar
+    check: the C-260 came up on 60, then on 100, 2026-10-28. A wifi-device
+    option, `dfs_look_first` (on by default), sets `acs_exclude_dfs` where
+    the channel is automatic and a block outside DFS fits the width and
+    channel list (not at 160 MHz); `dfs-look` (below) may move the radio to
+    a DFS channel once it has looked. `dfs_look_first '0'` is the old
+    behaviour, and `acs_exclude_dfs '1'` still keeps a radio off DFS
+    altogether. wifi-scripts PKG_RELEASE 6.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
@@ -173,6 +183,20 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
   (`arista-c360-radio`) writes the IPQ8074's calibration from ART 0x71800 as
   `cal-ahb-c000000.wifi.bin`; the device tree names 0x1000, the 6 GHz plan's.
   With no such file nothing changes. Not for upstream.
+- `files/package/network/services/dfs-look`, in every model's images:
+  after a 5 GHz radio has started outside DFS (0032), it looks at every 5
+  GHz channel, with airscan's scan radio where the board has one (two
+  scans and 5 GHz sweeps, about 2.5 minutes) or else by the radio's own
+  scans (each channel twice, about a minute), and moves the radio to a DFS
+  block by hostapd's `CHAN_SWITCH` only where that block rates better by 20
+  points than its own and than the best outside DFS (Aeolus's rating: busy,
+  noise, other networks heard). Once per start; a DFS block the radio
+  left, or failed to get to, is left alone for a day. `dfs-look -n` only
+  says what it would do. Tested 2026-10-28 on a C-260 from RAM: with the
+  scan radio it stayed on 36-40 (10 against DFS 100-104's 2); with
+  `-m 0` it moved to 124, and by its own scans (airscan stopped) it moved
+  to 100 at the default margin (36-40 rated 23, 100-104 0), each up 62 s
+  after the switch, all 8 VAPs back.
 - `config/<subtarget>.seed`. Each model's own packages are `=m` and listed
   for its device, so they are in its images only; `=y` would put them in
   every image of the multi-profile build.
