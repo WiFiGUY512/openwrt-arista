@@ -1,0 +1,323 @@
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 29 Oct 2026 15:00:00 -0500
+Subject: [PATCH] mac80211: ath11k: add the measured noise floor, not -95, to
+ a received signal
+
+ath11k patch 111 (for upstream), B110: ath11k reported every received
+signal as the firmware's level in dB plus a fixed -95 dBm, but the
+firmware measures that level against the channel's own noise floor, so
+on a channel at -90 every client read 5 dB low, and 7 dB on the Living
+Room attic's 149 at -88. It skewed every signal comparison across
+channels and APs, and made a C-360 on a noisy channel look deaf. Add the
+radio's measured floor of the channel in use instead, the pdev-stats
+value the survey of that channel already shows (patch 105): a client
+whose chains summed to -42 to -44 dBm on a -90 channel shows -40 to -42
+(-95 gave -45 to -48).
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=19
++PKG_RELEASE:=20
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+
+diff --git a/package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch b/package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
+new file mode 100644
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
+@@ -0,0 +1,285 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Thu, 29 Oct 2026 14:55:00 -0500
++Subject: [PATCH] wifi: ath11k: add the measured noise floor, not -95, to a received signal
++
++The firmware gives a received signal (rssi_comb of a PPDU, the ack rssi
++of a tx completion, the snr of a management frame) in dB above the noise
++floor it measures on the channel. Without the firmware's own conversion
++to dBm (WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT), ath11k adds a
++fixed ATH11K_DEFAULT_NOISE_FLOOR (-95 dBm), so every signal it reports
++reads low by as much as the channel's floor is above -95 dBm: 5 dB on a
++channel at -90, 7 dB at -88.
++
++On an IPQ8074 (WLAN.HK.2.9.0.1) the HTT PDEV RX rate stats give each
++chain's signal of the last PPDU in dB and in dBm. Their difference is
++that chain's measured floor (-87 to -95 dBm across chains and channels),
++and the chains' summed power is rssi_comb plus the channel noise floor
++of the pdev stats to within about 1 dB, on 2.4 and 5 GHz. A client whose
++chains summed to -42 dBm on a 5 GHz channel at -90 showed as -46 in a
++station dump.
++
++Keep the measured floor of the channel in use per radio, read from the
++pdev stats when the survey of that channel is read or a station dump
++finds it older than 10 s, and add it in place of -95 to the station
++signal and its average, the ack signal, management frames received on
++that channel, and monitor frames. Drop it when the radio changes
++channel; until it is read again, and for frames on another channel
++(during a scan), -95 stays. Chips with db2dbm are unchanged. ath12k
++already adds the noise floor its firmware reports.
++
++Tested on an Arista C-360 (IPQ8074): a client whose chains summed to -42
++to -44 dBm on a 5 GHz channel at -90 now shows -40 to -42, where -95 gave
++-45 to -48. The management frame and monitor paths were not checked
++separately; they take the same offset.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/core.h
+++++ b/drivers/net/wireless/ath/ath11k/core.h
++@@ -720,6 +720,14 @@
++ 	/* valid during scan; needed for mgmt rx during scan */
++ 	struct ieee80211_channel *scan_channel;
++ 
+++	/* measured noise floor (dBm) of rx_channel for the signals reported
+++	 * on it, or 0 until it is read; set under conf_mutex and data_lock,
+++	 * read without them on the rx and tx paths
+++	 */
+++	s32 noise_floor;
+++	u32 noise_floor_freq;
+++	unsigned long noise_floor_time;
+++
++ 	u8 cfg_tx_chainmask;
++ 	u8 cfg_rx_chainmask;
++ 	u8 num_rx_chains;
++@@ -1375,6 +1383,23 @@
++ 	return "unknown";
++ }
++ 
+++/* The firmware gives a received signal (rssi_comb, ack rssi, management
+++ * snr) in dB above the noise floor it measures on the channel. Without its
+++ * own conversion to dBm (db2dbm), add that measured noise floor, not a
+++ * nominal -95 dBm, or every signal reads low by as much as the floor is
+++ * above -95. A frame on another channel than the one in use (freq given),
+++ * or a channel whose floor has not been read yet, gets the nominal one.
+++ */
+++static inline s32 ath11k_noise_floor(struct ath11k *ar, u32 freq)
+++{
+++	s32 nf = READ_ONCE(ar->noise_floor);
+++
+++	if (!nf || (freq && freq != READ_ONCE(ar->noise_floor_freq)))
+++		return ATH11K_DEFAULT_NOISE_FLOOR;
+++
+++	return nf;
+++}
+++
++ void ath11k_core_pm_notifier_unregister(struct ath11k_base *ab);
++ 
++ #endif /* _CORE_H_ */
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -5071,7 +5071,7 @@
++ 	u8 *ptr = NULL;
++ 
++ 	rxs->flag |= RX_FLAG_MACTIME_START;
++-	rxs->signal = ppduinfo->rssi_comb + ATH11K_DEFAULT_NOISE_FLOOR;
+++	rxs->signal = ppduinfo->rssi_comb + ath11k_noise_floor(ar, rxs->freq);
++ 
++ 	if (ppduinfo->nss)
++ 		rxs->nss = ppduinfo->nss;
++--- a/drivers/net/wireless/ath/ath11k/dp_tx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
++@@ -358,7 +358,7 @@
++ 
++ 			if (!test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
++ 				      ab->wmi_ab.svc_map))
++-				info->status.ack_signal += ATH11K_DEFAULT_NOISE_FLOOR;
+++				info->status.ack_signal += ath11k_noise_floor(ar, 0);
++ 
++ 			info->status.flags |=
++ 				IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
++@@ -593,7 +593,7 @@
++ 
++ 		if (!test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
++ 			      ab->wmi_ab.svc_map))
++-			info->status.ack_signal += ATH11K_DEFAULT_NOISE_FLOOR;
+++			info->status.ack_signal += ath11k_noise_floor(ar, 0);
++ 
++ 		info->status.flags |= IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
++ 	}
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -7493,6 +7493,20 @@
++ 	return ret;
++ }
++ 
+++/* how long a station dump reports signals with a noise floor before it
+++ * reads the floor again
+++ */
+++#define ATH11K_NOISE_FLOOR_REFRESH	(10 * HZ)
+++
+++/* forget the noise floor of the channel the radio is leaving */
+++static void ath11k_mac_clear_noise_floor(struct ath11k *ar)
+++{
+++	lockdep_assert_held(&ar->data_lock);
+++
+++	WRITE_ONCE(ar->noise_floor, 0);
+++	ar->noise_floor_time = jiffies - ATH11K_NOISE_FLOOR_REFRESH - 1;
+++}
+++
++ static int ath11k_mac_op_add_chanctx(struct ieee80211_hw *hw,
++ 				     struct ieee80211_chanctx_conf *ctx)
++ {
++@@ -7510,6 +7524,7 @@
++ 	 * Rx PPDU desc information.
++ 	 */
++ 	ar->rx_channel = ctx->def.chan;
+++	ath11k_mac_clear_noise_floor(ar);
++ 	spin_unlock_bh(&ar->data_lock);
++ 
++ 	mutex_unlock(&ar->conf_mutex);
++@@ -7534,6 +7549,7 @@
++ 	 * rx_channel with the channel of that remaining channel context.
++ 	 */
++ 	ar->rx_channel = NULL;
+++	ath11k_mac_clear_noise_floor(ar);
++ 	spin_unlock_bh(&ar->data_lock);
++ 
++ 	mutex_unlock(&ar->conf_mutex);
++@@ -7775,6 +7791,7 @@
++ 	if (n_vifs) {
++ 		spin_lock_bh(&ar->data_lock);
++ 		ar->rx_channel = vifs[0].new_ctx->def.chan;
+++		ath11k_mac_clear_noise_floor(ar);
++ 		spin_unlock_bh(&ar->data_lock);
++ 	}
++ 
++@@ -9369,44 +9386,71 @@
++ 		ath11k_warn(ar->ab, "bss channel survey timed out\n");
++ }
++ 
++-/* The noise floor in the firmware's bss channel info event is not the
++- * channel's measured noise floor: on IPQ8074 it reads about -109 dBm on
++- * 5 GHz and -102 dBm on 2.4 GHz, and barely moves, while the measured value
++- * the firmware reports in its pdev stats is -94 and -96. Report the measured
++- * one for the channel in use, as the channel info events of a scan do for
++- * the other channels.
+++/* Read the measured noise floor of the channel in use from the firmware's
+++ * pdev stats, and keep it for the signals reported on that channel (see
+++ * ath11k_noise_floor()). Return it, or 0 if there is none.
++  */
++-static void ath11k_mac_get_chan_noise_floor(struct ath11k *ar,
++-					    struct survey_info *ar_survey,
++-					    struct survey_info *survey)
+++static s32 ath11k_mac_read_noise_floor(struct ath11k *ar)
++ {
++ 	struct ath11k_fw_stats_pdev *pdev;
+++	bool db2dbm = test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
+++			       ar->ab->wmi_ab.svc_map);
++ 	s32 nf;
++ 
++ 	lockdep_assert_held(&ar->conf_mutex);
++ 
++-	if (ar->scan.state != ATH11K_SCAN_IDLE)
++-		return;
+++	ar->noise_floor_time = jiffies;
+++
+++	if (!ar->rx_channel || ar->scan.state != ATH11K_SCAN_IDLE)
+++		return 0;
++ 
++ 	if (ath11k_mac_get_fw_stats(ar, ar->pdev->pdev_id, 0,
++ 				    WMI_REQUEST_PDEV_STAT))
++-		return;
+++		return 0;
++ 
++ 	spin_lock_bh(&ar->data_lock);
++ 	pdev = list_first_entry_or_null(&ar->fw_stats.pdevs,
++ 					struct ath11k_fw_stats_pdev, list);
++ 	nf = pdev ? pdev->ch_noise_floor : 0;
+++	if (nf >= 0 || nf <= -127)
+++		nf = 0;
+++	if (nf && !db2dbm) {
+++		WRITE_ONCE(ar->noise_floor_freq, ar->rx_channel->center_freq);
+++		WRITE_ONCE(ar->noise_floor, nf);
+++	}
+++	spin_unlock_bh(&ar->data_lock);
+++
+++	ath11k_dbg(ar->ab, ATH11K_DBG_MAC, "noise floor %d dBm on %u MHz\n",
+++		   nf, ar->rx_channel->center_freq);
+++
+++	return nf;
+++}
+++
+++/* The noise floor in the firmware's bss channel info event is not the
+++ * channel's measured noise floor: on IPQ8074 it reads about -109 dBm on
+++ * 5 GHz and -102 dBm on 2.4 GHz, and barely moves, while the measured value
+++ * the firmware reports in its pdev stats is -94 and -96. Report the measured
+++ * one for the channel in use, as the channel info events of a scan do for
+++ * the other channels.
+++ */
+++static void ath11k_mac_get_chan_noise_floor(struct ath11k *ar,
+++					    struct survey_info *ar_survey,
+++					    struct survey_info *survey)
+++{
+++	s32 nf = ath11k_mac_read_noise_floor(ar);
+++
+++	if (!nf)
+++		return;
+++
++ 	/* keep it for the channel too, so its survey shows the last measured
++ 	 * value once the radio has left it
++ 	 */
++-	if (nf < 0 && nf > -127)
++-		ar_survey->noise = nf;
+++	spin_lock_bh(&ar->data_lock);
+++	ar_survey->noise = nf;
++ 	spin_unlock_bh(&ar->data_lock);
++ 
++-	if (nf < 0 && nf > -127) {
++-		survey->noise = nf;
++-		survey->filled |= SURVEY_INFO_NOISE_DBM;
++-	}
+++	survey->noise = nf;
+++	survey->filled |= SURVEY_INFO_NOISE_DBM;
++ }
++ 
++ static int ath11k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
++@@ -9534,6 +9578,10 @@
++ 		ath11k_mac_put_chain_rssi(sinfo, arsta, "fw stats", true);
++ 	}
++ 
+++	if (!db2dbm &&
+++	    time_after(jiffies, ar->noise_floor_time + ATH11K_NOISE_FLOOR_REFRESH))
+++		ath11k_mac_read_noise_floor(ar);
+++
++ 	signal = arsta->rssi_comb;
++ 	if (!signal &&
++ 	    arsta->arvif->vdev_type == WMI_VDEV_TYPE_STA &&
++@@ -9548,14 +9596,14 @@
++ 		   db2dbm, arsta->rssi_comb, arsta->rssi_beacon);
++ 
++ 	if (signal) {
++-		sinfo->signal = db2dbm ? signal : signal + ATH11K_DEFAULT_NOISE_FLOOR;
+++		sinfo->signal = db2dbm ? signal : signal + ath11k_noise_floor(ar, 0);
++ 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL);
++ 	}
++ 
++ 	sinfo->signal_avg = ewma_avg_rssi_read(&arsta->avg_rssi);
++ 
++ 	if (!db2dbm)
++-		sinfo->signal_avg += ATH11K_DEFAULT_NOISE_FLOOR;
+++		sinfo->signal_avg += ath11k_noise_floor(ar, 0);
++ 
++ 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL_AVG);
++ }
++--- a/drivers/net/wireless/ath/ath11k/wmi.c
+++++ b/drivers/net/wireless/ath/ath11k/wmi.c
++@@ -7668,7 +7668,7 @@
++ 		status->freq = ieee80211_channel_to_frequency(rx_ev.channel,
++ 							      status->band);
++ 
++-	status->signal = rx_ev.snr + ATH11K_DEFAULT_NOISE_FLOOR;
+++	status->signal = rx_ev.snr + ath11k_noise_floor(ar, status->freq);
++ 	status->rate_idx = ath11k_mac_bitrate_to_idx(sband, rx_ev.rate / 100);
++ 
++ 	hdr = (struct ieee80211_hdr *)skb->data;

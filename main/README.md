@@ -228,6 +228,22 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     C-260 with 110 245.7, 234.6, 241.1 (fresh 257.3). Neither re-sending
     the HE MU and sounding modes alone nor stopping and starting the
     vdevs one at a time helped. mac80211 PKG_RELEASE 19.
+  - 0040 (B110): ath11k adds the measured noise floor, not -95, to a
+    received signal (ath11k patch 111, for upstream; builds on 105). The
+    firmware gives a signal in dB above the floor it measures on the
+    channel, and ath11k added a fixed -95 dBm, so every client read low
+    by as much as the channel's floor is above -95: 5 dB at -90, 7 dB on
+    the Living Room attic's 149 at -88, which made a C-360 on a noisy
+    channel look deaf. The radio's measured floor of the channel in use
+    (the pdev-stats value the survey shows, 105) is now kept, read again
+    by a station dump after 10 s and dropped on a channel change, and
+    added to the station signal and its average, the ack signal,
+    management frames on that channel (frames on other channels keep
+    -95) and monitor frames. Tested 2026-10-29 from RAM on the old Living
+    Room unit, 5 GHz on 60 at a -90 floor, with a QCN9072 client whose
+    chains summed to -42 to -44 dBm: -40 to -42 reported, -45 to -48
+    with -95; the S23 on the stock driver read 3-4 dB under its chains.
+    mac80211 PKG_RELEASE 20.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
