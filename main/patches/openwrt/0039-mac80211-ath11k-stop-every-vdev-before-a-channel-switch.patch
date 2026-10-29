@@ -1,0 +1,135 @@
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 29 Oct 2026 04:15:00 -0500
+Subject: [PATCH] mac80211: ath11k: stop every vdev before a channel switch
+ starts them
+
+ath11k patch 110 (for upstream), B101: after a channel switch (CSA), an
+IPQ8074's 5 GHz radio sent at MCS 0-4 and the downlink fell to a tenth
+(7 Mbit/s after two switches, from 76 after a fresh start, on the
+Living Room C-360), until the radio was restarted; every Aeolus or RRM
+channel move is a CSA. ath11k restarted each vdev on the new channel in
+place. Take every vdev down and stop it first, then start them all on
+the new channel, as a fresh start of the radio does, and set the HE MU
+and sounding modes again after the start: 68-108 Mbit/s after the same
+switches.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=18
++PKG_RELEASE:=19
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+
+diff --git a/package/kernel/mac80211/patches/ath11k/110-wifi-ath11k-stop-every-vdev-before-starting-them-on-a-new-channel.patch b/package/kernel/mac80211/patches/ath11k/110-wifi-ath11k-stop-every-vdev-before-starting-them-on-a-new-channel.patch
+new file mode 100644
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/110-wifi-ath11k-stop-every-vdev-before-starting-them-on-a-new-channel.patch
+@@ -0,0 +1,96 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Thu, 29 Oct 2026 04:10:00 -0500
++Subject: [PATCH] wifi: ath11k: stop every vdev before starting them on a new channel
++
++On a channel switch, ath11k_mac_update_vif_chan() restarts each vdev
++that is up on the new channel (WMI_VDEV_RESTART_REQUEST). On an IPQ8074
++5 GHz radio the transmit rates collapse after that, and stay low until
++the radio is stopped and started again. From a client heard at -70 dBm,
++after a fresh start on channel 149 the downlink was 76 Mbit/s, with the
++firmware sending 16-55 % of its PPDUs at MCS 0-4 (HTT PDEV_TX_RATE
++stats). After two switches, 149 -> 157 -> 149, it was 7 Mbit/s three
++times in a row, with 98-100 % at MCS 0-4, and the uplink fell from 120
++to 16-65 Mbit/s. Stations that join after the switch are affected too.
++
++Sending the HE MU and sounding modes again after the restart does not
++help, nor does stopping and starting the vdevs one at a time, which
++leaves the others started on the old channel. Taking every vdev down
++and stopping it before any of them starts on the new channel, as a
++fresh start of the radio does, helps: after the same two switches,
++68.5, 107.8 and 86.2 Mbit/s down (ten runs after switches: median 84;
++fresh starts: median 92).
++
++Do that, and keep the restart for a vdev that could not be stopped. A
++vdev start leaves the HE MU and sounding modes at the firmware's
++defaults, so set them again, as enabling the beacon does on the first
++start.
++
++Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.9.0.1-02146-QCAHKSWPL_SILICONZ-1
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -7764,6 +7764,7 @@
++ 	int ret;
++ 	int i;
++ 	bool monitor_vif = false;
+++	unsigned long stopped = 0;
++ 
++ 	lockdep_assert_held(&ar->conf_mutex);
++ 
++@@ -7777,6 +7778,33 @@
++ 		spin_unlock_bh(&ar->data_lock);
++ 	}
++ 
+++	/* Take every vdev that is up down and stop it before any of them
+++	 * starts on the new channel, as a fresh start of the radio does.
+++	 * Restarting the vdevs in place, or stopping and starting them one
+++	 * at a time while the others stay started, leaves the radio sending
+++	 * at far lower rates on the new channel until it is restarted.
+++	 */
+++	for (i = 0; i < n_vifs && i < BITS_PER_LONG; i++) {
+++		arvif = ath11k_vif_to_arvif(vifs[i].vif);
+++
+++		if (!arvif->is_started || !arvif->is_up)
+++			continue;
+++
+++		ret = ath11k_wmi_vdev_down(ar, arvif->vdev_id);
+++		if (ret)
+++			ath11k_warn(ab, "failed to down vdev %d: %d\n",
+++				    arvif->vdev_id, ret);
+++
+++		ret = ath11k_mac_vdev_stop(arvif);
+++		if (ret) {
+++			ath11k_warn(ab, "failed to stop vdev %d: %d\n",
+++				    arvif->vdev_id, ret);
+++			continue;
+++		}
+++
+++		stopped |= BIT(i);
+++	}
+++
++ 	for (i = 0; i < n_vifs; i++) {
++ 		arvif = ath11k_vif_to_arvif(vifs[i].vif);
++ 
++@@ -7790,7 +7818,18 @@
++ 		 * Firmware expect vdev_restart only if vdev is up.
++ 		 * If vdev is down then it expect vdev_stop->vdev_start.
++ 		 */
++-		if (arvif->is_up) {
+++		if (i < BITS_PER_LONG && (stopped & BIT(i))) {
+++			ret = ath11k_mac_vdev_start(arvif, vifs[i].new_ctx);
+++			if (ret) {
+++				ath11k_warn(ab, "failed to start vdev %d: %d\n",
+++					    arvif->vdev_id, ret);
+++				continue;
+++			}
+++
+++			/* as enabling the beacon did for the first start */
+++			ath11k_mac_set_he_txbf_conf(arvif);
+++		} else if (arvif->is_up) {
+++			/* the vdev could not be stopped */
++ 			ret = ath11k_mac_vdev_restart(arvif, vifs[i].new_ctx);
++ 			if (ret) {
++ 				ath11k_warn(ab, "failed to restart vdev %d: %d\n",
+-- 
+2.43.0

@@ -215,6 +215,19 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     mac80211 PKG_RELEASE 18. 108 and 109 went to ath-next together on
     2026-10-28 ([PATCH ath-next 0/2], Message-Id
     `<20261028-b4-ath11k-qcn907x-caps-v1-0-c7daa6f1c02c@gmail.com>`).
+  - 0039 (B101): ath11k stops every vdev before a channel switch starts
+    them (ath11k patch 110, for upstream). ath11k restarted each vdev in
+    place on the new channel, and after that an IPQ8074's 5 GHz radio sent
+    at MCS 0-4 until it was restarted: every Aeolus or RRM channel move is
+    a CSA, and the downlink fell to a tenth or less. Every vdev is now
+    taken down and stopped first, then all start on the new channel, as a
+    fresh start of the radio does, with the HE MU and sounding modes set
+    again. Tested 2026-10-29 from RAM (debug build), CSA 149 -> 157 -> 149
+    then three runs on 149 from ce7f: Living Room stock 7.0, 7.0, 6.9
+    Mbit/s down (fresh 76.2), with 110 68.5, 107.8, 86.2 (fresh 78.6);
+    C-260 with 110 245.7, 234.6, 241.1 (fresh 257.3). Neither re-sending
+    the HE MU and sounding modes alone nor stopping and starting the
+    vdevs one at a time helped. mac80211 PKG_RELEASE 19.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
