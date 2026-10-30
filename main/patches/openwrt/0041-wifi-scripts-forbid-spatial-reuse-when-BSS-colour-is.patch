@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Fri, 30 Oct 2026 17:03:01 -0500
+Subject: [PATCH] wifi-scripts: forbid spatial reuse when BSS colour is disabled
+
+With he_bss_color_enabled off, hostapd.uc and mac80211.sh leave out
+he_spr_sr_control, so the beacon carries no Spatial Reuse Parameter Set
+element. 802.11ax then lets a non-AP STA use non-SRG OBSS PD spatial
+reuse with an OBSS PD level up to -62 dBm, and without a colour it
+cannot tell this BSS's PPDUs from another BSS's. A client that does so
+ignores the AP's frames below that level: it never takes the AP's CTS
+or BlockAck, keeps retrying, and its uplink stalls a few seconds into
+every association while the link still shows good signal.
+
+Seen with a Galaxy S23 Ultra on an Arista C-360 (ath11k, IPQ8074), 5 GHz
+HE40, colour disabled, the phone at -76 to -81 dBm: 2-5 frames per 15 s
+reached the AP and no pings got through. With the SR Parameter Set
+advertised as 3 (PSR and non-SRG OBSS PD disallowed) and colour still
+disabled, the same phone sent 30-96 frames per 15 s and pinged without
+loss. With colour enabled the element is already sent, and nothing
+changes.
+
+Keep the SR Parameter Set, with PSR and non-SRG OBSS PD disallowed,
+whenever the colour is disabled.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=7
++PKG_RELEASE:=8
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh b/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
+--- a/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
+@@ -504,6 +504,11 @@
+ 			append base_cfg "he_spr_sr_control=$he_spr_sr_control" "$N"
+ 		else
+ 			append base_cfg "he_bss_color_disabled=1" "$N"
++			# Without a colour, clients can't tell this BSS's PPDUs from
++			# another's, so forbid them spatial reuse. With no SR Parameter
++			# Set at all they may use non-SRG OBSS PD up to -62 dBm, and
++			# ignore this AP's weaker frames as an OBSS's.
++			append base_cfg "he_spr_sr_control=$((he_spr_sr_control | 3))" "$N"
+ 		fi
+ 
+ 
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+@@ -458,6 +458,14 @@
+ 				'he_spr_srg_obss_pd_min_offset', 'he_spr_srg_obss_pd_max_offset',
+ 				'he_spr_srg_bss_colors', 'he_spr_srg_partial_bssid'
+ 			]);
++		} else {
++			/* Without a colour, clients can't tell this BSS's PPDUs
++			 * from another's, so forbid them spatial reuse. With no SR
++			 * Parameter Set at all they may use non-SRG OBSS PD up to
++			 * -62 dBm, and ignore this AP's weaker frames as an OBSS's.
++			 */
++			config.he_spr_sr_control |= 3;
++			append_vars(config, [ 'he_spr_sr_control' ]);
+ 		}
+ 
+ 		if (!(he_phy_cap[3] & 0x80))
