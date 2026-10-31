@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 01:02:32 -0500
+Subject: [PATCH] ath10k-ct: report only the chains in the rx chainmask
+
+ath10k-ct patch 992 (for upstream), B112: the W-118's IPQ4019 radios
+(2x2) reported four chain signals per client, two of them filler from
+descriptor slots for chains the radio does not have (-34 [-39, -35,
+-81, -81] dBm), and with the firmware noise floor the filler also went
+into the frame's summed signal. Skip chains outside cfg_rx_chainmask in
+the htt rx and wmi mgmt rx paths, and let ath10k_sum_sigs_2() take an
+unset first value, so the sum stays right when chain 0 is off.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+--- a/package/kernel/ath10k-ct/Makefile
++++ b/package/kernel/ath10k-ct/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ath10k-ct
+-PKG_RELEASE:=3
++PKG_RELEASE:=4
+ 
+ PKG_LICENSE:=GPLv2
+ PKG_LICENSE_FILES:=
+diff --git a/package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch b/package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch
+new file mode 100755
+--- /dev/null
++++ b/package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch
+@@ -0,0 +1,77 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ath10k-ct: report only the chains in the rx chainmask
++
++ath10k_htt_rx_h_signal() gives a chain signal for each of the four
++chain slots of the rx descriptor whose pri20 value is not 0x80. An
++IPQ4019 radio (2x2, rx chainmask 0x3) fills slots 2 and 3 as well, so
++"iw station dump" shows four chain signals for its clients, two of them
++for chains the radio does not have:
++
++  2.4 GHz  signal: -34 [-39, -35, -81, -81] dBm
++  5 GHz    signal: -32 [-36, -34, -87, -87] dBm
++
++When the firmware noise floor is known, the frame's signal is the sum
++of all four, so for a client near -80 dBm the two filler chains also
++raise the signal by up to 3 dB.
++
++Skip the chains outside ar->cfg_rx_chainmask in the htt rx and wmi
++mgmt rx paths, so a radio reports the chains it receives on, as ath11k
++does. With chain 0 outside the mask (rx antenna mask 0x2) the sum now
++starts from an unset value, so make ath10k_sum_sigs_2() return the
++other value when its first one is unset, as it already does for the
++second.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/ath10k-7.2/core.c
+++++ b/ath10k-7.2/core.c
++@@ -2714,6 +2714,8 @@ int ath10k_sum_sigs_2(int a, int b) {
++ 	/* 0x80 means value-is-not-set */
++ 	if (b == 0x80)
++ 		return a;
+++	if (a == 0x80)
+++		return b;
++
++ 	if (a >= b) {
++ 		/* a is largest value, add to it. */
++--- a/ath10k-7.2/htt_rx.c
+++++ b/ath10k-7.2/htt_rx.c
++@@ -1259,6 +1259,13 @@ static void ath10k_htt_rx_h_signal(struc
++ 	int i;
++ 	const int* adjust = adjust_zero;
++ 	int nf = ATH10K_DEFAULT_NOISE_FLOOR;
+++	/* The descriptor has four chain slots, and a chip with fewer chains
+++	 * can fill the slots it does not have: an IPQ4019 (2x2) gives chains
+++	 * 2 and 3 about -81 dBm on 2.4 GHz and -87 dBm on 5 GHz for a client
+++	 * its two chains hear at -39/-35. Report only the chains the radio
+++	 * receives on.
+++	 */
+++	u8 rx_chains = ar->cfg_rx_chainmask;
++ 	/* wave-1 appears to put garbage in the secondary signal fields, even though the
++ 	 * descriptor definition makes it look like it should work.  Or possibly some firmware
++ 	 * bug in wave-1.  Either way, not worth bothering with right now, so just don't sum up the
++@@ -1290,6 +1297,9 @@ static void ath10k_htt_rx_h_signal(struc
++ 	for (i = 0; i < IEEE80211_MAX_CHAINS ; i++) {
++ 		status->chains &= ~BIT(i);
++
+++		if (rx_chains && !(rx_chains & BIT(i)))
+++			continue;
+++
++ 		if (rxd_ppdu_start->rssi_chains[i].pri20_mhz != 0x80) {
++ #ifdef CONFIG_ATH10K_DEBUGFS
++ 			if (nfa[i] != 0x80 && ath10k_use_fw_noisefloor(ar)) {
++--- a/ath10k-7.2/wmi.c
+++++ b/ath10k-7.2/wmi.c
++@@ -2815,6 +2815,11 @@ int ath10k_wmi_event_mgmt_rx(struct ath1
++
++ 	for (i = 0; i < ARRAY_SIZE(status->chain_signal); i++) {
++ 		status->chains &= ~BIT(i);
+++
+++		/* only the chains the radio receives on, as in htt rx */
+++		if (ar->cfg_rx_chainmask && !(ar->cfg_rx_chainmask & BIT(i)))
+++			continue;
+++
++ 		rssi = __le32_to_cpu(arg.rssi[i]);
++ 		ath10k_dbg(ar, ATH10K_DBG_MGMT, "mgmt rssi[%d]:%d\n", i, arg.rssi[i]);
++
