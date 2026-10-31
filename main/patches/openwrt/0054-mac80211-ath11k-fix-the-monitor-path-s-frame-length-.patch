@@ -1,0 +1,462 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 10:06:44 -0500
+Subject: [PATCH] mac80211: ath11k: fix the monitor path's frame length, FCS filter and rates
+
+Three ath11k monitor-path fixes (for upstream), as ath11k 113-115, and
+the removal of OpenWrt's 949, which the first replaces:
+
+- 113 (B65): the monitor path sized its buffers with a 392-byte
+  descriptor but stripped 384 on these chips, so 8 stale bytes followed
+  each frame. Upstream and 25.12 hand up the FCS plus 4 junk bytes; 949
+  trimmed 8 instead, which left the FCS on unflagged and dropped the
+  radiotap signal. Strip the right descriptor size and the FCS.
+- 114 (B64): ath11k accepted FIF_FCSFAIL but never looked at it, so a
+  monitor that did not ask for FCS-failed frames got them anyway (6-10%
+  of the beacons on a C-360's scan radio). Drop them unless FIF_FCSFAIL
+  is set, as ath10k does.
+- 115 (B8): never hand mac80211 an HT/VHT/HE rate without a stream
+  count (which it warns about once and then drops silently), and take
+  the MCS from the SIG, not the L-SIG rate field.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=21
++PKG_RELEASE:=22
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch b/package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch
+new file mode 100755
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch
+@@ -0,0 +1,119 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: size monitor MPDUs by the chip's rx descriptor
++
++The monitor destination ring path sets each buffer's length from
++sizeof(struct hal_rx_desc), but pulls the chip's own descriptor,
++hw_params.hal_desc_sz, off its front. struct hal_rx_desc is the union
++of the descriptors of all supported chips; it is 392 bytes, WCN6855's
++size. IPQ8074, IPQ6018 and QCN9074 use a 384-byte descriptor, so on
++them every MPDU a monitor interface gets ends with 8 bytes the hardware
++did not write. After the RAW path trims the FCS, a frame still carries
++its FCS plus 4 stale bytes, and the radiotap header flags neither.
++Wireshark shows such management frames as malformed.
++
++ath11k_dp_mon_set_frag_len() uses the same size for the payload of a
++continuation buffer, so the last buffer of a long MPDU is another
++8 bytes too long for each buffer before it.
++
++Use hal_desc_sz in both places, as the rest of the rx path does.
++
++Seen on an Arista C-360 (IPQ8074 plus QCN9074): a monitor capture of a
++management frame had the FCS and 4 more bytes after the body.
++
++Fixes: e4073430ee1d ("ath11k: add dp support for WCN6855")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++Note for the OpenWrt port, not for the commit: OpenWrt's
++949-wifi-ath11k-fix-monitor-rx-pktlen.patch works around the same
++8 bytes by trimming 8 from every monitor skb, and it stops clearing
++rx_status->flag, which leaves RX_FLAG_NO_SIGNAL_VAL (set by
++ath11k_dp_rx_h_ppdu()) on every monitor frame. 949 has to be removed
++together with this patch, or the frame loses 4 bytes of its body (and
++8 from every continuation buffer).
++Compile-tested only (arm64, ipq807x OpenWrt main, backports 7.2).
++
++ drivers/net/wireless/ath/ath11k/dp_rx.c |   26 ++++++++++++++++----------
++ 1 file changed, 16 insertions(+), 10 deletions(-)
++
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -4519,10 +4519,13 @@ config_refill_ring:
++ 	return 0;
++ }
++ 
++-static void ath11k_dp_mon_set_frag_len(u32 *total_len, u32 *frag_len)
+++static void ath11k_dp_mon_set_frag_len(struct ath11k_base *ab,
+++				       u32 *total_len, u32 *frag_len)
++ {
++-	if (*total_len >= (DP_RX_BUFFER_SIZE - sizeof(struct hal_rx_desc))) {
++-		*frag_len = DP_RX_BUFFER_SIZE - sizeof(struct hal_rx_desc);
+++	u32 hal_rx_desc_sz = ab->hw_params.hal_desc_sz;
+++
+++	if (*total_len >= (DP_RX_BUFFER_SIZE - hal_rx_desc_sz)) {
+++		*frag_len = DP_RX_BUFFER_SIZE - hal_rx_desc_sz;
++ 		*total_len -= *frag_len;
++ 	} else {
++ 		*frag_len = *total_len;
++@@ -4670,7 +4673,8 @@ static bool ath11k_dp_rx_mon_comp_ppduid
++ 	return false;
++ }
++ 
++-static void ath11k_dp_mon_get_buf_len(struct hal_rx_msdu_desc_info *info,
+++static void ath11k_dp_mon_get_buf_len(struct ath11k_base *ab,
+++				      struct hal_rx_msdu_desc_info *info,
++ 				      bool *is_frag, u32 *total_len,
++ 				      u32 *frag_len, u32 *msdu_cnt)
++ {
++@@ -4679,11 +4683,11 @@ static void ath11k_dp_mon_get_buf_len(st
++ 			*total_len = info->msdu_len;
++ 			*is_frag = true;
++ 		}
++-		ath11k_dp_mon_set_frag_len(total_len,
+++		ath11k_dp_mon_set_frag_len(ab, total_len,
++ 					   frag_len);
++ 	} else {
++ 		if (*is_frag) {
++-			ath11k_dp_mon_set_frag_len(total_len,
+++			ath11k_dp_mon_set_frag_len(ab, total_len,
++ 						   frag_len);
++ 		} else {
++ 			*frag_len = info->msdu_len;
++@@ -4821,7 +4825,7 @@ u32 ath11k_dp_rx_mon_mpdu_pop(struct ath
++ 
++ 			rx_desc = (struct hal_rx_desc *)msdu->data;
++ 
++-			rx_pkt_offset = sizeof(struct hal_rx_desc);
+++			rx_pkt_offset = ar->ab->hw_params.hal_desc_sz;
++ 			l2_hdr_offset = ath11k_dp_rx_h_msdu_end_l3pad(ar->ab, rx_desc);
++ 
++ 			if (is_first_msdu) {
++@@ -4850,7 +4854,8 @@ u32 ath11k_dp_rx_mon_mpdu_pop(struct ath
++ 				pmon->mon_last_linkdesc_paddr = paddr;
++ 				is_first_msdu = false;
++ 			}
++-			ath11k_dp_mon_get_buf_len(&msdu_list.msdu_info[i],
+++			ath11k_dp_mon_get_buf_len(ar->ab,
+++						  &msdu_list.msdu_info[i],
++ 						  &is_frag, &total_len,
++ 						  &frag_len, &msdu_cnt);
++ 			rx_buf_size = rx_pkt_offset + l2_hdr_offset + frag_len;
++@@ -5453,7 +5458,7 @@ ath11k_dp_rx_full_mon_mpdu_pop(struct at
++ 
++ 			rx_desc = (struct hal_rx_desc *)msdu->data;
++ 
++-			rx_pkt_offset = sizeof(struct hal_rx_desc);
+++			rx_pkt_offset = ar->ab->hw_params.hal_desc_sz;
++ 			l2_hdr_offset = ath11k_dp_rx_h_msdu_end_l3pad(ar->ab, rx_desc);
++ 
++ 			if (is_first_msdu) {
++@@ -5466,7 +5471,8 @@ ath11k_dp_rx_full_mon_mpdu_pop(struct at
++ 				is_first_msdu = false;
++ 			}
++ 
++-			ath11k_dp_mon_get_buf_len(&msdu_list.msdu_info[i],
+++			ath11k_dp_mon_get_buf_len(ar->ab,
+++						  &msdu_list.msdu_info[i],
++ 						  &is_frag, &total_len,
++ 						  &frag_len, &msdu_cnt);
++ 
+diff --git a/package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch b/package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch
+new file mode 100755
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch
+@@ -0,0 +1,80 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: hold back FCS-failed monitor frames unless
++ asked for
++
++ath11k accepts FIF_FCSFAIL in configure_filter() but never looks at
++the filter: its monitor path hands every MPDU whose FCS failed to
++mac80211, flagged RX_FLAG_FAILED_FCS_CRC. mac80211 passes such a frame
++to every monitor interface, whatever that interface's flags. It leaves
++holding these frames back to the driver unless a monitor asked for them
++with the "fcsfail" flag, which turns on FIF_FCSFAIL. So a monitor made
++without that flag gets them anyway. On an Arista C-360 the QCN9072 scan
++radio's monitor saw a bad FCS on 6 to 10 % of the beacons it heard.
++
++Drop an FCS-failed MPDU in the monitor path unless FIF_FCSFAIL is set,
++as ath10k does in ath10k_process_rx(). filter_flags is now read outside
++conf_mutex, so write it with WRITE_ONCE().
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++Compile-tested only (arm64, ipq807x OpenWrt main, backports 7.2).
++
++ drivers/net/wireless/ath/ath11k/dp_rx.c |   12 +++++++++++-
++ drivers/net/wireless/ath/ath11k/mac.c   |    3 ++-
++ 2 files changed, 13 insertions(+), 2 deletions(-)
++
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -5105,6 +5105,7 @@ static int ath11k_dp_rx_mon_deliver(stru
++ 	struct sk_buff *mon_skb, *skb_next, *header;
++ 	struct ieee80211_rx_status *rxs = &dp->rx_status;
++ 	bool fcs_err = false;
+++	int ret = 0;
++ 
++ 	mon_skb = ath11k_dp_rx_mon_merg_msdus(ar, mac_id, head_msdu,
++ 					      tail_msdu, rxs, &fcs_err);
++@@ -5112,6 +5113,13 @@ static int ath11k_dp_rx_mon_deliver(stru
++ 	if (!mon_skb)
++ 		goto mon_deliver_fail;
++ 
+++	/* mac80211 passes a frame whose FCS failed to every monitor
+++	 * interface. Holding such frames back unless a monitor asked for
+++	 * them (FIF_FCSFAIL) is left to the driver.
+++	 */
+++	if (fcs_err && !(READ_ONCE(ar->filter_flags) & FIF_FCSFAIL))
+++		goto mon_drop;
+++
++ 	header = mon_skb;
++ 
++ 	rxs->flag = 0;
++@@ -5143,13 +5151,15 @@ static int ath11k_dp_rx_mon_deliver(stru
++ 	return 0;
++ 
++ mon_deliver_fail:
+++	ret = -EINVAL;
+++mon_drop:
++ 	mon_skb = head_msdu;
++ 	while (mon_skb) {
++ 		skb_next = mon_skb->next;
++ 		dev_kfree_skb_any(mon_skb);
++ 		mon_skb = skb_next;
++ 	}
++-	return -EINVAL;
+++	return ret;
++ }
++ 
++ /* The destination ring processing is stuck if the destination is not
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -7427,7 +7427,8 @@ static void ath11k_mac_op_configure_filt
++ 	mutex_lock(&ar->conf_mutex);
++ 
++ 	*total_flags &= SUPPORTED_FILTERS;
++-	ar->filter_flags = *total_flags;
+++	/* read without the lock in the monitor rx path */
+++	WRITE_ONCE(ar->filter_flags, *total_flags);
++ 
++ 	mutex_unlock(&ar->conf_mutex);
++ }
+diff --git a/package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch b/package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch
+new file mode 100755
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch
+@@ -0,0 +1,116 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: report a monitor frame's MCS and NSS only
++ from the PPDU's SIG
++
++ath11k_update_radiotap() sets an HT, VHT or HE monitor frame's
++rate_idx from ppduinfo->rate. That is the L-SIG rate code, not the MCS
++that the SIG TLV gave (ppduinfo->mcs). ath12k had the same bug, fixed
++by commit 10085a654a4c ("wifi: ath12k: fix incorrect HT/VHT/HE/EHT MCS
++reporting in monitor mode").
++
++The function also takes the preamble from the PPDU's user stats, which
++can arrive without the SIG TLV. The status of one PPDU can span more
++than one buffer, and since commit 01d2f285e3e5 ("ath11k: decode HE
++status tlv") ppdu_info holds only what the last buffer had. The frame
++then goes up as VHT or HE with MCS 0 and no spatial stream, and
++mac80211 drops it, warning once:
++
++  Rate marked as a VHT rate but data is invalid: MCS: 0, NSS: 0
++
++An Arista C-360 with monitor interfaces up logs this, and the HE
++equivalent, once per boot. Because the warning is WARN_ONCE(), every
++later such frame is dropped without a message.
++
++Take the MCS from ppduinfo->mcs, adding the stream offset for HT.
++Use the PPDU's HT, VHT or HE rate only when its SIG TLV was seen with a
++valid NSS and MCS. Otherwise keep the rate from the MPDU's rx
++descriptor, and if that names VHT or HE with no stream, report one
++rather than lose the frame.
++
++ath11k_dp_rx_deliver_msdu() sets RX_FLAG_RADIOTAP_HE on the rx_status
++that all skbs of an MPDU share. Clear the HE radiotap flags for each
++skb, so that each skb's flags match the radiotap data pushed onto it.
++
++Fixes: ab0a9ef605cf ("ath11k: translate HE status to radiotap format")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++For the OpenWrt port: the context has the port's
++111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
++line (ath11k_noise_floor()); ath-next has ATH11K_DEFAULT_NOISE_FLOOR
++there. Rebase before sending. Compile-tested only (arm64, ipq807x
++OpenWrt main, backports 7.2).
++
++ drivers/net/wireless/ath/ath11k/dp_rx.c |   37 ++++++++++++++++++++++++++++---
++ 1 file changed, 34 insertions(+), 3 deletions(-)
++
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -5065,26 +5065,49 @@ static void ath11k_update_radiotap(struc
++ 	rxs->flag |= RX_FLAG_MACTIME_START;
++ 	rxs->signal = ppduinfo->rssi_comb + ath11k_noise_floor(ar, rxs->freq);
++ 
+++	/* Each skb of the MPDU carries its own HE radiotap data, if any:
+++	 * drop the flags the last one left, ath11k_dp_rx_deliver_msdu()
+++	 * included.
+++	 */
+++	rxs->flag &= ~(RX_FLAG_RADIOTAP_HE | RX_FLAG_RADIOTAP_HE_MU);
+++
+++	/* An HT, VHT or HE PPDU's MCS and NSS come from its SIG TLV, its
+++	 * preamble type (the *_flags) from its user stats. The status can
+++	 * hold the latter without the former, as when it spans more than
+++	 * one buffer. Keep the rate the MPDU's rx descriptor gave
+++	 * (ath11k_dp_rx_h_ppdu()) then: reporting the preamble with no
+++	 * spatial stream gets the frame dropped by mac80211.
+++	 */
+++	if ((ppduinfo->he_mu_flags || ppduinfo->he_flags ||
+++	     ppduinfo->vht_flags || ppduinfo->ht_flags) &&
+++	    (!ppduinfo->nss || ppduinfo->nss > HAL_RX_MAX_NSS ||
+++	     ppduinfo->mcs > ATH11K_HE_MCS_MAX))
+++		goto out;
+++
++ 	if (ppduinfo->nss)
++ 		rxs->nss = ppduinfo->nss;
++ 
+++	/* ppduinfo->rate is the L-SIG rate; an HT, VHT or HE PPDU's MCS is
+++	 * ppduinfo->mcs, as the SIG TLV gives it.
+++	 */
++ 	if (ppduinfo->he_mu_flags) {
++ 		rxs->flag |= RX_FLAG_RADIOTAP_HE_MU;
++ 		rxs->encoding = RX_ENC_HE;
++ 		ptr = skb_push(mon_skb, sizeof(struct ieee80211_radiotap_he_mu));
++ 		ath11k_dp_rx_update_radiotap_he_mu(ppduinfo, ptr);
+++		rxs->rate_idx = ppduinfo->mcs;
++ 	} else if (ppduinfo->he_flags) {
++ 		rxs->flag |= RX_FLAG_RADIOTAP_HE;
++ 		rxs->encoding = RX_ENC_HE;
++ 		ptr = skb_push(mon_skb, sizeof(struct ieee80211_radiotap_he));
++ 		ath11k_dp_rx_update_radiotap_he(ppduinfo, ptr);
++-		rxs->rate_idx = ppduinfo->rate;
+++		rxs->rate_idx = ppduinfo->mcs;
++ 	} else if (ppduinfo->vht_flags) {
++ 		rxs->encoding = RX_ENC_VHT;
++-		rxs->rate_idx = ppduinfo->rate;
+++		rxs->rate_idx = ppduinfo->mcs;
++ 	} else if (ppduinfo->ht_flags) {
++ 		rxs->encoding = RX_ENC_HT;
++-		rxs->rate_idx = ppduinfo->rate;
+++		rxs->rate_idx = ppduinfo->mcs + 8 * (ppduinfo->nss - 1);
++ 	} else {
++ 		rxs->encoding = RX_ENC_LEGACY;
++ 		sband = &ar->mac.sbands[rxs->band];
++@@ -5092,6 +5115,14 @@ static void ath11k_update_radiotap(struc
++ 							  ppduinfo->cck_flag);
++ 	}
++ 
+++out:
+++	/* The descriptor can name VHT or HE with no spatial stream too.
+++	 * Report one rather than lose the frame.
+++	 */
+++	if ((rxs->encoding == RX_ENC_VHT || rxs->encoding == RX_ENC_HE) &&
+++	    !rxs->nss)
+++		rxs->nss = 1;
+++
++ 	rxs->mactime = ppduinfo->tsft;
++ }
++ 
+diff --git a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch b/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
+deleted file mode 100644
+--- a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
++++ /dev/null
+@@ -1,89 +0,0 @@
+-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+-From: Ruslan Isaev <legale.legale@gmail.com>
+-Date: Sun, 1 Mar 2026 00:00:00 +0000
+-Subject: [PATCH] wifi: ath11k: ipq807x; ipq60xx: fix monitor rx frame length (+8 tail)
+-
+-OpenWrt issue:
+-https://github.com/openwrt/openwrt/issues/16183
+-
+-Problem summary:
+-On qualcommax (ipq60xx/ipq807x) with ath11k, monitor-mode captures contain
+-frames that are consistently longer than expected by 8 bytes. 
+-
+-The symptom is visible in pcap/radiotap captures, and Wireshark parsing
+-becomes correct after manually cutting these 8 bytes from captured frames.
+-
+-
+-This patch:
+-- Remove merge-stage FCS/tail manipulations in ath11k_dp_rx_mon_merg_msdus().
+-- add length fix in ath11k_dp_rx_mon_deliver(), trim 8 bytes right
+-  before radiotap update and delivery to mac80211.
+-
+-This targets monitor capture length correctness only and keeps the fix scoped
+-to the monitor RX delivery path.
+-
+---- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+-+++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+-@@ -4941,8 +4941,13 @@ ath11k_dp_rx_mon_merg_msdus(struct ath11
+- 		}
+- 
+- 		prev_buf->next = NULL;
+-+		/* REMOVED: skb_trim(prev_buf, prev_buf->len - HAL_RX_FCS_LEN);
+-+		 * Older code trimmed HAL_RX_FCS_LEN here from prev_buf.
+-+		 * That only affects the last MSDU in the chain.
+-+		 * Length correction is now done in
+-+		 * ath11k_dp_rx_mon_deliver() for every delivered monitor skb.
+-+		 */
+- 
+--		skb_trim(prev_buf, prev_buf->len - HAL_RX_FCS_LEN);
+- 	} else if (decap_format == DP_RX_DECAP_TYPE_NATIVE_WIFI) {
+- 		u8 qos_pkt = 0;
+- 
+-@@ -4968,10 +4973,13 @@ ath11k_dp_rx_mon_merg_msdus(struct ath11
+- 			prev_buf = msdu;
+- 			msdu = msdu->next;
+- 		}
+--		dest = skb_put(prev_buf, HAL_RX_FCS_LEN);
+--		if (!dest)
+--			goto err_merge_fail;
+--
+-+		/* REMOVED: skb_put(prev_buf, HAL_RX_FCS_LEN)
+-+		 * Older code did skb_put(), effectively
+-+		 * extending the payload tail from merge stage for the last MSDU.
+-+		 * This is removed so merge path does not mutate capture length.
+-+		 * We keep a single length-fix point in monitor deliver path
+-+		 * (trim 8 bytes) right before mac80211 hand-off.
+-+		 */
+- 		ath11k_dbg(ab, ATH11K_DBG_DATA,
+- 			   "mpdu_buf %p mpdu_buf->len %u",
+- 			   prev_buf, prev_buf->len);
+-@@ -5096,12 +5104,27 @@ static int ath11k_dp_rx_mon_deliver(stru
+- 
+- 	header = mon_skb;
+- 
+--	rxs->flag = 0;
+-+	/* Do not clear rxs->flag here to preserve FCS presence information
+-+	 * set during MSDU merge/trim.
+-+	 */
+-+	rxs->flag |= RX_FLAG_ONLY_MONITOR;
+- 
+- 	if (fcs_err)
+--		rxs->flag = RX_FLAG_FAILED_FCS_CRC;
+-+		rxs->flag |= RX_FLAG_FAILED_FCS_CRC;
+- 
+- 	do {
+-+		/* HW monitor path on ipq60xx/ipq807x may append FCS + 4-byte tail.
+-+		 * Force trim 8 bytes right before delivery to mac80211 so
+-+		 * userspace capture length reflects actual 802.11 frame size.
+-+		 */
+-+		if (mon_skb->len > (FCS_LEN * 2)) {
+-+			u32 old_len = mon_skb->len;
+-+
+-+			skb_trim(mon_skb, old_len - (FCS_LEN * 2));
+-+			ath11k_dbg(ar->ab, ATH11K_DBG_DATA, "monitor trim len %u -> %u\n",
+-+				   old_len, mon_skb->len);
+-+		}
+-+
+- 		skb_next = mon_skb->next;
+- 		if (!skb_next)
+- 			rxs->flag &= ~RX_FLAG_AMSDU_MORE;
