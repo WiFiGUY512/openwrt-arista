@@ -1,10 +1,9 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:23:09 -0500
-Subject: [PATCH] ucode: backport three fixes Aeolus works around
+Subject: [PATCH] ucode: backport two fixes Aeolus works around
 
-All three reproduce on the images' ucode (b885dd0f) and are fixed
-upstream:
+Both reproduce on the images' ucode (b885dd0f) and are fixed upstream:
 
 - 012 (153c627f, B69): a second require() of a module whose first load
   failed returned null instead of raising the error again.
@@ -12,10 +11,9 @@ upstream:
   values in C locals only, so a garbage collection triggered from the
   callback freed them; map() over 20000 values with gc("start") in the
   callback returned 1002 wrong entries.
-- 014 (af8a3830, B72): uloop.task() leaked its output pipe when no input
-  callback was given, one descriptor per task.
 
-None changes the ABI.
+Neither changes the ABI. (The uloop.task() descriptor leak, B72, is not
+fixed by af8a3830 alone and comes with the full ucode update.)
 
 Bump PKG_RELEASE.
 
@@ -232,67 +230,6 @@ new file mode 100644
 + 
 + 	return res;
 + }
-+-- 
-+2.43.0
-+
-diff --git a/package/utils/ucode/patches/014-uloop-close-the-task-output-pipe-even-without-an-input-callback.patch b/package/utils/ucode/patches/014-uloop-close-the-task-output-pipe-even-without-an-input-callback.patch
-new file mode 100644
---- /dev/null
-+++ b/package/utils/ucode/patches/014-uloop-close-the-task-output-pipe-even-without-an-input-callback.patch
-@@ -0,0 +1,56 @@
-+From af8a3830661a0d9e432e942499cd7ace6de3a06d Mon Sep 17 00:00:00 2001
-+From: John Crispin <john@phrozen.org>
-+Date: Tue, 1 Sep 2026 15:42:29 +0200
-+Subject: [PATCH] uloop: close the task output pipe even without an input
-+ callback
-+
-+uc_uloop_task_clear() closes the output pipe and removes the process
-+watcher inside `if (task->input_fd >= 0)`, but uc_uloop_task() sets
-+input_fd to -1 whenever no input callback was given. The two forms that
-+omit one therefore never reach uloop_fd_close(&task->output), and leak the
-+read end of the output pipe.
-+
-+  import * as uloop from 'uloop';
-+
-+  uloop.init();
-+  for (let i = 0; i < 40; i++)
-+      uloop.task(function(pipe) { return 1; }, function(msg) {});
-+  uloop.timer(2000, () => uloop.end());
-+  uloop.run();
-+
-+leaks 40 descriptors. Collecting a result through an output callback is
-+the documented pattern and an input callback is the rarity, so the leaking
-+shapes are the usual ones. Against a 1024 descriptor limit a daemon
-+running one task per event stops being able to fork, connect or open a
-+file after about a thousand of them, and uloop.task() then returns null
-+for good.
-+
-+Close the pipe and drop the process watcher regardless; both calls already
-+guard against being invoked twice.
-+
-+Signed-off-by: John Crispin <john@phrozen.org>
-+---
-+ lib/uloop.c | 5 ++---
-+ 1 file changed, 2 insertions(+), 3 deletions(-)
-+
-+diff --git a/lib/uloop.c b/lib/uloop.c
-+index 91e1fdbc..19b19d0c 100644
-+--- a/lib/uloop.c
-++++ b/lib/uloop.c
-+@@ -1463,11 +1463,10 @@ uc_uloop_task_clear(uc_uloop_task_t *task)
-+ 	if (task->input_fd >= 0) {
-+ 		close(task->input_fd);
-+ 		task->input_fd = -1;
-+-
-+-		uloop_fd_close(&task->output);
-+-		uloop_process_delete(&task->process);
-+ 	}
-+ 
-++	uloop_fd_close(&task->output);
-++	uloop_process_delete(&task->process);
-+ 	uc_uloop_cb_free(&task->cb);
-+ }
-+ 
 +-- 
 +2.43.0
 +
