@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 01:40:33 -0500
+Subject: [PATCH] uclient: send a request without waiting for the delayed ACK
+
+uclient-http writes a request as several small writes (request line,
+each header, the body), and with Nagle every write after the first
+waited for the server's delayed ACK, adding about 40 ms to a short
+request (B80; Aeolus sets TCP_QUICKACK on its manager to work around
+it). Add a patch that sets TCP_NODELAY on the connection, as curl does
+by default.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/libs/uclient/Makefile b/package/libs/uclient/Makefile
+--- a/package/libs/uclient/Makefile
++++ b/package/libs/uclient/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=uclient
+-PKG_RELEASE=1
++PKG_RELEASE=2
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/uclient.git
+diff --git a/package/libs/uclient/patches/100-uclient-http-send-a-request-without-waiting-for-the-delayed-ACK.patch b/package/libs/uclient/patches/100-uclient-http-send-a-request-without-waiting-for-the-delayed-ACK.patch
+new file mode 100644
+--- /dev/null
++++ b/package/libs/uclient/patches/100-uclient-http-send-a-request-without-waiting-for-the-delayed-ACK.patch
+@@ -0,0 +1,46 @@
++From d6010cc35780c2dec24d65b21e700db5e7d18273 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 31 Oct 2026 01:40:03 -0500
++Subject: [PATCH] uclient-http: send a request without waiting for the delayed
++ ACK
++
++A request goes out in several small writes: the request line, each
++header, the end of the headers and then the body, each through its own
++ustream_printf(). With Nagle's algorithm on, every write after the first
++waits until the server acknowledges the previous one, and a server that
++has not answered yet delays that ACK by about 40 ms, so a short request
++takes 40 ms longer than it should. Set TCP_NODELAY on the connection,
++as curl does by default.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ uclient-http.c | 5 +++++
++ 1 file changed, 5 insertions(+)
++
++diff --git a/uclient-http.c b/uclient-http.c
++index 04ddcb9..a93b513 100644
++--- a/uclient-http.c
+++++ b/uclient-http.c
++@@ -16,6 +16,8 @@
++  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++  */
++ #include <sys/socket.h>
+++#include <netinet/in.h>
+++#include <netinet/tcp.h>
++ #include <stdio.h>
++ #include <ctype.h>
++ #include <unistd.h>
++@@ -155,6 +157,9 @@ static int uclient_do_connect(struct uclient_http *uh, const char *port)
++ 		return -1;
++ 
++ 	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+++	/* a request goes out in several small writes; with Nagle each one
+++	 * after the first would wait for the server's delayed ACK */
+++	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int){ 1 }, sizeof(int));
++ 	uh->fd = fd;
++ 
++ 	sl = sizeof(uh->uc.local_addr);
++-- 
++2.43.0
++
