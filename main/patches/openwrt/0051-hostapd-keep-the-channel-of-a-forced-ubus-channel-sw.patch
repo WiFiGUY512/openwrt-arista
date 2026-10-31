@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 01:34:49 -0500
+Subject: [PATCH] hostapd: keep the channel of a forced ubus channel switch on an ACS radio
+
+switch_chan with force falls back to restarting the interface on the
+new channel when the CSA fails (e.g. a DFS target). On a radio with an
+automatic channel, that restart cleared the channel again and ran ACS,
+so the radio came up wherever ACS chose, not where it was sent (B52).
+hostapd's own CHAN_SWITCH marks the restart with is_ch_switch_dfs, which
+keeps the channel through that one setup; do the same in the ubus
+fallback.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=7
++PKG_RELEASE:=8
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/network/services/hostapd/src/src/ap/ubus.c b/package/network/services/hostapd/src/src/ap/ubus.c
+--- a/package/network/services/hostapd/src/src/ap/ubus.c
++++ b/package/network/services/hostapd/src/src/ap/ubus.c
+@@ -990,6 +990,9 @@ static void switch_chan_fallback_cb(void *eloop_data, void *user_ctx)
+ 	struct hostapd_iface *iface = eloop_data;
+ 	struct hostapd_freq_params *freq_params = user_ctx;
+ 
++	/* keep the new channel through the restart, as CHAN_SWITCH does; on
++	 * an ACS radio the setup would otherwise clear it and run ACS */
++	iface->is_ch_switch_dfs = true;
+ 	hostapd_switch_channel_fallback(iface, freq_params);
+ }
+ 
