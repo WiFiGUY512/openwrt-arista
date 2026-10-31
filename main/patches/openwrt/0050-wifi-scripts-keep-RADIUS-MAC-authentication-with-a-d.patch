@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 01:32:15 -0500
+Subject: [PATCH] wifi-scripts: keep RADIUS MAC authentication with a deny list, and DAS outside WPA Enterprise
+
+Two faults in ap.uc's RADIUS handling (B51):
+
+- RADIUS MAC authentication (macaddr_acl=2, written for ppsk and for an
+  open or PSK network with an auth_server) was cancelled by a MAC deny
+  list: iface_macfilter() appended macaddr_acl=0 after it, and hostapd
+  takes the last value. hostapd's macaddr_acl=2 checks the deny list
+  before asking the server, so keep 2 when it is set.
+- The DAS client got its secret appended only for WPA Enterprise, while
+  radius_das_client is written for every auth type. Anywhere else,
+  hostapd got the address alone, refused it ("invalid DAS client") and
+  with it the whole BSS. Build the client line for every auth type, and
+  leave DAS off with a warning when no secret is set.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=8
++PKG_RELEASE:=9
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+@@ -331,11 +331,6 @@ function iface_auth_type(config, band, eht) {
+ 			iface_authentication_server(config);
+ 		}
+ 
+-		if (config.radius_das_client && config.radius_das_secret) {
+-			set_default(config, 'radius_das_port', 3799);
+-			config.radius_das_client = config.radius_das_client + ' ' + config.radius_das_secret;
+-		}
+-
+ 		set_default(config, 'eapol_version', config.wpa & 1);
+ 		if (!config.eapol_version)
+ 			config.eapol_version = null;
+@@ -345,6 +340,16 @@ function iface_auth_type(config, band, eht) {
+ 		break;
+ 	}
+ 
++	/* hostapd takes a DAS client only as "<address> <secret>", and refuses
++	 * the whole configuration for one without the secret */
++	if (config.radius_das_client && config.radius_das_secret) {
++		set_default(config, 'radius_das_port', 3799);
++		config.radius_das_client = config.radius_das_client + ' ' + config.radius_das_secret;
++	} else if (config.radius_das_client) {
++		warn(`radius_das_client needs radius_das_secret, DAS left off on ${config.ifname}`);
++		config.radius_das_client = null;
++	}
++
+ 	append_vars(config, [
+ 		'sae_require_mfp', 'sae_password_file', 'sae_pwe', 'sae_groups', 'sae_track_password', 'time_advertisement', 'time_zone',
+ 		'wpa_group_rekey', 'wpa_ptk_rekey', 'wpa_gmk_rekey', 'wpa_strict_rekey',
+@@ -367,6 +372,7 @@ function iface_ppsk(config) {
+ 
+ 	iface_authentication_server(config);
+ 	append('macaddr_acl', '2');
++	config.macaddr_acl = 2;
+ }
+ 
+ function iface_wps(config, band) {
+@@ -425,7 +431,9 @@ function iface_macfilter(config) {
+ 
+ 	case 'deny':
+ 		append('deny_mac_file', path);
+-		append('macaddr_acl', 0);
++		/* RADIUS MAC authentication (2) checks the deny list first */
++		if (config.macaddr_acl != 2)
++			append('macaddr_acl', 0);
+ 		break;
+ 
+ 	default:
