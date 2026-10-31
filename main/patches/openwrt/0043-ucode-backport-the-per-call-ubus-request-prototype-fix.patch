@@ -1,0 +1,445 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 00:53:34 -0500
+Subject: [PATCH] ucode: backport the per-call ubus request prototype fix
+
+Every ubus method call a ucode script serves (hostapd.uc,
+wpa_supplicant.uc, netifd's wireless handlers) set the call's
+{ args, info } object as the prototype of the shared "ubus.request"
+type prototype, without a reference. At VM teardown uc_vm_free() frees
+every GC value, that object among them, and then releases the type
+prototypes, whose prototype points at freed memory: hostapd and
+wpa_supplicant die with SIGSEGV on every stop (wpad restart, reboot,
+sysupgrade), each leaving a core of 0.6-1 MB in /tmp. While running, a
+deferred request reads the args and info of whichever call came last.
+
+Backport the upstream fix as 010 and 011: c404fe2d (per-instance
+prototypes for extended resources; it takes one of the reserved bits and
+adds a function, so the ABI stays 20230711) and fbdd169e (keep the
+per-call object in the request's own prototype slot). OpenWrt main has
+both since its ucode update a4e92295.
+
+Seen on an Arista C-260: three cores, hostapd and wpa_supplicant, all at
+ucv_put_value() <- ucv_free() <- uc_vm_free() <- wpa_ucode_free_vm(),
+the object freed being the "ubus.request" method table.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+--- a/package/utils/ucode/Makefile
++++ b/package/utils/ucode/Makefile
+@@ -8,7 +8,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ucode
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=https://github.com/jow-/ucode.git
+diff --git a/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch b/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
+new file mode 100644
+--- /dev/null
++++ b/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
+@@ -0,0 +1,320 @@
++From c404fe2d65567f1b8fab91656515e911a60c224d Mon Sep 17 00:00:00 2001
++From: Jo-Philipp Wich <jo@mein.io>
++Date: Fri, 17 Apr 2026 15:02:43 +0200
++Subject: [PATCH] types: add per-instance prototype support for extended
++ resources
++
++Add support for storing an optional per-instance prototype slot in
++extended resource values. This allows individual resource instances
++to override the type-level prototype with their own prototype object.
++
++Changes:
++- Add hasproto flag to uc_resource_ext_t to track presence of instance proto
++- Add ucv_resource_new_prototyped() constructor for resources with instance proto
++- Add ucv_resource_hasproto(), ucv_resource_proto_get(), ucv_resource_proto_set()
++  helpers for managing instance prototypes
++- Add ucv_resource_create_prototyped() convenience wrapper
++- Update GC mark and cleanup to handle instance prototype slot
++- Update ucv_prototype_get/set() to check for instance prototype before
++  falling back to type-level prototype
++
++When an instance prototype is provided, it is chained to the type's
++prototype, ensuring proper prototype chain lookup.
++
++Signed-off-by: Jo-Philipp Wich <jo@mein.io>
++---
++ include/ucode/types.h |  37 ++++++++++++-
++ types.c               | 121 +++++++++++++++++++++++++++++++++++++-----
++ 2 files changed, 143 insertions(+), 15 deletions(-)
++
++diff --git a/include/ucode/types.h b/include/ucode/types.h
++index 32ab8631..279c53f4 100644
++--- a/include/ucode/types.h
+++++ b/include/ucode/types.h
++@@ -209,7 +209,8 @@ typedef struct {
++ 	uc_weakref_t ref;
++ 	uc_resource_type_t *type;
++ 
++-	uint32_t reserved:3;
+++	uint32_t reserved:2;
+++	uint32_t hasproto:1;
++ 	uint32_t persistent:1;
++ 	uint32_t uvcount:8;
++ 	uint32_t datasize:20;
++@@ -452,6 +453,7 @@ uc_resource_type_t *ucv_resource_type_lookup(uc_vm_t *, const char *);
++ 
++ uc_value_t *ucv_resource_new(uc_resource_type_t *, void *);
++ uc_value_t *ucv_resource_new_ex(uc_vm_t *, uc_resource_type_t *, void **, size_t, size_t);
+++uc_value_t *ucv_resource_new_with_proto(uc_vm_t *, uc_resource_type_t *, void **, size_t, size_t, uc_value_t *);
++ void *ucv_resource_data(uc_value_t *uv, const char *);
++ void **ucv_resource_dataptr(uc_value_t *, const char *);
++ uc_value_t *ucv_resource_value_get(uc_value_t *, size_t);
++@@ -494,6 +496,17 @@ ucv_resource_create_ex(uc_vm_t *vm, const char *type, void **data, size_t uvcoun
++     return ucv_resource_new_ex(vm, t, data, uvcount, datasize);
++ }
++ 
+++static inline uc_value_t *
+++ucv_resource_create_with_proto(uc_vm_t *vm, const char *type, void **data, size_t uvcount, size_t datasize, uc_value_t *proto)
+++{
+++    uc_resource_type_t *t = NULL;
+++
+++    if (type && (t = ucv_resource_type_lookup(vm, type)) == NULL)
+++        return NULL;
+++
+++    return ucv_resource_new_with_proto(vm, t, data, uvcount, datasize, proto);
+++}
+++
++ static inline bool
++ ucv_resource_is_extended(uc_value_t *uv)
++ {
++@@ -522,6 +535,28 @@ ucv_resource_persistent_set(uc_value_t *uv, bool persistent)
++ 	return true;
++ }
++ 
+++static inline bool
+++ucv_resource_hasproto(uc_value_t *uv)
+++{
+++	uc_resource_ext_t *res = (uc_resource_ext_t *)uv;
+++
+++	return ucv_resource_is_extended(uv) && res->hasproto;
+++}
+++
+++#define UCV_RESOURCE_PROTO_IDX ((size_t)-1)
+++
+++static inline uc_value_t *
+++ucv_resource_proto_get(uc_value_t *uv)
+++{
+++	return ucv_resource_value_get(uv, UCV_RESOURCE_PROTO_IDX);
+++}
+++
+++static inline bool
+++ucv_resource_proto_set(uc_value_t *uv, uc_value_t *proto)
+++{
+++	return ucv_resource_value_set(uv, UCV_RESOURCE_PROTO_IDX, proto);
+++}
+++
++ uc_value_t *ucv_regexp_new(const char *, bool, bool, bool, char **);
++ 
++ uc_value_t *ucv_upvalref_new(size_t);
++diff --git a/types.c b/types.c
++index ad5e5a9a..6d39e0a8 100644
++--- a/types.c
+++++ b/types.c
++@@ -102,7 +102,7 @@ ucv_resource_values(uc_resource_ext_t *res)
++ {
++ 	void *data;
++ 
++-	if (!ucv_resource_is_extended((uc_value_t *)res) || !res->uvcount)
+++	if (!res->uvcount && !res->hasproto)
++ 		return NULL;
++ 
++ 	data = res + 1;
++@@ -220,10 +220,11 @@ ucv_gc_mark(uc_value_t *uv)
++ 				ucv_set_mark(uv);
++ 
++ 			values = ucv_resource_values(res);
+++
++ 			if (!values)
++ 				break;
++ 
++-			for (i = 0; i < res->uvcount; i++)
+++			for (i = 0; i < (size_t)res->uvcount + res->hasproto; i++)
++ 				ucv_gc_mark(values[i]);
++ 		}
++ 
++@@ -312,19 +313,18 @@ ucv_free(uc_value_t *uv, bool retain)
++ 	case UC_RESOURCE:
++ 		if (uv->ext_flag) {
++ 			uc_resource_ext_t *res = (uc_resource_ext_t *)uv;
+++			void *data = res + 1;
++ 			uc_value_t **values;
++ 
++ 			values = ucv_resource_values(res);
+++
++ 			if (values) {
++-				for (i = 0; i < res->uvcount; i++)
+++				for (i = 0; i < (size_t)res->uvcount + res->hasproto; i++)
++ 					ucv_put_value(values[i], retain);
++ 			}
++ 
++-			if (res->type && res->type->free) {
++-				void *data = res + 1;
++-
+++			if (res->type && res->type->free)
++ 				res->type->free(data);
++-			}
++ 
++ 			ref = &res->ref;
++ 		}
++@@ -1298,8 +1298,45 @@ ucv_resource_new_ex(uc_vm_t *vm, uc_resource_type_t *type, void **data, size_t u
++ 	assert(datasize < (8 << 20));
++ 
++ 	size = sizeof(*res);
+++	size += datasize = (datasize + 7) & ~7;
++ 	size += uvcount * sizeof(uc_value_t *);
+++
+++	res = xalloc(size);
+++	res->header.type = UC_RESOURCE;
+++	res->header.refcount = 1;
+++	res->header.ext_flag = 1;
+++	res->type = type;
+++	res->uvcount = uvcount;
+++	res->datasize = datasize / 8;
+++	res->hasproto = 0;
+++	if (data)
+++		*data = res + 1;
+++
+++	if (vm && uvcount) {
+++		ucv_ref_tail(&vm->values, &res->ref);
+++		vm->alloc_refs++;
+++	}
+++
+++	return &res->header;
+++}
+++
+++uc_value_t *
+++ucv_resource_new_with_proto(uc_vm_t *vm, uc_resource_type_t *type, void **data, size_t uvcount, size_t datasize, uc_value_t *proto)
+++{
+++	uc_resource_ext_t *res;
+++	size_t size;
+++	uc_value_t **values;
+++
+++	assert(uvcount < (1 << 8));
+++	assert(datasize < (8 << 20));
+++
+++	/* If no proto provided, fall back to type->proto (no instance proto slot) */
+++	if (!proto)
+++		return ucv_resource_new_ex(vm, type, data, uvcount, datasize);
+++
+++	size = sizeof(*res);
++ 	size += datasize = (datasize + 7) & ~7;
+++	size += (uvcount + 1) * sizeof(uc_value_t *);
++ 
++ 	res = xalloc(size);
++ 	res->header.type = UC_RESOURCE;
++@@ -1308,6 +1345,8 @@ ucv_resource_new_ex(uc_vm_t *vm, uc_resource_type_t *type, void **data, size_t u
++ 	res->type = type;
++ 	res->uvcount = uvcount;
++ 	res->datasize = datasize / 8;
+++	res->hasproto = 1;
+++
++ 	if (data)
++ 		*data = res + 1;
++ 
++@@ -1316,6 +1355,13 @@ ucv_resource_new_ex(uc_vm_t *vm, uc_resource_type_t *type, void **data, size_t u
++ 		vm->alloc_refs++;
++ 	}
++ 
+++	/* Chain the given proto to type->proto so prototype lookup works correctly */
+++	if (type)
+++		ucv_prototype_set(proto, ucv_get(type->proto));
+++
+++	values = (uc_value_t **)((char *)(res + 1) + datasize);
+++	values[0] = proto;
+++
++ 	return &res->header;
++ }
++ 
++@@ -1343,8 +1389,9 @@ ucv_resource_data(uc_value_t *uv, const char *name)
++ 
++ 	if (uv->ext_flag) {
++ 		uc_resource_ext_t *res = (uc_resource_ext_t *)uv;
+++		void *data = res + 1;
++ 
++-		return res + 1;
+++		return data;
++ 	}
++ 	else {
++ 		uc_resource_t *res = (uc_resource_t *)uv;
++@@ -1370,10 +1417,20 @@ ucv_resource_value_get(uc_value_t *uv, size_t idx)
++ 	uc_resource_ext_t *res = (uc_resource_ext_t *)uv;
++ 	uc_value_t **uvdata = ucv_resource_values(res);
++ 
++-	if (!uvdata || idx >= res->uvcount)
+++	if (!uvdata)
++ 		return NULL;
++ 
++-	return uvdata[idx];
+++	if (idx == UCV_RESOURCE_PROTO_IDX) {
+++		if (!res->hasproto)
+++			return NULL;
+++
+++		return uvdata[0];
+++	}
+++
+++	if (idx >= res->uvcount)
+++		return NULL;
+++
+++	return uvdata[idx + res->hasproto];
++ }
++ 
++ bool
++@@ -1382,11 +1439,24 @@ ucv_resource_value_set(uc_value_t *uv, size_t idx, uc_value_t *val)
++ 	uc_resource_ext_t *res = (uc_resource_ext_t *)uv;
++ 	uc_value_t **uvdata = ucv_resource_values(res);
++ 
++-	if (!uvdata || idx >= res->uvcount)
++-		return NULL;
+++	if (!uvdata)
+++		return false;
+++
+++	if (idx == UCV_RESOURCE_PROTO_IDX) {
+++		if (!res->hasproto)
+++			return false;
+++
+++		ucv_put(uvdata[0]);
+++		uvdata[0] = val;
+++
+++		return true;
+++	}
+++
+++	if (idx >= res->uvcount)
+++		return false;
++ 
++-	ucv_put(uvdata[idx]);
++-	uvdata[idx] = val;
+++	ucv_put(uvdata[idx + res->hasproto]);
+++	uvdata[idx + res->hasproto] = val;
++ 
++ 	return true;
++ }
++@@ -1464,6 +1534,9 @@ ucv_prototype_get(uc_value_t *uv)
++ 		return object->proto;
++ 
++ 	case UC_RESOURCE:
+++		if (ucv_resource_hasproto(uv))
+++			return ucv_resource_proto_get(uv);
+++
++ 		restype = ucv_resource_type(uv);
++ 
++ 		return restype ? restype->proto : NULL;
++@@ -1497,6 +1570,26 @@ ucv_prototype_set(uc_value_t *uv, uc_value_t *proto)
++ 
++ 		return true;
++ 
+++	case UC_RESOURCE:
+++		if (uv->ext_flag) {
+++			uc_resource_ext_t *res = (uc_resource_ext_t *)uv;
+++			uc_value_t **values;
+++
+++			if (!res->hasproto)
+++				return false;
+++
+++			values = ucv_resource_values(res);
+++
+++			if (!values)
+++				return false;
+++
+++			values[0] = proto;
+++
+++			return true;
+++		}
+++
+++		return false;
+++
++ 	default:
++ 		return false;
++ 	}
++-- 
++2.43.0
++
+diff --git a/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch b/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
+new file mode 100644
+--- /dev/null
++++ b/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
+@@ -0,0 +1,73 @@
++From fbdd169efd17130fec41d219a1d3456a9f653120 Mon Sep 17 00:00:00 2001
++From: Jo-Philipp Wich <jo@mein.io>
++Date: Thu, 10 Sep 2026 18:01:45 +0200
++Subject: [PATCH] ubus: store per-call request proto in the instance proto slot
++
++The ubus request handler attached the per-call reqproto object (holding
++args/info) to the shared "ubus.request" resource-type prototype:
++
++    ucv_prototype_set(ucv_prototype_get(reqobj), reqproto)
++
++Because reqobj was created without an instance proto slot,
++ucv_prototype_get() returned the shared type prototype, which was then
++mutated to point at the per-call object. This leaked the per-call object
++(and everything it referenced) into the type prototype for the lifetime
++of the VM, and caused a use-after-free at teardown: uc_vm_free() releases
++the restype prototypes before the final GC, so the shared type prototype
++was freed while still pointing at the per-call object, which was then
++freed again as an unreachable value.
++
++Create the request resource with ucv_resource_create_with_proto() instead,
++which stores reqproto in the resource's per-instance proto slot and chains
++it to the type prototype, so property lookup on the request object still
++falls through to the shared request methods (reply(), error(), ...).
++
++Fixes: #437
++Signed-off-by: Jo-Philipp Wich <jo@mein.io>
++---
++ lib/ubus.c | 22 +++++++++++++++++-----
++ 1 file changed, 17 insertions(+), 5 deletions(-)
++
++diff --git a/lib/ubus.c b/lib/ubus.c
++index 77a5ad17..64b1ff67 100644
++--- a/lib/ubus.c
+++++ b/lib/ubus.c
++@@ -2444,8 +2444,23 @@ uc_ubus_handle_reply_common(struct ubus_context *ctx,
++ 	uc_value_t *reqobj, *res;
++ 	int rv;
++ 
++-	/* allocate deferred method call context */
++-	reqobj = ucv_resource_create_ex(vm, "ubus.request", (void **)&callctx, 1, sizeof(*callctx));
+++	/* allocate deferred method call context.
+++	 *
+++	 * reqproto is a per-call object, so it must be stored in the request
+++	 * resource's instance-specific prototype slot rather than being attached
+++	 * to the shared "ubus.request" type prototype. The latter would leak the
+++	 * per-call object (and everything it references) into the type prototype
+++	 * for the lifetime of the VM, and cause a use-after-free at teardown:
+++	 * uc_vm_free() releases the restype prototypes before the final GC, so
+++	 * the shared type prototype is freed while still pointing at the
+++	 * per-call object, which is then freed again as an unreachable value.
+++	 *
+++	 * ucv_resource_create_with_proto() takes ownership of reqproto and
+++	 * chains it to the type prototype, so property lookup on reqobj still
+++	 * falls through to the shared request methods.
+++	 */
+++	reqobj = ucv_resource_create_with_proto(vm, "ubus.request",
+++			(void **)&callctx, 1, sizeof(*callctx), reqproto);
++ 
++ 	if (!callctx)
++ 		return UBUS_STATUS_UNKNOWN_ERROR;
++@@ -2459,9 +2474,6 @@ uc_ubus_handle_reply_common(struct ubus_context *ctx,
++ 	/* fd is copied to deferred request. ensure it does not get closed early */
++ 	ubus_request_get_caller_fd(req);
++ 
++-	if (reqproto)
++-		ucv_prototype_set(ucv_prototype_get(reqobj), reqproto);
++-
++ 	/* push object context, handler and request object onto stack */
++ 	uc_vm_stack_push(vm, ucv_get(this));
++ 	uc_vm_stack_push(vm, ucv_get(func));
++-- 
++2.43.0
++
