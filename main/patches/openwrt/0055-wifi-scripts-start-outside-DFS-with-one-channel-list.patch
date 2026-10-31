@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 12:30:04 -0500
+Subject: [PATCH] wifi-scripts: start outside DFS with one channel listed per block
+
+dfs_look_first (port 0032) sets acs_exclude_dfs only where a block
+outside DFS lies wholly in the radio's channel list. hostapd's ACS asks
+less: it takes a block where any of its channels is in the list, and
+makes that one the primary. A list of one channel per block, such as
+"36 44 52 60 100 108 116 124 132 140 149 157" for HE40, has no block
+wholly in it, so the radio started as before: ACS chose a DFS block and
+the radio sent nothing for its 60 s radar check (B121, C-360 at every
+boot).
+
+Count a block where any of its channels is listed, as ACS does.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=9
++PKG_RELEASE:=10
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+@@ -67,7 +67,8 @@ function chanlist_has(list, c) {
+ }
+ 
+ /* is there a 5 GHz block outside DFS channels (52-144) at the radio's
+- * width, wholly in its channel list, for ACS to start it on? */
++ * width for ACS to start it on? ACS takes a block where any of its
++ * channels is in the channel list, and makes that one the primary */
+ function dfs_free_start(config) {
+ 	let width = +(match(config.htmode ?? '', /([0-9]+)/)?.[1] ?? 20);
+ 	let blocks = {
+@@ -77,7 +78,7 @@ function dfs_free_start(config) {
+ 	}[`${width}`];
+ 
+ 	for (let b in blocks ?? [])
+-		if (length(filter(b, (c) => chanlist_has(config.chanlist, c))) == length(b))
++		if (length(filter(b, (c) => chanlist_has(config.chanlist, c))))
+ 			return true;
+ 
+ 	return false;
