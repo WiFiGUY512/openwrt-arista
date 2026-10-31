@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 01:02:41 -0500
+Subject: [PATCH] ath10k-ct: drop a management frame on an unknown channel without a WARN
+
+ath10k-ct patch 991 (for upstream), B104: the QCA9882 scan radios of
+the C-260 and the W-118 hit WARN_ON_ONCE() in ath10k_wmi_event_mgmt_rx()
+when the CT 10.1 firmware reports a frame heard right after it starts,
+before any channel is set (channel 0xffff1f), which airscan's firmware
+restarts make common. Drop such a frame with a debug message, as htt rx
+drops frames heard with no channel; also drop one on a band the radio
+did not register, which mac80211 would warn about.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+--- a/package/kernel/ath10k-ct/Makefile
++++ b/package/kernel/ath10k-ct/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ath10k-ct
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
+ 
+ PKG_LICENSE:=GPLv2
+ PKG_LICENSE_FILES:=
+diff --git a/package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch b/package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch
+new file mode 100755
+--- /dev/null
++++ b/package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch
+@@ -0,0 +1,60 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ath10k-ct: drop a management frame on an unknown channel
++ without a WARN
++
++ath10k_wmi_event_mgmt_rx() hits WARN_ON_ONCE() when the firmware reports
++a management frame on a channel outside 1-14 and 36-177. A QCA9882 on
++CT 10.1 firmware does that for a frame heard right after the firmware
++starts, before the radio was set to any channel. A scan radio whose
++interfaces come and go between jobs restarts the firmware each time,
++and the WARN turns up within hours (Arista C-260 and W-118):
++
++  ath10k_pci 0000:01:00.0: pdev param 0 not supported by firmware
++  ath10k_pci 0000:01:00.0: rts threshold -1
++  WARNING: CPU: 0 PID: 0 at wmi.c:2778 ath10k_wmi_event_mgmt_rx+0x5bc/0x60c [ath10k_core]
++   ath10k_wmi_event_mgmt_rx+0x5bc/0x60c [ath10k_core] (P)
++   ath10k_wmi_10_1_op_rx+0x308/0x738 [ath10k_core]
++
++In that trace the channel register holds 0xffff1f (status 0, snr 39,
++phy mode 11G), 0.4 ms after the vdev was created and before any scan
++or channel set.
++
++Such a frame has no channel mac80211 knows, so dropping it is right;
++htt rx already drops frames heard with no channel configured, with a
++debug message. Do the same here. Also drop a frame on a channel of a
++band the radio did not register (a single-band radio), which
++ieee80211_rx_list() would otherwise WARN about.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/ath10k-7.2/wmi.c
+++++ b/ath10k-7.2/wmi.c
++@@ -2772,10 +2772,24 @@ int ath10k_wmi_event_mgmt_rx(struct ath1
++ 	} else if (channel >= 36 && channel <= ATH10K_MAX_5G_CHAN) {
++ 		status->band = NL80211_BAND_5GHZ;
++ 	} else {
++-		/* Shouldn't happen unless list of advertised channels to
++-		 * mac80211 has been changed.
+++		/* Not a channel mac80211 was given. CT 10.1 firmware reports
+++		 * one (0xffff1f) for a frame heard right after it starts,
+++		 * before the radio was set to any channel; a scan radio whose
+++		 * interfaces come and go restarts it often. Drop the frame,
+++		 * as htt rx drops frames heard with no channel configured.
++ 		 */
++-		WARN_ON_ONCE(1);
+++		ath10k_dbg(ar, ATH10K_DBG_MGMT,
+++			   "wmi mgmt rx on unknown channel 0x%x (snr %u phy_mode %u), dropped\n",
+++			   channel, snr, phy_mode);
+++		dev_kfree_skb(skb);
+++		return 0;
+++	}
+++
+++	/* a channel of a band this radio does not have: mac80211 warns */
+++	if (!ar->hw->wiphy->bands[status->band]) {
+++		ath10k_dbg(ar, ATH10K_DBG_MGMT,
+++			   "wmi mgmt rx on channel %u, band %d not registered, dropped\n",
+++			   channel, status->band);
++ 		dev_kfree_skb(skb);
++ 		return 0;
++ 	}
