@@ -241,7 +241,10 @@ function add_signal(r, bssid, signal) {
 }
 
 // blocks are what a radio at width may be on: each with its channels
-// (members), all of them in its channel list and allowed here.
+// (members), all of them allowed here and at least one in its channel list.
+// That is hostapd's ACS's rule: it takes a block where any of its channels
+// is listed and makes that one the primary, so a list of one channel per
+// block (as Aeolus writes) still names every block.
 function blocks(width, chans, list) {
 	let out = [];
 	let spans = width <= 20 ? map(sort(map(keys(chans), (c) => +c), (a, b) => a - b), (c) => [ c, c ]) : (BLOCKS5[`${width}`] ?? []);
@@ -249,7 +252,8 @@ function blocks(width, chans, list) {
 		let members = [];
 		for (let c = b[0]; c <= b[1]; c += 4)
 			push(members, c);
-		if (length(filter(members, (c) => chans[`${c}`] && listed(list, c))) == length(members))
+		if (length(filter(members, (c) => chans[`${c}`])) == length(members) &&
+		    length(filter(members, (c) => listed(list, c))))
 			push(out, members);
 	}
 	return out;
@@ -421,7 +425,8 @@ function choose(r, l) {
 			b.cost = max(b.cost, k);
 			if (r.chans[`${c}`].radar)
 				b.dfs = true;
-			if (!b.entry || k < cost(rates[`${b.entry}`]))
+			// the primary: a listed channel, as ACS would make it
+			if (listed(r.list, c) && (!b.entry || k < cost(rates[`${b.entry}`])))
 				b.entry = c;
 		}
 		if (index(members, r.channel) >= 0)
