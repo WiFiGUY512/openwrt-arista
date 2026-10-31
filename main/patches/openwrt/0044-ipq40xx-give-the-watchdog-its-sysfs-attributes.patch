@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 00:55:03 -0500
+Subject: [PATCH] ipq40xx: give the watchdog its sysfs attributes
+
+qualcommax builds CONFIG_WATCHDOG_SYSFS and ipq40xx does not, so on an
+ipq40xx unit (the Arista W-118) /sys/class/watchdog/watchdog0 has no
+state, timeout, timeleft or bootstatus, while every qualcommax unit has
+them. The watchdog itself runs either way. Enable the attributes, so a
+unit's watchdog state and the reason for its last reset read the same
+way on every model.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/target/linux/ipq40xx/config-6.18 b/target/linux/ipq40xx/config-6.18
+--- a/target/linux/ipq40xx/config-6.18
++++ b/target/linux/ipq40xx/config-6.18
+@@ -525,6 +525,7 @@ CONFIG_USE_OF=y
+ CONFIG_VFP=y
+ CONFIG_VFPv3=y
+ CONFIG_WATCHDOG_CORE=y
++CONFIG_WATCHDOG_SYSFS=y
+ CONFIG_XPS=y
+ CONFIG_XXHASH=y
+ CONFIG_XZ_DEC_ARM=y
