@@ -4,12 +4,19 @@ Date: Sat, 31 Oct 2026 10:38:06 -0500
 Subject: [PATCH] ucode: decode the new timestamp messages on 32-bit
 
 ucode patch 016 (for upstream), B74: on a 32-bit system with a 64-bit
-time_t (the W-118's armv7 musl), ucode-mod-socket decoded the kernel's
-SO_TIMESTAMP_NEW and SO_TIMESTAMPNS_NEW messages with the old layout,
-because the _OLD fallbacks carry the _NEW values there and come first
-in its table, so every receive timestamp came out in whole seconds
-({ sec, usec: 0 }, { sec, nsec: 0 }). Look the _NEW entries up first,
-and give st_timeval_new its own size. Still in upstream master.
+time_t (the W-118's armv7 musl), ucode-mod-socket decoded every
+SO_TIMESTAMP and SO_TIMESTAMPNS message with the old layout, so every
+receive timestamp came out in whole seconds ({ sec, usec: 0 },
+{ sec, nsec: 0 }). musl names only SO_TIMESTAMP and SO_TIMESTAMPNS, the
+kernel's _NEW values there, so ucode left its _NEW decoders out and its
+_OLD fallbacks took those values. Build the 64-bit-field decoders always,
+decode a libc's single name with the layout its time_t gives, and give
+st_timeval_new its own size. Still in upstream master.
+
+The first version of this patch (in -82) only put the _NEW entries first,
+which changes nothing on musl, where there are none: on the W-118, -82's
+ucode-mod-socket still gave whole seconds; this one gives
+{ sec, usec: 291918 } and { sec, nsec: 293721501 }.
 
 On 32-bit this also undoes a step back from 0052 (2e0b25a2): before it
 SO_TIMESTAMPNS arrived raw and a script could decode it itself; with it
@@ -29,7 +36,7 @@ diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
  
  PKG_NAME:=ucode
 -PKG_RELEASE:=2
-+PKG_RELEASE:=3
++PKG_RELEASE:=4
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
@@ -37,24 +44,27 @@ diff --git a/package/utils/ucode/patches/016-socket-decode-the-new-timestamp-con
 new file mode 100644
 --- /dev/null
 +++ b/package/utils/ucode/patches/016-socket-decode-the-new-timestamp-control-messages-on-time64.patch
-@@ -0,0 +1,62 @@
-+From 6d66ffd3e303e1850c11b2ee77953a7324c3ce8a Mon Sep 17 00:00:00 2001
+@@ -0,0 +1,96 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 +From: Christopher Griffin <christophergriffin05@gmail.com>
-+Date: Sat, 31 Oct 2026 10:37:39 -0500
-+Subject: [PATCH] socket: decode the new timestamp control messages on time64
-+ systems
++Date: Sat, 31 Oct 2026 15:22:38 -0500
++Subject: [PATCH] socket: decode receive timestamps on a 32-bit system with a
++ 64-bit time_t
 +
-+On a 32-bit system with a 64-bit time_t, as musl has on 32-bit ARM, the
-+libc's SO_TIMESTAMP and SO_TIMESTAMPNS are the kernel's _NEW values. The
-+SO_TIMESTAMP_OLD and SO_TIMESTAMPNS_OLD fallbacks then carry those same
-+values, and as the _OLD entries come first in the control message table,
-+a _NEW message was decoded with the old layout: tv_sec from the low half
-+of the 64-bit seconds and the fraction from the high half, which is 0.
-+Every receive timestamp came out in whole seconds.
++musl names one SO_TIMESTAMP and one SO_TIMESTAMPNS, with no _OLD and
++_NEW variants, and on a 32-bit system they are the kernel's _NEW values
++(63 and 64 on ARM), whose control messages carry 64-bit fields. Without
++SO_TIMESTAMP_NEW, the _NEW decoders were left out and the _OLD fallbacks,
++defined to SO_TIMESTAMP and SO_TIMESTAMPNS, decoded those messages with
++the old layout: tv_sec from the low half of the 64-bit seconds and the
++fraction from the high half, which is 0. Every receive timestamp came
++out in whole seconds.
 +
-+Look the _NEW entries up first. Where the two values differ the order
-+does not matter. Also give st_timeval_new its own size; it had the size
-+of the old struct, which cut the decoding short of tv_usec.
++Build the 64-bit-field decoders on every Linux system. Where the libc
++names both variants, keep an entry for each; where it names only one,
++decode it with the layout its time_t gives: the 64-bit fields where
++time_t is wider than long. Also give st_timeval_new its own size; it had
++the size of the old struct.
 +
 +Seen on an Arista W-118 (IPQ4019, armv7, musl): SO_TIMESTAMP gave
 +{ sec, usec: 0 } and SO_TIMESTAMPNS { sec, nsec: 0 } for every packet.
@@ -62,15 +72,21 @@ new file mode 100644
 +Assisted-by: Claude:claude-opus-5-5
 +Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 +---
-+ lib/socket.c | 8 +++++---
-+ 1 file changed, 5 insertions(+), 3 deletions(-)
++ lib/socket.c | 20 ++++++++++++--------
++ 1 file changed, 12 insertions(+), 8 deletions(-)
 +
 +diff --git a/lib/socket.c b/lib/socket.c
-+index 16eae444..5ba91d0d 100644
++index 16eae444..c2b91297 100644
 +--- a/lib/socket.c
 ++++ b/lib/socket.c
-+@@ -1680,7 +1680,7 @@ static struct_t st_timeval_old = {
-+ # ifdef SO_TIMESTAMP_NEW
++@@ -1677,17 +1677,18 @@ static struct_t st_timeval_old = {
++ 	}
++ };
++ 
++-# ifdef SO_TIMESTAMP_NEW
+++/* the kernel's SO_TIMESTAMP_NEW and SO_TIMESTAMPNS_NEW layouts, 64-bit
+++ * fields everywhere; also what a libc with only one SO_TIMESTAMP (musl)
+++ * gets where its time_t is wider than long */
 + struct timeval_new_local { int64_t tv_sec; int64_t tv_usec; };
 + static struct_t st_timeval_new = {
 +-	.size = sizeof(struct timeval_old_local),
@@ -78,25 +94,50 @@ new file mode 100644
 + 	.members = (member_t []){
 + 		STRUCT_MEMBER(timeval_new_local, tv, sec, DT_SIGNED),
 + 		STRUCT_MEMBER(timeval_new_local, tv, usec, DT_SIGNED),
-+@@ -1906,14 +1906,16 @@ static cmsgtype_t cmsgtypes[] = {
++ 		{ 0 }
++ 	}
++ };
++-# endif
++ 
++ struct timespec_old_local { long tv_sec; long tv_nsec; };
++ static struct_t st_timespec_old = {
++@@ -1699,7 +1700,6 @@ static struct_t st_timespec_old = {
++ 	}
++ };
++ 
++-# ifdef SO_TIMESTAMPNS_NEW
++ struct timespec_new_local { long long tv_sec; long long tv_nsec; };
++ static struct_t st_timespec_new = {
++ 	.size = sizeof(struct timespec_new_local),
++@@ -1709,7 +1709,6 @@ static struct_t st_timespec_new = {
++ 		{ 0 }
++ 	}
++ };
++-# endif
++ #endif
++ 
++ #define SV_VOID		(struct_t *)0
++@@ -1906,13 +1905,18 @@ static cmsgtype_t cmsgtypes[] = {
 + #if defined(__linux__)
 + 	{ SOL_PACKET, PACKET_AUXDATA, &st_tpacket_auxdata },
 + 
-+-	{ SOL_SOCKET, SO_TIMESTAMP_OLD, &st_timeval_old },
-++	/* the _NEW entries first: with a 64-bit time_t on a 32-bit system the
-++	 * _OLD fallbacks above carry the _NEW values */
-+ # ifdef SO_TIMESTAMP_NEW
+++# if defined(SO_TIMESTAMP_NEW) && defined(SO_TIMESTAMPNS_NEW)
++ 	{ SOL_SOCKET, SO_TIMESTAMP_OLD, &st_timeval_old },
++-# ifdef SO_TIMESTAMP_NEW
 + 	{ SOL_SOCKET, SO_TIMESTAMP_NEW, &st_timeval_new },
-+ # endif
-+-	{ SOL_SOCKET, SO_TIMESTAMPNS_OLD, &st_timespec_old },
-+ # ifdef SO_TIMESTAMPNS_NEW
++-# endif
++ 	{ SOL_SOCKET, SO_TIMESTAMPNS_OLD, &st_timespec_old },
++-# ifdef SO_TIMESTAMPNS_NEW
 + 	{ SOL_SOCKET, SO_TIMESTAMPNS_NEW, &st_timespec_new },
+++# else
+++	/* a libc without the _OLD and _NEW names (musl) has one SO_TIMESTAMP,
+++	 * the kernel's _NEW where its time_t is wider than long */
+++	{ SOL_SOCKET, SO_TIMESTAMP,
+++	  sizeof(time_t) > sizeof(long) ? &st_timeval_new : &st_timeval_old },
+++	{ SOL_SOCKET, SO_TIMESTAMPNS,
+++	  sizeof(time_t) > sizeof(long) ? &st_timespec_new : &st_timespec_old },
 + # endif
-++	{ SOL_SOCKET, SO_TIMESTAMP_OLD, &st_timeval_old },
-++	{ SOL_SOCKET, SO_TIMESTAMPNS_OLD, &st_timespec_old },
 + 
 + 	{ SOL_SOCKET, SCM_CREDENTIALS, &st_ucred },
-+ 	{ SOL_SOCKET, SCM_RIGHTS, CV_FDS },
 +-- 
 +2.43.0
-+
