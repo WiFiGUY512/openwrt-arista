@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 31 Oct 2026 01:00:47 -0500
+Subject: [PATCH] mac80211: ath11k: don't warn when a country leaves a radio without channels
+
+ath11k patch 112 (for upstream), B107: on a C-360, "iw reg set CA" left
+the 6 GHz-only QCN9074 with no enabled channel, and ath11k's channel
+list update hit a WARN_ON() and failed with -EINVAL. A domain with no
+channel for a radio is not a driver fault: there is no list to send,
+nothing can start on the radio meanwhile, and the next domain that
+enables a channel sends the list again. Log it at debug level and
+return 0, as ath12k already does.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=20
++PKG_RELEASE:=21
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch b/package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch
+new file mode 100755
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch
+@@ -0,0 +1,51 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH ath-next] wifi: ath11k: don't warn when a country leaves a
++ pdev without channels
++
++ath11k_reg_update_chan_list() hits a WARN_ON() and returns -EINVAL when
++none of the pdev's channels is enabled. Userspace can reach that by
++setting a country. On an Arista C-360, whose QCN9074 is a 6 GHz-only
++pdev, "iw reg set CA" left that wiphy with no enabled channel, and the
++driver-initiated regulatory notifier then warned:
++
++  WARNING: ... at drivers/net/wireless/ath/ath11k/reg.c:146 ath11k_reg_update_chan_list+0x368/0x3c0
++  ath11k_pci 0000:01:00.0: failed to update channel list: -22
++
++A domain with no channel for a pdev is not a driver fault. There is no
++list to send (ath11k_wmi_send_scan_chan_list_cmd() sends nothing for
++zero channels anyway), no vdev can start on the pdev meanwhile, and the
++next domain that enables a channel sends the whole list again. ath12k
++already treats this case as a debug message.
++
++Log it at debug level and return 0. That also covers
++ath11k_mac_op_start(), which ignores the return value but hits the same
++WARN_ON() when the radio is started in such a domain.
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/reg.c | 12 ++++++++++--
++ 1 file changed, 10 insertions(+), 2 deletions(-)
++
++--- a/drivers/net/wireless/ath/ath11k/reg.c
+++++ b/drivers/net/wireless/ath/ath11k/reg.c
++@@ -143,8 +143,16 @@ int ath11k_reg_update_chan_list(struct ath11k *ar, bool wait)
++ 		}
++ 	}
++
++-	if (WARN_ON(!num_channels))
++-		return -EINVAL;
+++	/* A regulatory domain can leave a pdev with no usable channel, as
+++	 * one without 6 GHz rules leaves a 6 GHz-only radio. There is no
+++	 * list to send then; the domain that enables a channel again sends it.
+++	 */
+++	if (!num_channels) {
+++		ath11k_dbg(ar->ab, ATH11K_DBG_REG,
+++			   "no enabled channel on pdev %u, channel list not sent\n",
+++			   ar->pdev->pdev_id);
+++		return 0;
+++	}
++
++ 	params = kzalloc_flex(*params, ch_param, num_channels);
++ 	if (!params)
