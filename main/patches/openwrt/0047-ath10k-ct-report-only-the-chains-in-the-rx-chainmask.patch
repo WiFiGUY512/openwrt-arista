@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:02:32 -0500
-Subject: [PATCH] ath10k-ct: report only the chains in the rx chainmask
+Subject: [PATCH 45/66] ath10k-ct: report only the chains in the rx chainmask
 
 ath10k-ct patch 992 (for upstream), B112: the W-118's IPQ4019 radios
 (2x2) reported four chain signals per client, two of them filler from
@@ -16,7 +16,13 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/kernel/ath10k-ct/Makefile             |  2 +-
+ ...-only-the-chains-in-the-rx-chainmask.patch | 77 +++++++++++++++++++
+ 2 files changed, 78 insertions(+), 1 deletion(-)
+ create mode 100755 package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch
+
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+index fd3d63d47d..aa4347a6a6 100644
 --- a/package/kernel/ath10k-ct/Makefile
 +++ b/package/kernel/ath10k-ct/Makefile
 @@ -1,7 +1,7 @@
@@ -30,6 +36,7 @@ diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefi
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch b/package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch
 new file mode 100755
+index 0000000000..b9641f336c
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/992-ath10k-ct-report-only-the-chains-in-the-rx-chainmask.patch
 @@ -0,0 +1,77 @@
@@ -110,3 +117,6 @@ new file mode 100755
 + 		rssi = __le32_to_cpu(arg.rssi[i]);
 + 		ath10k_dbg(ar, ATH10K_DBG_MGMT, "mgmt rssi[%d]:%d\n", i, arg.rssi[i]);
 +
+-- 
+2.43.0
+

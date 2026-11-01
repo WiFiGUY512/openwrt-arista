@@ -1,7 +1,8 @@
-From 9d1741ec7dfbea8cf2c215022df2eeecdab130b4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 15:03:38 -0600
-Subject: [PATCH] qualcommax: keep a vendor firmware file that is already there
+Subject: [PATCH 65/66] qualcommax: keep a vendor firmware file that is already
+ there
 
 12-ath11k-vendor-firmware extracts the vendor's amss.bin and m3.bin
 from its system whenever the driver asks for either and finds it
@@ -22,7 +23,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 6 insertions(+)
 
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
-index 95ffb6d122d..95707e8c071 100644
+index 95ffb6d122..95707e8c07 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 @@ -22,7 +22,10 @@ vendor_firmware_extract_mmc() {
@@ -37,7 +38,7 @@ index 95ffb6d122d..95707e8c071 100644
  	done
  	rm -rf "$tmp"
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
-index bd2b17183d3..113883e2259 100644
+index bd2b17183d..113883e225 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 @@ -33,7 +33,10 @@ vendor_firmware_extract() {

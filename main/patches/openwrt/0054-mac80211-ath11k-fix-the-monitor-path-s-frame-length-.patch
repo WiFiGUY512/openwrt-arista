@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 10:06:44 -0500
-Subject: [PATCH] mac80211: ath11k: fix the monitor path's frame length, FCS filter and rates
+Subject: [PATCH 51/66] mac80211: ath11k: fix the monitor path's frame length,
+ FCS filter and rates
 
 Three ath11k monitor-path fixes (for upstream), as ath11k 113-115, and
 the removal of OpenWrt's 949, which the first replaces:
@@ -24,20 +25,33 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/kernel/mac80211/Makefile              |   2 +-
+ ...ptor-and-the-FCS-from-monitor-frames.patch | 119 ++++++++++++++++++
+ ...iled-monitor-frames-unless-asked-for.patch |  80 ++++++++++++
+ ...-give-monitor-frames-a-complete-rate.patch | 116 +++++++++++++++++
+ ...49-wifi-ath11k-fix-monitor-rx-pktlen.patch |  89 -------------
+ 5 files changed, 316 insertions(+), 90 deletions(-)
+ create mode 100755 package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch
+ create mode 100755 package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch
+ create mode 100755 package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch
+ delete mode 100644 package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
+
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 1c78350dce..fc14ba4716 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=21
-+PKG_RELEASE:=22
+-PKG_RELEASE:=23
++PKG_RELEASE:=24
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch b/package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch
 new file mode 100755
+index 0000000000..a7e3f721f0
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/113-wifi-ath11k-strip-the-right-descriptor-and-the-FCS-from-monitor-frames.patch
 @@ -0,0 +1,119 @@
@@ -162,6 +176,7 @@ new file mode 100755
 + 
 diff --git a/package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch b/package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch
 new file mode 100755
+index 0000000000..f04239a375
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/114-wifi-ath11k-hold-back-FCS-failed-monitor-frames-unless-asked-for.patch
 @@ -0,0 +1,80 @@
@@ -247,6 +262,7 @@ new file mode 100755
 + }
 diff --git a/package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch b/package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch
 new file mode 100755
+index 0000000000..a5476996e5
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/115-wifi-ath11k-give-monitor-frames-a-complete-rate.patch
 @@ -0,0 +1,116 @@
@@ -368,6 +384,7 @@ new file mode 100755
 + 
 diff --git a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch b/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
 deleted file mode 100644
+index 6d349f6c8f..0000000000
 --- a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
 +++ /dev/null
 @@ -1,89 +0,0 @@
@@ -460,3 +477,6 @@ deleted file mode 100644
 - 		skb_next = mon_skb->next;
 - 		if (!skb_next)
 - 			rxs->flag &= ~RX_FLAG_AMSDU_MORE;
+-- 
+2.43.0
+

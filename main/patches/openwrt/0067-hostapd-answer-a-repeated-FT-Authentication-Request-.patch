@@ -1,8 +1,8 @@
-From 07a5830788e591c17ca084cd96e51f19baf9d6d3 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 11:31:17 -0600
-Subject: [PATCH] hostapd: answer a repeated FT Authentication Request with the
- same response
+Subject: [PATCH 63/66] hostapd: answer a repeated FT Authentication Request
+ with the same response
 
 A STA that gets no FT Authentication Response within 100 ms sends its
 request again. hostapd took the repeat for a new exchange, with a new
@@ -28,21 +28,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/network/services/hostapd/patches/075-FT-answer-a-repeated-FT-Authentication-Request-with-the-same-response.patch
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index fc919bbbf3f..b28ef891c92 100644
+index fde88c1da4..fc919bbbf3 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=hostapd
--PKG_RELEASE:=10
-+PKG_RELEASE:=11
+-PKG_RELEASE:=9
++PKG_RELEASE:=10
  
  PKG_SOURCE_URL:=https://w1.fi/hostap.git
  PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/patches/075-FT-answer-a-repeated-FT-Authentication-Request-with-the-same-response.patch b/package/network/services/hostapd/patches/075-FT-answer-a-repeated-FT-Authentication-Request-with-the-same-response.patch
 new file mode 100755
-index 00000000000..b4d7685ee75
+index 0000000000..b4d7685ee7
 --- /dev/null
 +++ b/package/network/services/hostapd/patches/075-FT-answer-a-repeated-FT-Authentication-Request-with-the-same-response.patch
 @@ -0,0 +1,161 @@

@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:32:15 -0500
-Subject: [PATCH] wifi-scripts: keep RADIUS MAC authentication with a deny list, and DAS outside WPA Enterprise
+Subject: [PATCH 47/66] wifi-scripts: keep RADIUS MAC authentication with a
+ deny list, and DAS outside WPA Enterprise
 
 Two faults in ap.uc's RADIUS handling (B51):
 
@@ -21,7 +22,12 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/network/config/wifi-scripts/Makefile  |  2 +-
+ .../files-ucode/usr/share/ucode/wifi/ap.uc    | 20 +++++++++++++------
+ 2 files changed, 15 insertions(+), 7 deletions(-)
+
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index 4a6aa2ff13..0ed9070489 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -34,9 +40,10 @@ diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/conf
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
+index c1f4cd38f5..c82c1e3044 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
-@@ -331,11 +331,6 @@ function iface_auth_type(config, band, eht) {
+@@ -344,11 +344,6 @@ function iface_auth_type(config, band, eht) {
  			iface_authentication_server(config);
  		}
  
@@ -48,7 +55,7 @@ diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wif
  		set_default(config, 'eapol_version', config.wpa & 1);
  		if (!config.eapol_version)
  			config.eapol_version = null;
-@@ -345,6 +340,16 @@ function iface_auth_type(config, band, eht) {
+@@ -358,6 +353,16 @@ function iface_auth_type(config, band, eht) {
  		break;
  	}
  
@@ -65,7 +72,7 @@ diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wif
  	append_vars(config, [
  		'sae_require_mfp', 'sae_password_file', 'sae_pwe', 'sae_groups', 'sae_track_password', 'time_advertisement', 'time_zone',
  		'wpa_group_rekey', 'wpa_ptk_rekey', 'wpa_gmk_rekey', 'wpa_strict_rekey',
-@@ -367,6 +372,7 @@ function iface_ppsk(config) {
+@@ -380,6 +385,7 @@ function iface_ppsk(config) {
  
  	iface_authentication_server(config);
  	append('macaddr_acl', '2');
@@ -73,7 +80,7 @@ diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wif
  }
  
  function iface_wps(config, band) {
-@@ -425,7 +431,9 @@ function iface_macfilter(config) {
+@@ -438,7 +444,9 @@ function iface_macfilter(config) {
  
  	case 'deny':
  		append('deny_mac_file', path);
@@ -84,3 +91,6 @@ diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wif
  		break;
  
  	default:
+-- 
+2.43.0
+

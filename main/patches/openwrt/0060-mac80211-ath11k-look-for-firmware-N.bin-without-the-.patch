@@ -1,7 +1,7 @@
-From 9a069a49e49d45afb7780402c1ec43594dbf84dc Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 02:44:08 -0600
-Subject: [PATCH] mac80211: ath11k: look for firmware-N.bin without the
+Subject: [PATCH 56/66] mac80211: ath11k: look for firmware-N.bin without the
  user-space fallback
 
 ath11k patch 116 (for upstream), B123: ath11k asks for the optional
@@ -24,21 +24,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/kernel/mac80211/patches/ath11k/116-wifi-ath11k-look-for-firmware-N.bin-without-the-user-space-fallback.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index ca360f55f4b..1c78350dcea 100644
+index fc14ba4716..235f282047 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=22
-+PKG_RELEASE:=23
+-PKG_RELEASE:=24
++PKG_RELEASE:=25
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/116-wifi-ath11k-look-for-firmware-N.bin-without-the-user-space-fallback.patch b/package/kernel/mac80211/patches/ath11k/116-wifi-ath11k-look-for-firmware-N.bin-without-the-user-space-fallback.patch
 new file mode 100755
-index 00000000000..a8155ac3a90
+index 0000000000..a8155ac3a9
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/116-wifi-ath11k-look-for-firmware-N.bin-without-the-user-space-fallback.patch
 @@ -0,0 +1,44 @@

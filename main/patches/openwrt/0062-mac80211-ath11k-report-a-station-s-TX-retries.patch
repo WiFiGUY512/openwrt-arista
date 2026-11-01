@@ -1,7 +1,7 @@
-From d170c6f9245b7b0d88deb94f32df70e835b832f4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 03:08:46 -0600
-Subject: [PATCH] mac80211: ath11k: report a station's TX retries
+Subject: [PATCH 58/66] mac80211: ath11k: report a station's TX retries
 
 ath11k patch 117 (for upstream), B62: ath11k gave mac80211 no rate
 table in its TX status, so mac80211 counted no retries and iw showed
@@ -21,21 +21,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/kernel/mac80211/patches/ath11k/117-wifi-ath11k-report-a-station-s-TX-retries.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1c78350dcea..fc14ba4716a 100644
+index 235f282047..daa8a760a8 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=23
-+PKG_RELEASE:=24
+-PKG_RELEASE:=25
++PKG_RELEASE:=26
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/117-wifi-ath11k-report-a-station-s-TX-retries.patch b/package/kernel/mac80211/patches/ath11k/117-wifi-ath11k-report-a-station-s-TX-retries.patch
 new file mode 100755
-index 00000000000..056bfb079dc
+index 0000000000..056bfb079d
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/117-wifi-ath11k-report-a-station-s-TX-retries.patch
 @@ -0,0 +1,53 @@

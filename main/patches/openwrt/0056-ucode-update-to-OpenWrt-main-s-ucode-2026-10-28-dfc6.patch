@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 10:08:15 -0500
-Subject: [PATCH] ucode: update to OpenWrt main's ucode (2026-10-28, dfc64d41)
+Subject: [PATCH 53/66] ucode: update to OpenWrt main's ucode (2026-10-28,
+ dfc64d41)
 
 Take OpenWrt main's ucode package as of 3e6064bb (ucode dfc64d41, ABI
 20261009, up from b885dd0f of 2026-07-09 and ABI 20230711). It brings
@@ -22,10 +23,24 @@ and every ucode module and user is rebuilt.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/utils/ucode/Makefile                  |   2 +-
+ ...otype-support-for-extended-resources.patch | 320 ------------------
+ ...est-proto-in-the-instance-proto-slot.patch |  73 ----
+ ...-a-failed-module-in-the-module-table.patch |  88 -----
+ ...filter-map-callfunc-across-user-code.patch | 103 ------
+ ...-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch |  32 --
+ 6 files changed, 1 insertion(+), 617 deletions(-)
+ delete mode 100644 package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
+ delete mode 100644 package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
+ delete mode 100644 package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch
+ delete mode 100644 package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch
+ delete mode 100644 package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch
+
 diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index b7315eff76..6dfb79c073 100644
 --- a/package/utils/ucode/Makefile
 +++ b/package/utils/ucode/Makefile
-@@ -8,17 +8,17 @@
+@@ -8,7 +8,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=ucode
@@ -33,69 +48,10 @@ diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
 +PKG_RELEASE:=2
  
  PKG_SOURCE_PROTO:=git
--PKG_SOURCE_URL=https://github.com/jow-/ucode.git
--PKG_SOURCE_DATE:=2026-07-09
--PKG_SOURCE_VERSION:=b885dd0fe1e974551fb1233ca5f3aa74d80b74d9
--PKG_MIRROR_HASH:=654ba9dc8714aa8caf75ef422962fb465c2b21c8fbe4518a47f9de391cce6e71
-+PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
-+PKG_SOURCE_DATE:=2026-10-28
-+PKG_SOURCE_VERSION:=dfc64d41fd720163ac21d9feb9cb224d1a80fd75
-+PKG_MIRROR_HASH:=149deff35eca0d0aad2ff308023355def8453e71338cba3033483a13de63733f
- PKG_MAINTAINER:=Jo-Philipp Wich <jo@mein.io>
- PKG_LICENSE:=ISC
- 
--PKG_ABI_VERSION:=20230711
-+PKG_ABI_VERSION:=20261009
- PKG_BUILD_DEPENDS:=libmd
- HOST_BUILD_DEPENDS:=libjson-c/host
- 
-@@ -54,7 +54,10 @@ CMAKE_HOST_OPTIONS += \
- 	-DDEBUG_SUPPORT=ON \
- 	-DLOG_SUPPORT=OFF \
- 	-DZLIB_SUPPORT=ON \
--	-DDIGEST_SUPPORT=OFF
-+	-DDIGEST_SUPPORT=OFF \
-+	-DFFI_SUPPORT=OFF \
-+	-DNETADDR_SUPPORT=OFF \
-+	-DSERIAL_SUPPORT=OFF
- 
- 
- define Package/ucode/default
-@@ -137,6 +140,10 @@ $(eval $(call UcodeModule, \
- 	debug, DEBUG_SUPPORT, +libubox +libucode, \
- 	The debug plugin module provides runtime debugging and introspection facilities.))
- 
-+$(eval $(call UcodeModule, \
-+	ffi, FFI_SUPPORT, +libffi, \
-+	The ffi plugin module allows ucode scripts to call C functions in shared libraries through libffi.))
-+
- $(eval $(call UcodeModule, \
- 	fs, FS_SUPPORT, , \
- 	The filesystem plugin module allows interaction with the local file system.))
-@@ -149,6 +156,10 @@ $(eval $(call UcodeModule, \
- 	math, MATH_SUPPORT, , \
- 	The math plugin provides access to various <math.h> procedures.))
- 
-+$(eval $(call UcodeModule, \
-+	netaddr, NETADDR_SUPPORT, , \
-+	The netaddr plugin provides IPv4, IPv6 and MAC address parsing and calculation.))
-+
- $(eval $(call UcodeModule, \
- 	nl80211, NL80211_SUPPORT, +libnl-tiny +libubox, \
- 	The nl80211 plugin provides access to the Linux wireless 802.11 netlink API.))
-@@ -161,6 +172,10 @@ $(eval $(call UcodeModule, \
- 	rtnl, RTNL_SUPPORT, +libnl-tiny +libubox, \
- 	The rtnl plugin provides access to the Linux routing netlink API.))
- 
-+$(eval $(call UcodeModule, \
-+	serial, SERIAL_SUPPORT, , \
-+	The serial plugin provides termios, modem control line and serial port configuration access.))
-+
- $(eval $(call UcodeModule, \
- 	socket, SOCKET_SUPPORT, , \
- 	The socket plugin provides access to IPv4, IPv6, Unix and packet socket APIs.))
+ PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
 diff --git a/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch b/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
 deleted file mode 100644
+index 931529d100..0000000000
 --- a/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
 +++ /dev/null
 @@ -1,320 +0,0 @@
@@ -421,6 +377,7 @@ deleted file mode 100644
 -
 diff --git a/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch b/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
 deleted file mode 100644
+index ad495ba76d..0000000000
 --- a/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
 +++ /dev/null
 @@ -1,73 +0,0 @@
@@ -499,6 +456,7 @@ deleted file mode 100644
 -
 diff --git a/package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch b/package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch
 deleted file mode 100644
+index 8817662890..0000000000
 --- a/package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch
 +++ /dev/null
 @@ -1,88 +0,0 @@
@@ -592,6 +550,7 @@ deleted file mode 100644
 -
 diff --git a/package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch b/package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch
 deleted file mode 100644
+index 4eebf0537b..0000000000
 --- a/package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch
 +++ /dev/null
 @@ -1,103 +0,0 @@
@@ -700,6 +659,7 @@ deleted file mode 100644
 -
 diff --git a/package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch b/package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch
 deleted file mode 100644
+index 53e3cc179a..0000000000
 --- a/package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch
 +++ /dev/null
 @@ -1,32 +0,0 @@
@@ -735,224 +695,6 @@ deleted file mode 100644
 --- 
 -2.43.0
 -
-diff --git a/package/utils/ucode/patches/100-rtnl-return-true-for-an-acknowledgement-without-data.patch b/package/utils/ucode/patches/100-rtnl-return-true-for-an-acknowledgement-without-data.patch
-deleted file mode 100644
---- a/package/utils/ucode/patches/100-rtnl-return-true-for-an-acknowledgement-without-data.patch
-+++ /dev/null
-@@ -1,64 +0,0 @@
--From: Felix Fietkau <nbd@nbd.name>
--Date: Wed, 30 Sep 2026 18:08:32 +0200
--Subject: [PATCH] rtnl: return true for an acknowledgement without data
--
--request() treats an ACK as the end of a reply and returns the collected
--data. For a command that the kernel answers with a bare ACK, such as
--RTM_SETLINK, that data is null, so a caller that tests the result for
--truth sees a failure.
--
--Return true if an ACK ends a request without reply data. A dump that
--ends without entries still returns null, and a refused request still
--returns false.
--
--Document these results in the description of request().
--
--Signed-off-by: Felix Fietkau <nbd@nbd.name>
-----
--
----- a/lib/rtnl.c
--+++ b/lib/rtnl.c
--@@ -3350,6 +3350,19 @@ cb_done(struct nl_msg *msg, void *arg)
-- }
-- 
-- static int
--+cb_done_ack(struct nl_msg *msg, void *arg)
--+{
--+	request_state_t *s = arg;
--+
--+	if (s->state == STATE_UNREPLIED)
--+		s->res = ucv_boolean_new(true);
--+
--+	s->state = STATE_REPLIED;
--+
--+	return NL_STOP;
--+}
--+
--+static int
-- cb_error(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
-- {
-- 	request_state_t *s = arg;
--@@ -3433,7 +3446,13 @@ static const struct {
--  * @param {number} flags - The netlink flags for the request
--  * @param {*} payload - The payload data for the request
--  *
--- * @returns {?*} - The response data or null on error
--+ * @returns {?(Object|Object[]|boolean)} - The response data, true for a
--+ *                                         successful acknowledgement without
--+ *                                         data, false when the kernel refuses
--+ *                                         the request or the reply cannot be
--+ *                                         received, or null for a dump
--+ *                                         without entries and when the
--+ *                                         request cannot be sent
--  *
--  * @example
--  * // Send a route request
--@@ -3532,7 +3551,7 @@ uc_nl_request(uc_vm_t *vm, size_t nargs)
-- 
-- 	nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, cb_reply, &st);
-- 	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, cb_done, &st);
---	nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, cb_done, &st);
--+	nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, cb_done_ack, &st);
-- 	nl_cb_err(cb, NL_CB_CUSTOM, cb_error, &st);
-- 
-- 	nl_send_auto_complete(sock, msg);
-diff --git a/package/utils/ucode/patches/110-uloop-allow-reusing-the-existing-environment.patch b/package/utils/ucode/patches/110-uloop-allow-reusing-the-existing-environment.patch
-deleted file mode 100644
---- a/package/utils/ucode/patches/110-uloop-allow-reusing-the-existing-environment.patch
-+++ /dev/null
-@@ -1,57 +0,0 @@
--From: Felix Fietkau <nbd@nbd.name>
--Date: Wed, 8 Oct 2025 19:11:46 +0200
--Subject: [PATCH] uloop: allow reusing the existing environment
--
--When passing null as environment argument, reuse existing environ.
--This makes it possible to avoid having to duplicate and convert it
--by passing the output of getenv().
--
--Signed-off-by: Felix Fietkau <nbd@nbd.name>
-----
--
----- a/lib/uloop.c
--+++ b/lib/uloop.c
--@@ -1028,7 +1028,22 @@ uc_uloop_process(uc_vm_t *vm, size_t nar
-- 
-- 	if (pid == 0) {
-- 		argp = calloc(ucv_array_length(arguments) + 2, sizeof(char *));
---		envp = calloc(ucv_object_length(env_arg) + 1, sizeof(char *));
--+		envp = environ;
--+
--+		if (env_arg) {
--+			envp = calloc(ucv_object_length(env_arg) + 1, sizeof(char *));
--+			i = 0;
--+			ucv_object_foreach(env_arg, envk, envv) {
--+				buf = xprintbuf_new();
--+
--+				ucv_stringbuf_printf(buf, "%s=", envk);
--+				ucv_to_stringbuf(vm, buf, envv, false);
--+
--+				envp[i++] = buf->buf;
--+
--+				free(buf);
--+			}
--+		}
-- 
-- 		if (!argp || !envp)
-- 			_exit(-1);
--@@ -1038,19 +1053,6 @@ uc_uloop_process(uc_vm_t *vm, size_t nar
-- 		for (i = 0; i < ucv_array_length(arguments); i++)
-- 			argp[i+1] = ucv_to_string(vm, ucv_array_get(arguments, i));
-- 
---		i = 0;
---
---		ucv_object_foreach(env_arg, envk, envv) {
---			buf = xprintbuf_new();
---
---			ucv_stringbuf_printf(buf, "%s=", envk);
---			ucv_to_stringbuf(vm, buf, envv, false);
---
---			envp[i++] = buf->buf;
---
---			free(buf);
---		}
---
-- 		execvpe((const char *)ucv_string_get(executable),
-- 		        (char * const *)argp, (char * const *)envp);
-- 
-diff --git a/package/utils/ucode/patches/111-uloop-add-optional-setup-callback-to-process.patch b/package/utils/ucode/patches/111-uloop-add-optional-setup-callback-to-process.patch
-deleted file mode 100644
---- a/package/utils/ucode/patches/111-uloop-add-optional-setup-callback-to-process.patch
-+++ /dev/null
-@@ -1,85 +0,0 @@
--From: Felix Fietkau <nbd@nbd.name>
--Date: Wed, 8 Oct 2025 22:06:46 +0200
--Subject: [PATCH] uloop: add optional setup callback to process()
--
--Add optional setup callback as 5th argument to uloop.process() that is
--invoked in the child process after fork() but before exec().
--
--Signed-off-by: Felix Fietkau <nbd@nbd.name>
-----
--
----- a/lib/uloop.c
--+++ b/lib/uloop.c
--@@ -973,8 +973,9 @@ uc_uloop_process_cb(struct uloop_process
--  *
--  * This function creates a process instance for executing external programs.
--  * It takes the executable path string, an optional string array as the argument
--- * vector, an optional dictionary describing environment variables, and a
--- * callback function to be invoked when the invoked process ends.
--+ * vector, an optional dictionary describing environment variables, a
--+ * callback function to be invoked when the invoked process ends, and an optional
--+ * setup callback to be invoked in the child process after fork().
--  *
--  * @function module:uloop#process
--  *
--@@ -991,6 +992,11 @@ uc_uloop_process_cb(struct uloop_process
--  * @param {Function} callback
--  * The callback function to be invoked when the invoked process ends.
--  *
--+ * @param {Function} [setup]
--+ * Optional. A callback function to be invoked in the child process after fork()
--+ * but before exec(). This can be used to set up file descriptors, change working
--+ * directory, or perform other initialization.
--+ *
--  * @returns {?module:uloop.process}
--  * Returns a process instance for executing external programs.
--  * Returns `null` on error, e.g. due to `exec()` failure or invalid arguments.
--@@ -1000,6 +1006,16 @@ uc_uloop_process_cb(struct uloop_process
--  * const myProcess = uloop.process("/bin/ls", ["-l", "/tmp"], null, (code) => {
--  *     printf(`Process exited with code ${code}\n`);
--  * });
--+ *
--+ * // With setup callback to redirect stderr
--+ * const myProcess = uloop.process("/bin/ls", ["-l", "/tmp"], null, (code) => {
--+ *     printf(`Process exited with code ${code}\n`);
--+ * }, () => {
--+ *     const fs = require('fs');
--+ *     const errlog = fs.open('/tmp/error.log', 'w');
--+ *     fs.dup2(errlog.fileno(), 2);
--+ *     errlog.close();
--+ * });
--  */
-- static uc_value_t *
-- uc_uloop_process(uc_vm_t *vm, size_t nargs)
--@@ -1008,6 +1024,7 @@ uc_uloop_process(uc_vm_t *vm, size_t nar
-- 	uc_value_t *arguments = uc_fn_arg(1);
-- 	uc_value_t *env_arg = uc_fn_arg(2);
-- 	uc_value_t *callback = uc_fn_arg(3);
--+	uc_value_t *setup_cb = uc_fn_arg(4);
-- 	uc_uloop_process_t *process;
-- 	uc_stringbuf_t *buf;
-- 	char **argp, **envp;
--@@ -1017,7 +1034,8 @@ uc_uloop_process(uc_vm_t *vm, size_t nar
-- 	if (ucv_type(executable) != UC_STRING ||
-- 	    (arguments && ucv_type(arguments) != UC_ARRAY) ||
-- 	    (env_arg && ucv_type(env_arg) != UC_OBJECT) ||
---	    !ucv_is_callable(callback)) {
--+	    !ucv_is_callable(callback) ||
--+	    (setup_cb && !ucv_is_callable(setup_cb))) {
-- 		err_return(EINVAL);
-- 	}
-- 
--@@ -1027,6 +1045,13 @@ uc_uloop_process(uc_vm_t *vm, size_t nar
-- 		err_return(errno);
-- 
-- 	if (pid == 0) {
--+		if (setup_cb) {
--+			uc_vm_stack_push(vm, ucv_get(setup_cb));
--+
--+			if (uc_uloop_vm_call(vm, false, 0))
--+				ucv_put(uc_vm_stack_pop(vm));
--+		}
--+
-- 		argp = calloc(ucv_array_length(arguments) + 2, sizeof(char *));
-- 		envp = environ;
-- 
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
-From a2d25f961dc30ad1f47e08aaeb19e666304e31ad Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 26 Oct 2026 22:00:00 -0500
-Subject: [PATCH 27/28] treewide: reconnect to ubus when ubusd restarts
+Subject: [PATCH 25/66] treewide: reconnect to ubus when ubusd restarts
 
 When ubusd restarts, most of its clients stay off ubus until they are
 restarted themselves: libubus' default connection_lost does nothing
@@ -31,7 +31,6 @@ Bump each PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- package/network/ipv6/odhcp6c/Makefile         |   2 +-
  ...xt-and-reconnect-when-ubusd-drops-it.patch | 134 ++++++++++++++++++
  package/network/services/dnsmasq/Makefile     |   2 +-
  ...-ubus-reconnect-when-ubusd-goes-away.patch |  96 +++++++++++++
@@ -41,29 +40,16 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  ...nd-the-ubus-directory-not-the-socket.patch |  49 +++++++
  package/system/rpcd/Makefile                  |   2 +-
  ...nect-when-ubusd-drops-the-connection.patch |  84 +++++++++++
- 10 files changed, 439 insertions(+), 5 deletions(-)
+ 9 files changed, 438 insertions(+), 4 deletions(-)
  create mode 100644 package/network/ipv6/odhcp6c/patches/100-ubus-keep-the-context-and-reconnect-when-ubusd-drops-it.patch
  create mode 100644 package/network/services/dnsmasq/patches/300-ubus-reconnect-when-ubusd-goes-away.patch
  create mode 100644 package/network/services/odhcpd/patches/100-ubus-reconnect-when-ubusd-drops-the-connection.patch
  create mode 100644 package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch
  create mode 100644 package/system/rpcd/patches/100-main-reconnect-when-ubusd-drops-the-connection.patch
 
-diff --git a/package/network/ipv6/odhcp6c/Makefile b/package/network/ipv6/odhcp6c/Makefile
-index 98ed16b2..52f66a67 100644
---- a/package/network/ipv6/odhcp6c/Makefile
-+++ b/package/network/ipv6/odhcp6c/Makefile
-@@ -8,7 +8,7 @@
- include $(TOPDIR)/rules.mk
- 
- PKG_NAME:=odhcp6c
--PKG_RELEASE:=3
-+PKG_RELEASE:=4
- 
- PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL=$(PROJECT_GIT)/project/odhcp6c.git
 diff --git a/package/network/ipv6/odhcp6c/patches/100-ubus-keep-the-context-and-reconnect-when-ubusd-drops-it.patch b/package/network/ipv6/odhcp6c/patches/100-ubus-keep-the-context-and-reconnect-when-ubusd-drops-it.patch
 new file mode 100644
-index 00000000..cff52ce4
+index 0000000000..cff52ce45a
 --- /dev/null
 +++ b/package/network/ipv6/odhcp6c/patches/100-ubus-keep-the-context-and-reconnect-when-ubusd-drops-it.patch
 @@ -0,0 +1,134 @@
@@ -202,21 +188,21 @@ index 00000000..cff52ce4
 +-- 
 +2.43.0
 diff --git a/package/network/services/dnsmasq/Makefile b/package/network/services/dnsmasq/Makefile
-index d0dedf9c..74af2ea7 100644
+index c09723e0c0..59eb46b773 100644
 --- a/package/network/services/dnsmasq/Makefile
 +++ b/package/network/services/dnsmasq/Makefile
 @@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
  PKG_NAME:=dnsmasq
  PKG_UPSTREAM_VERSION:=2.93
  PKG_VERSION:=$(subst test,~~test,$(subst rc,~rc,$(PKG_UPSTREAM_VERSION)))
--PKG_RELEASE:=4
-+PKG_RELEASE:=5
+-PKG_RELEASE:=10
++PKG_RELEASE:=11
  
  PKG_SOURCE:=$(PKG_NAME)-$(PKG_UPSTREAM_VERSION).tar.xz
  PKG_SOURCE_URL:=https://thekelleys.org.uk/dnsmasq/
 diff --git a/package/network/services/dnsmasq/patches/300-ubus-reconnect-when-ubusd-goes-away.patch b/package/network/services/dnsmasq/patches/300-ubus-reconnect-when-ubusd-goes-away.patch
 new file mode 100644
-index 00000000..7a2ffb16
+index 0000000000..7a2ffb16e2
 --- /dev/null
 +++ b/package/network/services/dnsmasq/patches/300-ubus-reconnect-when-ubusd-goes-away.patch
 @@ -0,0 +1,96 @@
@@ -317,21 +303,21 @@ index 00000000..7a2ffb16
 +-- 
 +2.43.0
 diff --git a/package/network/services/odhcpd/Makefile b/package/network/services/odhcpd/Makefile
-index 7a1287c1..831e8d9a 100644
+index fa382ee440..63393fecd9 100644
 --- a/package/network/services/odhcpd/Makefile
 +++ b/package/network/services/odhcpd/Makefile
 @@ -8,7 +8,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=odhcpd
--PKG_RELEASE:=2
-+PKG_RELEASE:=3
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/odhcpd.git
 diff --git a/package/network/services/odhcpd/patches/100-ubus-reconnect-when-ubusd-drops-the-connection.patch b/package/network/services/odhcpd/patches/100-ubus-reconnect-when-ubusd-drops-the-connection.patch
 new file mode 100644
-index 00000000..b5f60473
+index 0000000000..b5f6047344
 --- /dev/null
 +++ b/package/network/services/odhcpd/patches/100-ubus-reconnect-when-ubusd-drops-the-connection.patch
 @@ -0,0 +1,71 @@
@@ -407,21 +393,21 @@ index 00000000..b5f60473
 +-- 
 +2.43.0
 diff --git a/package/system/procd/Makefile b/package/system/procd/Makefile
-index 1ec7c9fd..7d239d9b 100644
+index bcbe35d81d..4e56576c7f 100644
 --- a/package/system/procd/Makefile
 +++ b/package/system/procd/Makefile
 @@ -8,7 +8,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=procd
--PKG_RELEASE:=2
-+PKG_RELEASE:=3
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/procd.git
 diff --git a/package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch b/package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch
 new file mode 100644
-index 00000000..5bb7363e
+index 0000000000..5bb7363e88
 --- /dev/null
 +++ b/package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch
 @@ -0,0 +1,49 @@
@@ -475,7 +461,7 @@ index 00000000..5bb7363e
 +-- 
 +2.43.0
 diff --git a/package/system/rpcd/Makefile b/package/system/rpcd/Makefile
-index 0c6f6d05..1dde80e1 100644
+index bb61c4d63f..f1b79fa994 100644
 --- a/package/system/rpcd/Makefile
 +++ b/package/system/rpcd/Makefile
 @@ -8,7 +8,7 @@
@@ -489,7 +475,7 @@ index 0c6f6d05..1dde80e1 100644
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/rpcd.git
 diff --git a/package/system/rpcd/patches/100-main-reconnect-when-ubusd-drops-the-connection.patch b/package/system/rpcd/patches/100-main-reconnect-when-ubusd-drops-the-connection.patch
 new file mode 100644
-index 00000000..75bd44c5
+index 0000000000..75bd44c586
 --- /dev/null
 +++ b/package/system/rpcd/patches/100-main-reconnect-when-ubusd-drops-the-connection.patch
 @@ -0,0 +1,84 @@

@@ -1,7 +1,7 @@
-From 680a0e760935585cb00069d04d07bf6636a79f71 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 08:54:37 -0500
-Subject: [PATCH 08/18] qualcommax: ipq807x: c-260: light the radio LEDs
+Subject: [PATCH 08/66] qualcommax: ipq807x: c-260: light the radio LEDs
 
 The 2.4, 5 and WLAN LEDs had no trigger. Phy numbers follow the order
 the radios were first found in, and they differ between units: on one
@@ -22,7 +22,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds
 new file mode 100755
-index 00000000..9d4037f2
+index 0000000000..9d4037f285
 --- /dev/null
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/ieee80211/12-arista-c-260-leds
 @@ -0,0 +1,30 @@
@@ -56,3 +56,6 @@ index 00000000..9d4037f2
 +esac
 +
 +echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
+-- 
+2.43.0
+

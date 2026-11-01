@@ -1,7 +1,7 @@
-From 43b7b7ee6b532665b7868279be3215ee312ed616 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 26 Oct 2026 22:00:00 -0500
-Subject: [PATCH 28/28] hostapd: remove the interfaces of a phy that is gone
+Subject: [PATCH 26/66] hostapd: remove the interfaces of a phy that is gone
 
 When a wiphy goes away (its driver unloaded or unbound, or the PCI
 device removed) and comes back under a new name, hostapd kept the old
@@ -24,28 +24,14 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- package/network/services/hostapd/Makefile     |  2 +-
  .../network/services/hostapd/files/hostapd.uc | 31 +++++++++++++++++++
- 2 files changed, 32 insertions(+), 1 deletion(-)
+ 1 file changed, 31 insertions(+)
 
-diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index 1ba4ac61..8124c0d9 100644
---- a/package/network/services/hostapd/Makefile
-+++ b/package/network/services/hostapd/Makefile
-@@ -5,7 +5,7 @@
- include $(TOPDIR)/rules.mk
- 
- PKG_NAME:=hostapd
--PKG_RELEASE:=4
-+PKG_RELEASE:=5
- 
- PKG_SOURCE_URL:=https://w1.fi/hostap.git
- PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/files/hostapd.uc b/package/network/services/hostapd/files/hostapd.uc
-index 9a01e811..87cfc42d 100644
+index b9c43d692b..7c7a7f70db 100644
 --- a/package/network/services/hostapd/files/hostapd.uc
 +++ b/package/network/services/hostapd/files/hostapd.uc
-@@ -1211,6 +1211,33 @@ function iface_config_remove(name, old_config)
+@@ -1643,6 +1643,33 @@ function iface_config_remove(name, old_config)
  	return iface_remove(old_config);
  }
  
@@ -77,9 +63,9 @@ index 9a01e811..87cfc42d 100644
 +}
 +
  // No fallback to a PHY restart, which would take the other BSSes down.
- function mld_link_bss_remove(phy, name)
- {
-@@ -1264,6 +1291,8 @@ function iface_set_config(name, config)
+ // bss is the object of the hook: hostapd freed the BSS data before the hook,
+ // and hostapd.bss still holds the object it released then.
+@@ -1783,6 +1810,8 @@ function iface_set_config(name, config)
  	let phydev = phy_open(phy, config.radio_idx);
  	if (!phydev) {
  		hostapd.printf(`Failed to open phy ${phy}`);
@@ -88,7 +74,7 @@ index 9a01e811..87cfc42d 100644
  		return false;
  	}
  
-@@ -1932,6 +1961,8 @@ let main_obj = {
+@@ -2467,6 +2496,8 @@ let main_obj = {
  			if (!phy)
  				return libubus.STATUS_INVALID_ARGUMENT;
  

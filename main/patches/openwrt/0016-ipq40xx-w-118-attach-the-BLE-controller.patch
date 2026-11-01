@@ -1,7 +1,7 @@
-From a94e5b95a1c92a6e6cea51094460029ce3a3b5ad Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 19 Oct 2026 14:19:01 -0500
-Subject: [PATCH 16/18] ipq40xx: w-118: attach the BLE controller
+Subject: [PATCH 14/66] ipq40xx: w-118: attach the BLE controller
 
 The W-118's NXP Bluetooth LE controller runs NXP's HCI firmware (H:4,
 115200 baud, no flow control) on blsp1_uart2 (/dev/ttyMSM1); its reset
@@ -24,7 +24,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 
 diff --git a/target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth b/target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth
 new file mode 100755
-index 00000000..62d4080e
+index 0000000000..62d4080e48
 --- /dev/null
 +++ b/target/linux/ipq40xx/base-files/etc/uci-defaults/03_bluetooth
 @@ -0,0 +1,18 @@
@@ -47,7 +47,7 @@ index 00000000..62d4080e
 +	set bluetooth-uart.main.enabled='1'
 +EOF
 diff --git a/target/linux/ipq40xx/image/generic.mk b/target/linux/ipq40xx/image/generic.mk
-index 8799b227..cbe80d27 100644
+index 7f5231d597..ad072a5402 100644
 --- a/target/linux/ipq40xx/image/generic.mk
 +++ b/target/linux/ipq40xx/image/generic.mk
 @@ -170,7 +170,8 @@ define Device/arista_w-118
@@ -60,3 +60,6 @@ index 8799b227..cbe80d27 100644
  endef
  TARGET_DEVICES += arista_w-118
  
+-- 
+2.43.0
+

@@ -1,8 +1,8 @@
-From e18714b2e28a2460b03ab80161d46081407ca769 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 24 Oct 2026 17:25:00 +0000
-Subject: [PATCH] mac80211: ath11k: don't take a monitor PPDU ID of 0 for no
- change
+Subject: [PATCH 21/66] mac80211: ath11k: don't take a monitor PPDU ID of 0 for
+ no change
 
 ath11k's monitor destination pop takes a PPDU ID change to 0 (at a wrap)
 for no change, chains the MPDU, and the caller then leaves that chain
@@ -25,21 +25,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index eab0371..1efdf91 100644
+index 87e0f65f1b..c37c3be897 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=10
-+PKG_RELEASE:=11
+-PKG_RELEASE:=12
++PKG_RELEASE:=13
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch b/package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch
 new file mode 100644
-index 0000000..d9b7646
+index 0000000000..d9b7646b6c
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/103-wifi-ath11k-don-t-take-a-monitor-PPDU-ID-of-0-for-no-change.patch
 @@ -0,0 +1,51 @@

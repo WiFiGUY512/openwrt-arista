@@ -1,8 +1,8 @@
-From 7667f0dddc3bff611d412ef12a505a014c3004cb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 11:15:00 -0500
-Subject: [PATCH] wifi-scripts: a disabled radio doesn't set the regulatory
- domain
+Subject: [PATCH 34/66] wifi-scripts: a disabled radio doesn't set the
+ regulatory domain
 
 The regulatory domain is the whole system's, but setup_phy() ran
 "iw reg set" with each radio's own country, disabled radios included,
@@ -28,7 +28,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  3 files changed, 9 insertions(+), 3 deletions(-)
 
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
-index a2c88bffdbd..da7cfa6f887 100644
+index a2c88bffdb..da7cfa6f88 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -41,7 +41,7 @@ index a2c88bffdbd..da7cfa6f887 100644
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
-index 506be9f47a4..c100ec1fa0a 100755
+index 506be9f47a..c100ec1fa0 100755
 --- a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
 +++ b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
 @@ -70,7 +70,12 @@ function setup_phy(phy, config, data) {
@@ -59,7 +59,7 @@ index 506be9f47a4..c100ec1fa0a 100755
  		system(`iw reg set ${config.country_code}`);
  	}
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
-index 5bddafe5f9f..bdf0cd70720 100644
+index 0b64825642..90b0cd2fd0 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
 @@ -102,7 +102,8 @@ function device_log_append(config) {

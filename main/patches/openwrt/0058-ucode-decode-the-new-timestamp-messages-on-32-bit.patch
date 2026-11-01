@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 10:38:06 -0500
-Subject: [PATCH] ucode: decode the new timestamp messages on 32-bit
+Subject: [PATCH 54/66] ucode: decode the new timestamp messages on 32-bit
 
 ucode patch 016 (for upstream), B74: on a 32-bit system with a 64-bit
 time_t (the W-118's armv7 musl), ucode-mod-socket decoded every
@@ -28,7 +28,13 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/utils/ucode/Makefile                  |  2 +-
+ ...timestamp-control-messages-on-time64.patch | 96 +++++++++++++++++++
+ 2 files changed, 97 insertions(+), 1 deletion(-)
+ create mode 100644 package/utils/ucode/patches/016-socket-decode-the-new-timestamp-control-messages-on-time64.patch
+
 diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index 6dfb79c073..4fe6cc8600 100644
 --- a/package/utils/ucode/Makefile
 +++ b/package/utils/ucode/Makefile
 @@ -8,7 +8,7 @@
@@ -42,6 +48,7 @@ diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
  PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
 diff --git a/package/utils/ucode/patches/016-socket-decode-the-new-timestamp-control-messages-on-time64.patch b/package/utils/ucode/patches/016-socket-decode-the-new-timestamp-control-messages-on-time64.patch
 new file mode 100644
+index 0000000000..8636554a7f
 --- /dev/null
 +++ b/package/utils/ucode/patches/016-socket-decode-the-new-timestamp-control-messages-on-time64.patch
 @@ -0,0 +1,96 @@
@@ -141,3 +148,6 @@ new file mode 100644
 + 	{ SOL_SOCKET, SCM_CREDENTIALS, &st_ucred },
 +-- 
 +2.43.0
+-- 
+2.43.0
+

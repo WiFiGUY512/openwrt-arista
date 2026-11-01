@@ -1,7 +1,7 @@
-From 6e2ff0214d27c7d3faa2ae1d5b2d3db4289d4ddb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Tue, 27 Oct 2026 09:40:00 -0500
-Subject: [PATCH] dnsmasq: let the dnsmasq user publish dnsmasq.dns
+Subject: [PATCH 27/66] dnsmasq: let the dnsmasq user publish dnsmasq.dns
 
 200-ubus_dns.patch adds a second ubus object, dnsmasq.dns, but the ACL
 lets the dnsmasq user publish only "dnsmasq". At startup dnsmasq
@@ -22,20 +22,20 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/package/network/services/dnsmasq/Makefile b/package/network/services/dnsmasq/Makefile
-index 74af2ea7..8deb05d9 100644
+index 59eb46b773..b1aa54a3a7 100644
 --- a/package/network/services/dnsmasq/Makefile
 +++ b/package/network/services/dnsmasq/Makefile
 @@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
  PKG_NAME:=dnsmasq
  PKG_UPSTREAM_VERSION:=2.93
  PKG_VERSION:=$(subst test,~~test,$(subst rc,~rc,$(PKG_UPSTREAM_VERSION)))
--PKG_RELEASE:=5
-+PKG_RELEASE:=6
+-PKG_RELEASE:=11
++PKG_RELEASE:=12
  
  PKG_SOURCE:=$(PKG_NAME)-$(PKG_UPSTREAM_VERSION).tar.xz
  PKG_SOURCE_URL:=https://thekelleys.org.uk/dnsmasq/
 diff --git a/package/network/services/dnsmasq/files/dnsmasq_acl.json b/package/network/services/dnsmasq/files/dnsmasq_acl.json
-index 67c6c204..61f82663 100644
+index 67c6c20483..61f8266346 100644
 --- a/package/network/services/dnsmasq/files/dnsmasq_acl.json
 +++ b/package/network/services/dnsmasq/files/dnsmasq_acl.json
 @@ -1,6 +1,6 @@

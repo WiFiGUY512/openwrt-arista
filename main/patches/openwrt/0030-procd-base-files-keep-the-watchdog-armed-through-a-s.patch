@@ -1,7 +1,7 @@
-From 62dc1eb9d23d4f0ea1b91052b0fab39a99c7f2b0 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Tue, 27 Oct 2026 10:00:00 -0500
-Subject: [PATCH] procd, base-files: keep the watchdog armed through a
+Subject: [PATCH 28/66] procd, base-files: keep the watchdog armed through a
  sysupgrade's reboot
 
 During a sysupgrade, upgraded (PID 1) feeds the watchdog while the
@@ -29,7 +29,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch
 
 diff --git a/package/base-files/files/lib/upgrade/do_stage2 b/package/base-files/files/lib/upgrade/do_stage2
-index 0e324457..cd5aa7eb 100755
+index 0e32445743..cd5aa7eb04 100755
 --- a/package/base-files/files/lib/upgrade/do_stage2
 +++ b/package/base-files/files/lib/upgrade/do_stage2
 @@ -20,6 +20,8 @@ sleep 1
@@ -42,7 +42,7 @@ index 0e324457..cd5aa7eb 100755
  sleep 5
  echo b 2>/dev/null >/proc/sysrq-trigger
 diff --git a/package/base-files/files/lib/upgrade/nand.sh b/package/base-files/files/lib/upgrade/nand.sh
-index a768abfb..26d007cc 100644
+index a768abfb27..26d007ccc8 100644
 --- a/package/base-files/files/lib/upgrade/nand.sh
 +++ b/package/base-files/files/lib/upgrade/nand.sh
 @@ -464,6 +464,8 @@ nand_do_upgrade_success() {
@@ -64,21 +64,21 @@ index a768abfb..26d007cc 100644
  }
  
 diff --git a/package/system/procd/Makefile b/package/system/procd/Makefile
-index 7d239d9b..000c1e29 100644
+index 4e56576c7f..d9256e376f 100644
 --- a/package/system/procd/Makefile
 +++ b/package/system/procd/Makefile
 @@ -8,7 +8,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=procd
--PKG_RELEASE:=3
-+PKG_RELEASE:=4
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/procd.git
 diff --git a/package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch b/package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch
 new file mode 100644
-index 00000000..69893089
+index 0000000000..6989308972
 --- /dev/null
 +++ b/package/system/procd/patches/101-upgraded-stop-feeding-the-watchdog-at-the-reboot.patch
 @@ -0,0 +1,71 @@

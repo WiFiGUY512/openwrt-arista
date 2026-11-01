@@ -1,7 +1,7 @@
-From f1e35482cf013146ab0f854f1b3f44e54e90cc4d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 03/18] qualcommax: ipq807x: add support for Arista C-360
+Subject: [PATCH 03/66] qualcommax: ipq807x: add support for Arista C-360
 
 Arista C-360 is a Wi-Fi 6E enterprise access point with four radios and
 two 10 GbE ports that both take PoE.
@@ -113,7 +113,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/dts/ipq8074-c-360.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
-index 7c15a78c..3cf77254 100644
+index 7c15a78c4f..3cf7725446 100644
 --- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
 +++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
 @@ -28,6 +28,7 @@ ubootenv_mtdinfo () {
@@ -125,7 +125,7 @@ index 7c15a78c..3cf77254 100644
  edgecore,eap102|\
  zyxel,nbg7815|\
 diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
-index ba6126a7..641c0543 100644
+index a1eb14e775..2cfa295b42 100644
 --- a/package/firmware/ipq-wifi/Makefile
 +++ b/package/firmware/ipq-wifi/Makefile
 @@ -32,6 +32,7 @@ ALLWIFIBOARDS:= \
@@ -135,18 +135,18 @@ index ba6126a7..641c0543 100644
 +	arista_c-360 \
  	askey_sbe1v1k \
  	asus_rt-ax89x \
- 	buffalo_wxr-5950ax12 \
-@@ -243,6 +244,7 @@ $(eval $(call generate-ipq-wifi-package,8devices_mango,8devices Mango))
+ 	avm_fritzbox-4050 \
+@@ -247,6 +248,7 @@ $(eval $(call generate-ipq-wifi-package,8devices_mango,8devices Mango))
  $(eval $(call generate-ipq-wifi-package,alfa-network_ap120c-ax,ALFA Network AP120C-AX))
  $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
  $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
 +$(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
  $(eval $(call generate-ipq-wifi-package,askey_sbe1v1k,Askey SBE1V1K))
  $(eval $(call generate-ipq-wifi-package,asus_rt-ax89x,Asus RT-AX89X))
- $(eval $(call generate-ipq-wifi-package,buffalo_wxr-5950ax12,Buffalo WXR-5950AX12))
+ $(eval $(call generate-ipq-wifi-package,avm_fritzbox-4050,AVM FRITZ!Box 4050))
 diff --git a/target/linux/qualcommax/dts/ipq8074-c-360.dts b/target/linux/qualcommax/dts/ipq8074-c-360.dts
 new file mode 100644
-index 00000000..62ee25aa
+index 0000000000..62ee25aae2
 --- /dev/null
 +++ b/target/linux/qualcommax/dts/ipq8074-c-360.dts
 @@ -0,0 +1,576 @@
@@ -727,10 +727,10 @@ index 00000000..62ee25aa
 +	nvmem-cell-names = "calibration";
 +};
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index de722576..d276cf24 100644
+index 94d6e6bd2d..7c15e17e9e 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
-@@ -80,6 +80,20 @@ define Device/arcadyan_aw1000
+@@ -78,6 +78,20 @@ define Device/arcadyan_aw1000
  endef
  TARGET_DEVICES += arcadyan_aw1000
  
@@ -752,7 +752,7 @@ index de722576..d276cf24 100644
  	DEVICE_VENDOR := Asus
  	DEVICE_MODEL := RT-AX89X
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-index b49c47fe..a0ccfab9 100644
+index b49c47fe27..a0ccfab94e 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 @@ -11,6 +11,10 @@ arcadyan,aw1000)
@@ -767,7 +767,7 @@ index b49c47fe..a0ccfab9 100644
  	ucidef_set_led_netdev "aqr" "AQR" "white:aqr10g" "10g-copper"
  	ucidef_set_led_netdev "sfp" "SFP" "white:sfp" "10g-sfp"
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
-index de072424..2f9a64b2 100644
+index de072424fe..2f9a64b261 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 @@ -19,6 +19,9 @@ ipq807x_setup_interfaces()
@@ -781,7 +781,7 @@ index de072424..2f9a64b2 100644
  		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 lan5 lan6 lan7 lan8 10g-sfp 10g-copper" "wan"
  		;;
 diff --git a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
-index b9a25bc7..3294521c 100644
+index b9a25bc7b2..3294521c37 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 @@ -193,6 +193,10 @@ platform_do_upgrade() {
@@ -795,3 +795,6 @@ index b9a25bc7..3294521c 100644
  	asus,rt-ax89x)
  		CI_UBIPART="UBI_DEV"
  		CI_KERNPART="linux"
+-- 
+2.43.0
+

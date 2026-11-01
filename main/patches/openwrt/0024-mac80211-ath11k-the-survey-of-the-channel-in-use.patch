@@ -1,7 +1,7 @@
-From 8e6672087d26c53f62e7f1debb6d4c118cd073f5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 24 Oct 2026 18:00:00 +0000
-Subject: [PATCH] mac80211: ath11k: the survey of the channel in use
+Subject: [PATCH 22/66] mac80211: ath11k: the survey of the channel in use
 
 Two ath11k patches for the survey of the channel a radio is using
 (meant for upstream):
@@ -30,21 +30,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1efdf91..87e0f65 100644
+index c37c3be897..d19562b9fc 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=11
-+PKG_RELEASE:=12
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch b/package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch
 new file mode 100644
-index 0000000..a44a7cd
+index 0000000000..a44a7cd576
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/104-wifi-ath11k-update-rx_channel-on-a-channel-switch.patch
 @@ -0,0 +1,35 @@
@@ -85,7 +85,7 @@ index 0000000..a44a7cd
 + 		arvif = ath11k_vif_to_arvif(vifs[i].vif);
 diff --git a/package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch b/package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
 new file mode 100644
-index 0000000..5edad56
+index 0000000000..5edad56bad
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
 @@ -0,0 +1,85 @@

@@ -1,7 +1,8 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 29 Oct 2026 15:00:00 -0500
-Subject: [PATCH] mac80211: ath11k: add the measured noise floor, not -95, to
- a received signal
+Subject: [PATCH 38/66] mac80211: ath11k: add the measured noise floor, not
+ -95, to a received signal
 
 ath11k patch 111 (for upstream), B110: ath11k reported every received
 signal as the firmware's level in dB plus a fixed -95 dBm, but the
@@ -19,20 +20,27 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/kernel/mac80211/Makefile              |   2 +-
+ ...red-noise-floor-to-a-received-signal.patch | 285 ++++++++++++++++++
+ 2 files changed, 286 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
+
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 89eab8721a..ca360f55f4 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
-
+ 
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=19
-+PKG_RELEASE:=20
+-PKG_RELEASE:=21
++PKG_RELEASE:=22
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
-
+ 
 diff --git a/package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch b/package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
 new file mode 100644
+index 0000000000..f8b518c125
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
 @@ -0,0 +1,285 @@
@@ -321,3 +329,6 @@ new file mode 100644
 + 	status->rate_idx = ath11k_mac_bitrate_to_idx(sband, rx_ev.rate / 100);
 + 
 + 	hdr = (struct ieee80211_hdr *)skb->data;
+-- 
+2.43.0
+

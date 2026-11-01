@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:02:41 -0500
-Subject: [PATCH] ath10k-ct: drop a management frame on an unknown channel without a WARN
+Subject: [PATCH 44/66] ath10k-ct: drop a management frame on an unknown
+ channel without a WARN
 
 ath10k-ct patch 991 (for upstream), B104: the QCA9882 scan radios of
 the C-260 and the W-118 hit WARN_ON_ONCE() in ath10k_wmi_event_mgmt_rx()
@@ -16,7 +17,13 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/kernel/ath10k-ct/Makefile             |  2 +-
+ ...nagement-frame-on-an-unknown-channel.patch | 60 +++++++++++++++++++
+ 2 files changed, 61 insertions(+), 1 deletion(-)
+ create mode 100755 package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch
+
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+index b6efe015ef..fd3d63d47d 100644
 --- a/package/kernel/ath10k-ct/Makefile
 +++ b/package/kernel/ath10k-ct/Makefile
 @@ -1,7 +1,7 @@
@@ -30,6 +37,7 @@ diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefi
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch b/package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch
 new file mode 100755
+index 0000000000..e7829242e0
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/991-ath10k-ct-drop-a-management-frame-on-an-unknown-channel.patch
 @@ -0,0 +1,60 @@
@@ -93,3 +101,6 @@ new file mode 100755
 + 		dev_kfree_skb(skb);
 + 		return 0;
 + 	}
+-- 
+2.43.0
+

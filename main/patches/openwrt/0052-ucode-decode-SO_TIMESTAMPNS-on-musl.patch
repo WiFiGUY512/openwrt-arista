@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:35:42 -0500
-Subject: [PATCH] ucode: decode SO_TIMESTAMPNS on musl
+Subject: [PATCH 49/66] ucode: decode SO_TIMESTAMPNS on musl
 
 ucode-mod-socket maps SO_TIMESTAMPNS_OLD to SO_TIMESTAMP when the libc
 does not define it, as musl does, so its control message table had two
@@ -14,7 +14,13 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/utils/ucode/Makefile                  |  2 +-
+ ...-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch | 32 +++++++++++++++++++
+ 2 files changed, 33 insertions(+), 1 deletion(-)
+ create mode 100644 package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch
+
 diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index 4fe6cc8600..b7315eff76 100644
 --- a/package/utils/ucode/Makefile
 +++ b/package/utils/ucode/Makefile
 @@ -8,7 +8,7 @@
@@ -25,9 +31,10 @@ diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
 +PKG_RELEASE:=5
  
  PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL=https://github.com/jow-/ucode.git
+ PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
 diff --git a/package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch b/package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch
 new file mode 100644
+index 0000000000..53e3cc179a
 --- /dev/null
 +++ b/package/utils/ucode/patches/015-socket-fall-back-to-SO_TIMESTAMPNS-for-the-OLD-alias.patch
 @@ -0,0 +1,32 @@
@@ -63,3 +70,6 @@ new file mode 100644
 +-- 
 +2.43.0
 +
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
-From 6c13048e2658fdd1313d5d14586ecbc97580e710 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 05/18] qualcommax: ipq807x: c-360: copy the vendor QCN9074
+Subject: [PATCH 05/66] qualcommax: ipq807x: c-360: copy the vendor QCN9074
  firmware
 
 The C-360's QCN9074 and QCN9072 cards start only with Arista's own build
@@ -29,10 +29,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 2100ed47..5e139921 100644
+index faef12bdf2..5af3575700 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
-@@ -89,8 +89,9 @@ define Device/arista_c-360
+@@ -87,8 +87,9 @@ define Device/arista_c-360
  	PAGESIZE := 4096
  	DEVICE_DTS_CONFIG := config@hk09
  	SOC := ipq8074
@@ -46,7 +46,7 @@ index 2100ed47..5e139921 100644
  
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 new file mode 100644
-index 00000000..bd2b1718
+index 0000000000..bd2b17183d
 --- /dev/null
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 @@ -0,0 +1,59 @@
@@ -109,3 +109,6 @@ index 00000000..bd2b1718
 +	esac
 +	;;
 +esac
+-- 
+2.43.0
+

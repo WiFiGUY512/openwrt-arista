@@ -1,8 +1,8 @@
-From fead79821079609a78f4eecf08deec2a68fb4ce3 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 12:05:00 -0500
-Subject: [PATCH] mac80211: ath11k: give a 6 GHz capable radio's 5 GHz band HT
- and VHT
+Subject: [PATCH 35/66] mac80211: ath11k: give a 6 GHz capable radio's 5 GHz
+ band HT and VHT
 
 ath11k patch 108 (for upstream): a QCN9074-family radio covering 5 and
 6 GHz had its 5 GHz band registered with HE but without HT and VHT
@@ -22,21 +22,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 7c8db65d1c3..5de442146fa 100644
+index 5f323c3ba1..4226722a83 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=16
-+PKG_RELEASE:=17
+-PKG_RELEASE:=18
++PKG_RELEASE:=19
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch b/package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
 new file mode 100644
-index 00000000000..21a8361e3ed
+index 0000000000..21a8361e3e
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
 @@ -0,0 +1,39 @@

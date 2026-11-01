@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 00:53:34 -0500
-Subject: [PATCH] ucode: backport the per-call ubus request prototype fix
+Subject: [PATCH 41/66] ucode: backport the per-call ubus request prototype fix
 
 Every ubus method call a ucode script serves (hostapd.uc,
 wpa_supplicant.uc, netifd's wireless handlers) set the call's
@@ -28,7 +28,15 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/utils/ucode/Makefile                  |   2 +-
+ ...otype-support-for-extended-resources.patch | 320 ++++++++++++++++++
+ ...est-proto-in-the-instance-proto-slot.patch |  73 ++++
+ 3 files changed, 394 insertions(+), 1 deletion(-)
+ create mode 100644 package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
+ create mode 100644 package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
+
 diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index 6dfb79c073..247f674012 100644
 --- a/package/utils/ucode/Makefile
 +++ b/package/utils/ucode/Makefile
 @@ -8,7 +8,7 @@
@@ -39,9 +47,10 @@ diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
 +PKG_RELEASE:=3
  
  PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL=https://github.com/jow-/ucode.git
+ PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
 diff --git a/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch b/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
 new file mode 100644
+index 0000000000..931529d100
 --- /dev/null
 +++ b/package/utils/ucode/patches/010-types-add-per-instance-prototype-support-for-extended-resources.patch
 @@ -0,0 +1,320 @@
@@ -367,6 +376,7 @@ new file mode 100644
 +
 diff --git a/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch b/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
 new file mode 100644
+index 0000000000..ad495ba76d
 --- /dev/null
 +++ b/package/utils/ucode/patches/011-ubus-store-per-call-request-proto-in-the-instance-proto-slot.patch
 @@ -0,0 +1,73 @@
@@ -443,3 +453,6 @@ new file mode 100644
 +-- 
 +2.43.0
 +
+-- 
+2.43.0
+

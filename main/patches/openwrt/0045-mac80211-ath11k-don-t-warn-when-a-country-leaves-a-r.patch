@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:00:47 -0500
-Subject: [PATCH] mac80211: ath11k: don't warn when a country leaves a radio without channels
+Subject: [PATCH 43/66] mac80211: ath11k: don't warn when a country leaves a
+ radio without channels
 
 ath11k patch 112 (for upstream), B107: on a C-360, "iw reg set CA" left
 the 6 GHz-only QCN9074 with no enabled channel, and ath11k's channel
@@ -16,20 +17,27 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...untry-leaves-a-pdev-without-channels.patch | 51 +++++++++++++++++++
+ 2 files changed, 52 insertions(+), 1 deletion(-)
+ create mode 100755 package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch
+
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index ca360f55f4..1c78350dce 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=20
-+PKG_RELEASE:=21
+-PKG_RELEASE:=22
++PKG_RELEASE:=23
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch b/package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch
 new file mode 100755
+index 0000000000..a982ef1515
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch
 @@ -0,0 +1,51 @@
@@ -84,3 +92,6 @@ new file mode 100755
 +
 + 	params = kzalloc_flex(*params, ch_param, num_channels);
 + 	if (!params)
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
-From 8160a3b0325db39e1a49fff000fdffb1c652b61f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 03:22:24 -0600
-Subject: [PATCH] ath10k-ct: report the TX power the firmware applies
+Subject: [PATCH 57/66] ath10k-ct: report the TX power the firmware applies
 
 ath10k-ct patch 993 (for upstream), B117: ath10k-ct has no get_txpower,
 so iw showed mac80211's limit (the regulatory maximum with power auto)
@@ -22,7 +22,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
 
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
-index aa4347a6a62..90215eb5c12 100644
+index aa4347a6a6..90215eb5c1 100644
 --- a/package/kernel/ath10k-ct/Makefile
 +++ b/package/kernel/ath10k-ct/Makefile
 @@ -1,7 +1,7 @@
@@ -36,7 +36,7 @@ index aa4347a6a62..90215eb5c12 100644
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch b/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
 new file mode 100755
-index 00000000000..77b43e9929e
+index 0000000000..77b43e9929
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
 @@ -0,0 +1,84 @@

@@ -1,7 +1,7 @@
-From 0c8264421a167a1dede2232733b1ed7a8175da18 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 17 Oct 2026 05:11:50 +0000
-Subject: [PATCH 11/18] qualcommax: ipq60xx: w-318: copy the vendor QCN9074
+Subject: [PATCH 11/66] qualcommax: ipq60xx: w-318: copy the vendor QCN9074
  firmware
 
 The W-318's QCN9072 card starts only with Arista's own build of the
@@ -24,10 +24,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 
 diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
-index dbdb58d7..0a950c3a 100644
+index 9899902732..a076d9245b 100644
 --- a/target/linux/qualcommax/image/ipq60xx.mk
 +++ b/target/linux/qualcommax/image/ipq60xx.mk
-@@ -75,7 +75,7 @@ define Device/arista_w-318
+@@ -73,7 +73,7 @@ define Device/arista_w-318
  	SOC := ipq6010
  	KERNEL_SIZE := 8192k
  	DEVICE_PACKAGES := ipq-wifi-arista_w-318 kmod-ath11k-pci kmod-tpm-tis-spi \
@@ -38,7 +38,7 @@ index dbdb58d7..0a950c3a 100644
  
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 new file mode 100644
-index 00000000..95ffb6d1
+index 0000000000..95ffb6d122
 --- /dev/null
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 @@ -0,0 +1,46 @@
@@ -88,3 +88,6 @@ index 00000000..95ffb6d1
 +	esac
 +	;;
 +esac
+-- 
+2.43.0
+

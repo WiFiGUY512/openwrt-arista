@@ -1,7 +1,7 @@
-From 169f90cf63a0fd8da4d5559e36b35dcc983a14e5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 22 Oct 2026 20:45:53 -0500
-Subject: [PATCH 19/20] qualcommax: ipq807x: add support for Arista C-230
+Subject: [PATCH 17/66] qualcommax: ipq807x: add support for Arista C-230
 
 Hardware specification:
 - SoC: Qualcomm IPQ8071A, 4x Cortex-A53 (AC02 reference design)
@@ -91,7 +91,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/dts/ipq8071-c-230.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
-index 69a77a0e..28eb78ee 100644
+index 69a77a0e8a..28eb78ee8c 100644
 --- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
 +++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
 @@ -28,6 +28,7 @@ ubootenv_mtdinfo () {
@@ -103,7 +103,7 @@ index 69a77a0e..28eb78ee 100644
  arista,c-360|\
  compex,wpq873|\
 diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
-index 1c4d9761..08c9e742 100644
+index 9398541359..aeb371420d 100644
 --- a/package/firmware/ipq-wifi/Makefile
 +++ b/package/firmware/ipq-wifi/Makefile
 @@ -32,6 +32,7 @@ ALLWIFIBOARDS:= \
@@ -114,7 +114,7 @@ index 1c4d9761..08c9e742 100644
  	arista_c-260 \
  	arista_c-360 \
  	arista_w-118 \
-@@ -247,6 +248,7 @@ $(eval $(call generate-ipq-wifi-package,8devices_mango,8devices Mango))
+@@ -251,6 +252,7 @@ $(eval $(call generate-ipq-wifi-package,8devices_mango,8devices Mango))
  $(eval $(call generate-ipq-wifi-package,alfa-network_ap120c-ax,ALFA Network AP120C-AX))
  $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
  $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
@@ -124,7 +124,7 @@ index 1c4d9761..08c9e742 100644
  $(eval $(call generate-ipq-wifi-package,arista_w-118,Arista W-118))
 diff --git a/target/linux/qualcommax/dts/ipq8071-c-230.dts b/target/linux/qualcommax/dts/ipq8071-c-230.dts
 new file mode 100644
-index 00000000..36cc1c90
+index 0000000000..36cc1c9039
 --- /dev/null
 +++ b/target/linux/qualcommax/dts/ipq8071-c-230.dts
 @@ -0,0 +1,545 @@
@@ -674,10 +674,10 @@ index 00000000..36cc1c90
 +	nvmem-cell-names = "calibration";
 +};
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 4d086a89..76a88a32 100644
+index 279e368d5f..4adf5f6b2f 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
-@@ -80,6 +80,20 @@ define Device/arcadyan_aw1000
+@@ -78,6 +78,20 @@ define Device/arcadyan_aw1000
  endef
  TARGET_DEVICES += arcadyan_aw1000
  
@@ -699,7 +699,7 @@ index 4d086a89..76a88a32 100644
  	$(call Device/FitImage)
  	$(call Device/UbiFit)
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
-index b5d988ed..f858bd10 100644
+index b5d988ed5e..f858bd103a 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/01_leds
 @@ -11,6 +11,7 @@ arcadyan,aw1000)
@@ -711,7 +711,7 @@ index b5d988ed..f858bd10 100644
  arista,c-360)
  	ucidef_set_led_netdev "lan1" "LAN1" "green:lan-1" "lan1" "link"
 diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
-index 3810c474..66cc120b 100644
+index 3810c474ee..66cc120b4c 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
 @@ -19,6 +19,7 @@ ipq807x_setup_interfaces()
@@ -723,7 +723,7 @@ index 3810c474..66cc120b 100644
  	arista,c-360)
  		ucidef_set_interface_lan "lan1 lan2" "dhcp"
 diff --git a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
-index 0b1a8538..237d16db 100644
+index 0b1a853868..237d16dba9 100644
 --- a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 @@ -193,6 +193,7 @@ platform_do_upgrade() {

@@ -1,7 +1,8 @@
-From c737c3805deca7c6134a3c54bc3181296dbc496d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 23 Oct 2026 19:30:00 -0500
-Subject: [PATCH] ath10k-ct: use the nominal noise floor on QCA988x and QCA9887
+Subject: [PATCH 20/66] ath10k-ct: use the nominal noise floor on QCA988x and
+ QCA9887
 
 ath10k-ct anchors rx levels to the per-chain noise floor that CT
 firmware reports. On a QCA9882 that floor is not dBm: chain 0 reads
@@ -34,7 +35,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch
 
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
-index f5211fb..b6efe01 100644
+index f5211fb7c6..b6efe015ef 100644
 --- a/package/kernel/ath10k-ct/Makefile
 +++ b/package/kernel/ath10k-ct/Makefile
 @@ -1,7 +1,7 @@
@@ -48,7 +49,7 @@ index f5211fb..b6efe01 100644
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch b/package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch
 new file mode 100644
-index 0000000..2a98e62
+index 0000000000..2a98e62b7b
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/990-ath10k-ct-use-the-nominal-noise-floor-on-QCA988x.patch
 @@ -0,0 +1,89 @@

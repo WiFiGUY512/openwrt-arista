@@ -1,7 +1,8 @@
-From fdd15f06b96a25669e499ecc09fe5d9b9aadd6d0 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 10:00:00 -0500
-Subject: [PATCH] mac80211: flush TX for a new key only where it needs tailroom
+Subject: [PATCH 31/66] mac80211: flush TX for a new key only where it needs
+ tailroom
 
 mac80211 patch 423 (for upstream): every pairwise key a station got on
 an AP whose keys are all in the hardware waited an RCU grace period in
@@ -26,21 +27,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index c37c3be8..d19562b9 100644
+index b287351772..7c8db65d1c 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=13
-+PKG_RELEASE:=14
+-PKG_RELEASE:=15
++PKG_RELEASE:=16
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch b/package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch
 new file mode 100644
-index 00000000..5b4e5a3b
+index 0000000000..5b4e5a3b18
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/subsys/423-wifi-mac80211-flush-TX-for-a-new-key-only-where-it-needs-tailroom.patch
 @@ -0,0 +1,169 @@

@@ -1,7 +1,8 @@
-From 579d1e2a8374a6811fde865ffe3d07bf1cd656ce Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 09:00:00 -0500
-Subject: [PATCH] wifi-scripts: start an automatic 5 GHz channel outside DFS
+Subject: [PATCH 30/66] wifi-scripts: start an automatic 5 GHz channel outside
+ DFS
 
 With channel auto, hostapd's ACS may pick a DFS channel, and the radio
 then sends nothing for its radar check, 60 s in the US and up to 10
@@ -29,7 +30,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  3 files changed, 46 insertions(+), 1 deletion(-)
 
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
-index e3e1b886..a2c88bff 100644
+index e3e1b8860a..a2c88bffdb 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -42,7 +43,7 @@ index e3e1b886..a2c88bff 100644
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/schema/wireless.wifi-device.json b/package/network/config/wifi-scripts/files-ucode/usr/share/schema/wireless.wifi-device.json
-index 99946c9f..45f54c6b 100644
+index 8847dc370a..94d94eecb9 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/schema/wireless.wifi-device.json
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/schema/wireless.wifi-device.json
 @@ -134,6 +134,11 @@
@@ -58,7 +59,7 @@ index 99946c9f..45f54c6b 100644
  			"description": "When set to 1, wireless network is disabled",
  			"type": "boolean",
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
-index 8f05691f..5bddafe5 100644
+index 7da6d22ac9..0b64825642 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
 @@ -50,6 +50,39 @@ function set_device_defaults(config) {

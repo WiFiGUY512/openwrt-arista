@@ -1,8 +1,8 @@
-From f13efa9441e6f4231424b96d69a05d70c4ff49eb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 05:00:00 -0500
-Subject: [PATCH] mac80211: backport: don't estimate airtime for unsupported
- rate widths
+Subject: [PATCH 32/66] mac80211: backport: don't estimate airtime for
+ unsupported rate widths
 
 Backport upstream commit f394cbd0980c ("wifi: mac80211: don't estimate
 airtime for unsupported rate widths") as subsys patch 424. ath11k
@@ -24,21 +24,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/subsys/424-wifi-mac80211-don-t-estimate-airtime-for-unsupported-rate-widths.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index d19562b9..b2873517 100644
+index 7c8db65d1c..5de442146f 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=14
-+PKG_RELEASE:=15
+-PKG_RELEASE:=16
++PKG_RELEASE:=17
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/subsys/424-wifi-mac80211-don-t-estimate-airtime-for-unsupported-rate-widths.patch b/package/kernel/mac80211/patches/subsys/424-wifi-mac80211-don-t-estimate-airtime-for-unsupported-rate-widths.patch
 new file mode 100644
-index 00000000..096ef097
+index 0000000000..096ef0971d
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/subsys/424-wifi-mac80211-don-t-estimate-airtime-for-unsupported-rate-widths.patch
 @@ -0,0 +1,88 @@

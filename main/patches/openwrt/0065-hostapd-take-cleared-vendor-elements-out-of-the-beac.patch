@@ -1,7 +1,8 @@
-From 72c7f399efb24fa06343da6c241548c560e418dd Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 04:30:30 -0600
-Subject: [PATCH] hostapd: take cleared vendor elements out of the beacons
+Subject: [PATCH 61/66] hostapd: take cleared vendor elements out of the
+ beacons
 
 ubus set_vendor_elements updates the beacons after it sets new
 elements, but clearing them (an empty string) only freed the stored
@@ -23,23 +24,23 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index fde88c1da4d..fc919bbbf3f 100644
+index 6cdf9134ab..fde88c1da4 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=hostapd
--PKG_RELEASE:=9
-+PKG_RELEASE:=10
+-PKG_RELEASE:=8
++PKG_RELEASE:=9
  
  PKG_SOURCE_URL:=https://w1.fi/hostap.git
  PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/src/src/ap/ubus.c b/package/network/services/hostapd/src/src/ap/ubus.c
-index 7b0c6504d81..20cc2d73bff 100644
+index 89c5ed9cce..1756c7e4a7 100644
 --- a/package/network/services/hostapd/src/src/ap/ubus.c
 +++ b/package/network/services/hostapd/src/src/ap/ubus.c
-@@ -1148,7 +1148,11 @@ hostapd_vendor_elements(struct ubus_context *ctx, struct ubus_object *obj,
+@@ -1283,7 +1283,11 @@ hostapd_vendor_elements(struct ubus_context *ctx, struct ubus_object *obj,
  	if (len == 0) {
  		wpabuf_free(bss->vendor_elements);
  		bss->vendor_elements = NULL;

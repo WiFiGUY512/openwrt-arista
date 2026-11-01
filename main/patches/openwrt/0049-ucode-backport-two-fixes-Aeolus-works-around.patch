@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:23:09 -0500
-Subject: [PATCH] ucode: backport two fixes Aeolus works around
+Subject: [PATCH 46/66] ucode: backport two fixes Aeolus works around
 
 Both reproduce on the images' ucode (b885dd0f) and are fixed upstream:
 
@@ -20,7 +20,15 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/utils/ucode/Makefile                  |   2 +-
+ ...-a-failed-module-in-the-module-table.patch |  88 +++++++++++++++
+ ...filter-map-callfunc-across-user-code.patch | 103 ++++++++++++++++++
+ 3 files changed, 192 insertions(+), 1 deletion(-)
+ create mode 100644 package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch
+ create mode 100644 package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch
+
 diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index 247f674012..4fe6cc8600 100644
 --- a/package/utils/ucode/Makefile
 +++ b/package/utils/ucode/Makefile
 @@ -8,7 +8,7 @@
@@ -31,9 +39,10 @@ diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
 +PKG_RELEASE:=4
  
  PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL=https://github.com/jow-/ucode.git
+ PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
 diff --git a/package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch b/package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch
 new file mode 100644
+index 0000000000..8817662890
 --- /dev/null
 +++ b/package/utils/ucode/patches/012-lib-do-not-store-a-failed-module-in-the-module-table.patch
 @@ -0,0 +1,88 @@
@@ -127,6 +136,7 @@ new file mode 100644
 +
 diff --git a/package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch b/package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch
 new file mode 100644
+index 0000000000..4eebf0537b
 --- /dev/null
 +++ b/package/utils/ucode/patches/013-lib-anchor-working-values-in-filter-map-callfunc-across-user-code.patch
 @@ -0,0 +1,103 @@
@@ -233,3 +243,6 @@ new file mode 100644
 +-- 
 +2.43.0
 +
+-- 
+2.43.0
+

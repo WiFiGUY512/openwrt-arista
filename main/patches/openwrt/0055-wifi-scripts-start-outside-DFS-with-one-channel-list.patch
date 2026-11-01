@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 12:30:04 -0500
-Subject: [PATCH] wifi-scripts: start outside DFS with one channel listed per block
+Subject: [PATCH 52/66] wifi-scripts: start outside DFS with one channel listed
+ per block
 
 dfs_look_first (port 0032) sets acs_exclude_dfs only where a block
 outside DFS lies wholly in the radio's channel list. hostapd's ACS asks
@@ -17,7 +18,12 @@ Count a block where any of its channels is listed, as ACS does.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/network/config/wifi-scripts/Makefile                 | 2 +-
+ .../wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc | 5 +++--
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index 0ed9070489..681a20cdbb 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -30,6 +36,7 @@ diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/conf
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+index dd5e4d3407..843232ee06 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
 @@ -67,7 +67,8 @@ function chanlist_has(list, c) {
@@ -51,3 +58,6 @@ diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wif
  			return true;
  
  	return false;
+-- 
+2.43.0
+

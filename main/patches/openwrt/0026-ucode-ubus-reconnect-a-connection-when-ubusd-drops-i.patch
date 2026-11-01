@@ -1,7 +1,7 @@
-From d6c90acae27239daaaa6a683349181f96695fd25 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 25 Oct 2026 15:00:00 +0000
-Subject: [PATCH] ucode: ubus: reconnect a connection when ubusd drops it
+Subject: [PATCH 24/66] ucode: ubus: reconnect a connection when ubusd drops it
 
 Two patches to ucode's ubus module (for upstream ucode):
 
@@ -30,7 +30,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch
 
 diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
-index eb6abd6..d05aaa4 100644
+index 97357b3dd6..6dfb79c073 100644
 --- a/package/utils/ucode/Makefile
 +++ b/package/utils/ucode/Makefile
 @@ -8,7 +8,7 @@
@@ -41,10 +41,10 @@ index eb6abd6..d05aaa4 100644
 +PKG_RELEASE:=2
  
  PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL=https://github.com/jow-/ucode.git
+ PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
 diff --git a/package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch b/package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch
 new file mode 100755
-index 0000000..0dcc88a
+index 0000000000..0dcc88af11
 --- /dev/null
 +++ b/package/utils/ucode/patches/120-ubus-reconnect-a-connection-when-ubusd-drops-it.patch
 @@ -0,0 +1,111 @@
@@ -161,7 +161,7 @@ index 0000000..0dcc88a
 + 	if (conn->ctx.sock.fd >= 0) {
 diff --git a/package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch b/package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch
 new file mode 100755
-index 0000000..15d9575
+index 0000000000..15d9575ff6
 --- /dev/null
 +++ b/package/utils/ucode/patches/121-ubus-register-listeners-again-after-a-reconnect.patch
 @@ -0,0 +1,101 @@

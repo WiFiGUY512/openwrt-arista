@@ -1,7 +1,7 @@
-From 8c34b4edae17135c53f37d1fa694709498c864ba Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 19 Oct 2026 14:19:01 -0500
-Subject: [PATCH 15/18] ipq40xx: add support for Arista W-118
+Subject: [PATCH 13/66] ipq40xx: add support for Arista W-118
 
 Arista W-118 is a Wi-Fi 5 wall-plate access point with a third radio, a
 1 GbE PoE uplink and three 1 GbE LAN ports.
@@ -96,7 +96,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/ipq40xx b/package/boot/uboot-tools/uboot-envtools/files/ipq40xx
-index 25e0d5e3..ffe95370 100644
+index 25e0d5e3be..ffe95370d6 100644
 --- a/package/boot/uboot-tools/uboot-envtools/files/ipq40xx
 +++ b/package/boot/uboot-tools/uboot-envtools/files/ipq40xx
 @@ -30,6 +30,9 @@ sophos,apx120|\
@@ -110,7 +110,7 @@ index 25e0d5e3..ffe95370 100644
  	ubootenv_add_uci_config "/dev/mtd13" "0x0" "0x10000" "0x10000"
  	;;
 diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
-index 8098035e..1c4d9761 100644
+index fdc4ed5f89..9398541359 100644
 --- a/package/firmware/ipq-wifi/Makefile
 +++ b/package/firmware/ipq-wifi/Makefile
 @@ -34,6 +34,7 @@ ALLWIFIBOARDS:= \
@@ -121,7 +121,7 @@ index 8098035e..1c4d9761 100644
  	arista_w-318 \
  	askey_sbe1v1k \
  	asus_rt-ax89x \
-@@ -248,6 +249,7 @@ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
+@@ -252,6 +253,7 @@ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
  $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
  $(eval $(call generate-ipq-wifi-package,arista_c-260,Arista C-260))
  $(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
@@ -130,7 +130,7 @@ index 8098035e..1c4d9761 100644
  $(eval $(call generate-ipq-wifi-package,askey_sbe1v1k,Askey SBE1V1K))
  $(eval $(call generate-ipq-wifi-package,asus_rt-ax89x,Asus RT-AX89X))
 diff --git a/target/linux/ipq40xx/base-files/etc/board.d/01_leds b/target/linux/ipq40xx/base-files/etc/board.d/01_leds
-index 78d84d56..3896bd14 100644
+index 78d84d562d..3896bd142e 100644
 --- a/target/linux/ipq40xx/base-files/etc/board.d/01_leds
 +++ b/target/linux/ipq40xx/base-files/etc/board.d/01_leds
 @@ -12,6 +12,9 @@ case "$board" in
@@ -144,7 +144,7 @@ index 78d84d56..3896bd14 100644
  	ucidef_set_led_netdev "lan1" "LAN1" "blue:lan-1" "lan1"
  	ucidef_set_led_netdev "lan2" "LAN2" "blue:lan-2" "lan2"
 diff --git a/target/linux/ipq40xx/base-files/etc/board.d/02_network b/target/linux/ipq40xx/base-files/etc/board.d/02_network
-index 5193c6cc..f0f0566f 100644
+index 5193c6cc94..f0f0566f3f 100644
 --- a/target/linux/ipq40xx/base-files/etc/board.d/02_network
 +++ b/target/linux/ipq40xx/base-files/etc/board.d/02_network
 @@ -56,6 +56,9 @@ ipq40xx_setup_interfaces()
@@ -158,7 +158,7 @@ index 5193c6cc..f0f0566f 100644
  	aruba,ap-365|\
  	avm,fritzrepeater-1200|\
 diff --git a/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh b/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
-index 29f77ab9..098df167 100644
+index 29f77ab95d..098df16702 100644
 --- a/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
 @@ -106,6 +106,7 @@ platform_do_upgrade_mikrotik_nand() {
@@ -171,7 +171,7 @@ index 29f77ab9..098df167 100644
  	aruba,ap-365|\
 diff --git a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
 new file mode 100644
-index 00000000..a05eb0fd
+index 0000000000..a05eb0fd3e
 --- /dev/null
 +++ b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
 @@ -0,0 +1,428 @@
@@ -604,7 +604,7 @@ index 00000000..a05eb0fd
 +	status = "okay";
 +};
 diff --git a/target/linux/ipq40xx/image/generic.mk b/target/linux/ipq40xx/image/generic.mk
-index 4005cc83..8799b227 100644
+index 8167391639..7f5231d597 100644
 --- a/target/linux/ipq40xx/image/generic.mk
 +++ b/target/linux/ipq40xx/image/generic.mk
 @@ -162,6 +162,18 @@ define Device/alfa-network_ap120c-ac
@@ -626,3 +626,6 @@ index 4005cc83..8799b227 100644
  define Device/aruba_glenmorangie
  	$(call Device/FitImageLzma)
  	DEVICE_VENDOR := Aruba
+-- 
+2.43.0
+

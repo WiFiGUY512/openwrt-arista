@@ -1,7 +1,7 @@
-From ec3d64e2b0fa3c9bce36cb6c0cbf89ffe33ab778 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 04:55:22 -0600
-Subject: [PATCH] uci: keep packages loaded between batch commands
+Subject: [PATCH 62/66] uci: keep packages loaded between batch commands
 
 uci patch 001 (for upstream), B81: uci batch unloaded every package
 after each command, so each command reloaded its package and replayed
@@ -25,7 +25,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch
 
 diff --git a/package/system/uci/Makefile b/package/system/uci/Makefile
-index 11f89b0b15a..230cb39fb5c 100644
+index 11f89b0b15..230cb39fb5 100644
 --- a/package/system/uci/Makefile
 +++ b/package/system/uci/Makefile
 @@ -9,7 +9,7 @@
@@ -39,7 +39,7 @@ index 11f89b0b15a..230cb39fb5c 100644
  PKG_SOURCE_PROTO:=git
 diff --git a/package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch b/package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch
 new file mode 100755
-index 00000000000..2bb6e4293d3
+index 0000000000..2bb6e4293d
 --- /dev/null
 +++ b/package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch
 @@ -0,0 +1,110 @@

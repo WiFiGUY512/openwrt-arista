@@ -3,12 +3,12 @@
 # Arista devices were merged (they come from patches/openwrt, the upstream
 # pull requests as they stand).
 OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
-OPENWRT_COMMIT=bcb16b6347251f09a99c875c92db14a20c9499a3
-FEED_packages=https://git.openwrt.org/feed/packages.git^607b3dd1b5bb9c4f01f724eb3788fd21517f2250
-FEED_luci=https://git.openwrt.org/project/luci.git^b0cead459cfb434f2b2066e03f36c5bf39a583e7
-FEED_routing=https://git.openwrt.org/feed/routing.git^4b9891b9136259f93294a424507ed24c5e8c1cbd
-FEED_telephony=https://git.openwrt.org/feed/telephony.git^5d68d53c160a325ea9d03fce393e051573bcc736
-FEED_video=https://github.com/openwrt/video.git^6917907d4d6c670cf85be525d23216595655061d
+OPENWRT_COMMIT=a5e96c837ead549820867bb83c1ad471e39f5ace
+FEED_packages=https://git.openwrt.org/feed/packages.git^50a97173cfafdbb037330f59da753b21a9a0fe59
+FEED_luci=https://git.openwrt.org/project/luci.git^5599f42b0eb861cd0414391fb412b0947b1e4e13
+FEED_routing=https://git.openwrt.org/feed/routing.git^ea8633da9c461a9bdc62a0323439d31180762e03
+FEED_telephony=https://git.openwrt.org/feed/telephony.git^9bcb6d71db03377ff49ccb099be763add9a5b059
+FEED_video=https://github.com/openwrt/video.git^4582d70fd21665c4d53b740c76bdf0b390ef9c88
 # The radios' board files (ipq-wifi): qca-wireless at OpenWrt's commit, with
 # the four board-file pull requests' commits on it (#176 C-360, #175 C-260,
 # #178 W-318, #179 W-118) and the C-230's (446cb90d, branch arista-c230, not

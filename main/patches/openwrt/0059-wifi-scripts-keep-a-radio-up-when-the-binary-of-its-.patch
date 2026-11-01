@@ -1,8 +1,8 @@
-From 2c0d2ae874bafd78514f07c0e03f6eebaa71800d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 02:11:38 -0600
-Subject: [PATCH] wifi-scripts: keep a radio up when the binary of its process
- is replaced
+Subject: [PATCH 55/66] wifi-scripts: keep a radio up when the binary of its
+ process is replaced
 
 netifd checks every second that each process a radio's setup registered
 (hostapd, wpa_supplicant) is still running, by comparing /proc/<pid>/exe
@@ -27,7 +27,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 28 insertions(+), 2 deletions(-)
 
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
-index 681a20cdbbc..4821c2ff18e 100644
+index 681a20cdbb..4821c2ff18 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -40,7 +40,7 @@ index 681a20cdbbc..4821c2ff18e 100644
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc b/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc
-index 768c71fff2a..dfea18281b8 100644
+index b54afeee78..2d45935298 100644
 --- a/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc
 +++ b/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc
 @@ -2,7 +2,7 @@
@@ -52,7 +52,7 @@ index 768c71fff2a..dfea18281b8 100644
  
  const wds_sta_re = /^(.+)\.sta[0-9]+$/;
  
-@@ -284,11 +284,36 @@ function wdev_proc_reset(wdev)
+@@ -293,11 +293,36 @@ function wdev_proc_reset(wdev)
  	wdev.procs = [];
  }
  
@@ -89,7 +89,7 @@ index 768c71fff2a..dfea18281b8 100644
  	wdev.dbg(`process ${proc.exe}(${proc.pid}) no longer active`);
  	wdev.teardown();
  	return true;
-@@ -306,6 +331,7 @@ function wdev_proc_add(wdev, data)
+@@ -315,6 +340,7 @@ function wdev_proc_add(wdev, data)
  	if (!data.pid || !data.exe)
  		return;
  

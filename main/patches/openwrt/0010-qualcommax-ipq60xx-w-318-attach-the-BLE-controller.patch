@@ -1,7 +1,7 @@
-From 6558eb2f1c1acf13a7e820a56660170f8bf01e50 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 17 Oct 2026 05:11:50 +0000
-Subject: [PATCH 10/18] qualcommax: ipq60xx: w-318: attach the BLE controller
+Subject: [PATCH 10/66] qualcommax: ipq60xx: w-318: attach the BLE controller
 
 The W-318's Nordic nRF52833 runs a Zephyr HCI UART controller (H:4,
 115200 baud, no flow control) on blsp1_uart2 (/dev/ttyMSM1); its reset
@@ -22,10 +22,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth
 
 diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
-index 5c243d18..dbdb58d7 100644
+index 3dcc16dd1b..9899902732 100644
 --- a/target/linux/qualcommax/image/ipq60xx.mk
 +++ b/target/linux/qualcommax/image/ipq60xx.mk
-@@ -75,7 +75,7 @@ define Device/arista_w-318
+@@ -73,7 +73,7 @@ define Device/arista_w-318
  	SOC := ipq6010
  	KERNEL_SIZE := 8192k
  	DEVICE_PACKAGES := ipq-wifi-arista_w-318 kmod-ath11k-pci kmod-tpm-tis-spi \
@@ -36,7 +36,7 @@ index 5c243d18..dbdb58d7 100644
  
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth b/target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth
 new file mode 100644
-index 00000000..21320f08
+index 0000000000..21320f0807
 --- /dev/null
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/uci-defaults/03_bluetooth
 @@ -0,0 +1,18 @@
@@ -58,3 +58,6 @@ index 00000000..21320f08
 +	set bluetooth-uart.main.flow_control='0'
 +	set bluetooth-uart.main.enabled='1'
 +EOF
+-- 
+2.43.0
+

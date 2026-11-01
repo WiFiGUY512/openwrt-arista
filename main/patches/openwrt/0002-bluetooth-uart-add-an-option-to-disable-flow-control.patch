@@ -1,7 +1,7 @@
-From 04dd3f58770444aa334663227eccdce1ccf69180 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 02/18] bluetooth-uart: add an option to disable flow control
+Subject: [PATCH 02/66] bluetooth-uart: add an option to disable flow control
 
 btattach enables hardware flow control unless given -N. Some
 controllers run without it: the Nordic nRF52833 on the Arista C-360
@@ -18,7 +18,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  3 files changed, 5 insertions(+), 2 deletions(-)
 
 diff --git a/package/utils/bluetooth-uart/Makefile b/package/utils/bluetooth-uart/Makefile
-index 0a2eefe8..87959a7e 100644
+index 0a2eefe8b7..87959a7e74 100644
 --- a/package/utils/bluetooth-uart/Makefile
 +++ b/package/utils/bluetooth-uart/Makefile
 @@ -3,7 +3,7 @@
@@ -31,7 +31,7 @@ index 0a2eefe8..87959a7e 100644
  PKG_LICENSE_FILES:=LICENSE
  PKG_MAINTAINER:=Satoshi Ikeuchi <satosan.ikm@gmail.com>
 diff --git a/package/utils/bluetooth-uart/files/bluetooth-uart.config b/package/utils/bluetooth-uart/files/bluetooth-uart.config
-index c6c73e2d..e82b7018 100644
+index c6c73e2df8..e82b70186e 100644
 --- a/package/utils/bluetooth-uart/files/bluetooth-uart.config
 +++ b/package/utils/bluetooth-uart/files/bluetooth-uart.config
 @@ -3,3 +3,4 @@ config uart 'main'
@@ -40,7 +40,7 @@ index c6c73e2d..e82b7018 100644
  	option speed '115200'
 +	option flow_control '1'
 diff --git a/package/utils/bluetooth-uart/files/bluetooth-uart.init b/package/utils/bluetooth-uart/files/bluetooth-uart.init
-index 68d3cc97..8b38cd02 100755
+index 68d3cc9781..8b38cd0292 100755
 --- a/package/utils/bluetooth-uart/files/bluetooth-uart.init
 +++ b/package/utils/bluetooth-uart/files/bluetooth-uart.init
 @@ -6,16 +6,18 @@ STOP=10
@@ -63,3 +63,6 @@ index 68d3cc97..8b38cd02 100755
  	procd_set_param respawn 3600 5 3
  	procd_set_param stdout 1
  	procd_set_param stderr 1
+-- 
+2.43.0
+

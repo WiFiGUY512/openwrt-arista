@@ -1,7 +1,7 @@
-From f6d520541e1b48bee32f063edff60ca917a7c72a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 17 Oct 2026 05:11:50 +0000
-Subject: [PATCH 09/18] qualcommax: ipq60xx: add support for Arista W-318
+Subject: [PATCH 09/66] qualcommax: ipq60xx: add support for Arista W-318
 
 Arista W-318 is a Wi-Fi 6E wall-plate access point with a 2.5 GbE PoE
 uplink and three 1 GbE LAN ports.
@@ -104,7 +104,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/dts/ipq6010-w-318.dts
 
 diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
-index a1913391..5163070b 100644
+index a19133915e..5163070b08 100644
 --- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
 +++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
 @@ -16,6 +16,7 @@ ubootenv_add_mtd() {
@@ -116,7 +116,7 @@ index a1913391..5163070b 100644
  	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
  	;;
 diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
-index 2d72d646..8098035e 100644
+index 1bd5eff671..fdc4ed5f89 100644
 --- a/package/firmware/ipq-wifi/Makefile
 +++ b/package/firmware/ipq-wifi/Makefile
 @@ -34,6 +34,7 @@ ALLWIFIBOARDS:= \
@@ -126,18 +126,18 @@ index 2d72d646..8098035e 100644
 +	arista_w-318 \
  	askey_sbe1v1k \
  	asus_rt-ax89x \
- 	buffalo_wxr-5950ax12 \
-@@ -247,6 +248,7 @@ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
+ 	avm_fritzbox-4050 \
+@@ -251,6 +252,7 @@ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
  $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
  $(eval $(call generate-ipq-wifi-package,arista_c-260,Arista C-260))
  $(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
 +$(eval $(call generate-ipq-wifi-package,arista_w-318,Arista W-318))
  $(eval $(call generate-ipq-wifi-package,askey_sbe1v1k,Askey SBE1V1K))
  $(eval $(call generate-ipq-wifi-package,asus_rt-ax89x,Asus RT-AX89X))
- $(eval $(call generate-ipq-wifi-package,buffalo_wxr-5950ax12,Buffalo WXR-5950AX12))
+ $(eval $(call generate-ipq-wifi-package,avm_fritzbox-4050,AVM FRITZ!Box 4050))
 diff --git a/target/linux/qualcommax/dts/ipq6010-w-318.dts b/target/linux/qualcommax/dts/ipq6010-w-318.dts
 new file mode 100644
-index 00000000..8a8d7566
+index 0000000000..8a8d75666d
 --- /dev/null
 +++ b/target/linux/qualcommax/dts/ipq6010-w-318.dts
 @@ -0,0 +1,545 @@
@@ -687,10 +687,10 @@ index 00000000..8a8d7566
 +	nvmem-cell-names = "calibration";
 +};
 diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
-index 1d5e165e..5c243d18 100644
+index 8c76f8d600..3dcc16dd1b 100644
 --- a/target/linux/qualcommax/image/ipq60xx.mk
 +++ b/target/linux/qualcommax/image/ipq60xx.mk
-@@ -67,6 +67,18 @@ define Device/alfa-network_ap120c-ax
+@@ -65,6 +65,18 @@ define Device/alfa-network_ap120c-ax
  endef
  TARGET_DEVICES += alfa-network_ap120c-ax
  
@@ -710,7 +710,7 @@ index 1d5e165e..5c243d18 100644
  	$(call Device/FitImage)
  	$(call Device/UbiFit)
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
-index 73b4690a..be44f163 100644
+index 73b4690a0a..be44f16326 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
 @@ -7,6 +7,9 @@ board_config_update
@@ -724,11 +724,11 @@ index 73b4690a..be44f163 100644
  	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:00:green:lan" "lan1" "link_10 link_100 link_1000"
  	ucidef_set_led_netdev "lan1-port-traffic" "LAN1-PORT-TRAFFIC" "90000.mdio-1:00:orange:lan" "lan1" "tx rx link_10 link_100 link_1000"
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
-index dd84def2..a89e42a4 100644
+index 75b5fc50b4..5ae00cec5b 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
-@@ -19,6 +19,9 @@ ipq60xx_setup_interfaces()
- 	alfa-network,ap120c-ax)
+@@ -20,6 +20,9 @@ ipq60xx_setup_interfaces()
+ 	wallys,dr6018s)
  		ucidef_set_interfaces_lan_wan "lan" "wan"
  		;;
 +	arista,w-318)
@@ -738,7 +738,7 @@ index dd84def2..a89e42a4 100644
  		# No dedicated WAN port, the uplink is the RG650E modem.
  		ucidef_set_interface_lan "lan1 lan2 lan3 lan4 lan5"
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
-index 0f456f38..19052b33 100644
+index e7bacdf112..de81f2bc25 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
 @@ -230,6 +230,18 @@ platform_do_upgrade() {
@@ -760,7 +760,7 @@ index 0f456f38..19052b33 100644
  	cambiumnetworks,xe3-4)
  		fw_setenv bootcount 0
  		nand_do_upgrade "$1"
-@@ -300,3 +312,11 @@ platform_do_upgrade() {
+@@ -307,3 +319,11 @@ platform_do_upgrade() {
  		;;
  	esac
  }
@@ -772,3 +772,6 @@ index 0f456f38..19052b33 100644
 +		;;
 +	esac
 +}
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
-From 294f88ab41272bfa88e2c58f5bc42dcbac6575d5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 01:20:00 -0500
-Subject: [PATCH] wifi-scripts: write the RADIUS accounting server once
+Subject: [PATCH 29/66] wifi-scripts: write the RADIUS accounting server once
 
 iface_accounting_server() ran twice for an 802.1X BSS without an
 internal EAP server: inside iface_auth_type()'s eap branch, next to
@@ -24,7 +24,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 1 insertion(+), 2 deletions(-)
 
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
-index 5637a82e..e3e1b886 100644
+index 5637a82ef8..e3e1b8860a 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -37,10 +37,10 @@ index 5637a82e..e3e1b886 100644
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
-index bebf95cb..8ee741e1 100644
+index 3afc20006f..c1f4cd38f5 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
-@@ -329,7 +329,6 @@ function iface_auth_type(config, band, eht) {
+@@ -342,7 +342,6 @@ function iface_auth_type(config, band, eht) {
  
  		if (!config.eap_server) {
  			iface_authentication_server(config);

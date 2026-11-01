@@ -1,7 +1,7 @@
-From c2351e4f78ee4896ca7d820b8d31e8cda9caf129 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 19 Oct 2026 14:19:01 -0500
-Subject: [PATCH 17/18] ipq40xx: w-118: light the radio LEDs
+Subject: [PATCH 15/66] ipq40xx: w-118: light the radio LEDs
 
 The 2.4 GHz, 5 GHz and scanning-radio LEDs had no trigger. Phy numbers
 follow the order the radios were first found in, so board.d cannot
@@ -21,7 +21,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 
 diff --git a/target/linux/ipq40xx/base-files/etc/hotplug.d/ieee80211/12-arista-w-118-leds b/target/linux/ipq40xx/base-files/etc/hotplug.d/ieee80211/12-arista-w-118-leds
 new file mode 100755
-index 00000000..7f968d5f
+index 0000000000..7f968d5f63
 --- /dev/null
 +++ b/target/linux/ipq40xx/base-files/etc/hotplug.d/ieee80211/12-arista-w-118-leds
 @@ -0,0 +1,28 @@
@@ -53,3 +53,6 @@ index 00000000..7f968d5f
 +esac
 +
 +echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
+-- 
+2.43.0
+

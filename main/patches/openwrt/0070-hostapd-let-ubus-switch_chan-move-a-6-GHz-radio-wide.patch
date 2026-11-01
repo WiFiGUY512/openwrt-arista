@@ -1,8 +1,8 @@
-From e6b9af9536fcc533f9d5bff884cf4e9339137cbd Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 15:11:55 -0600
-Subject: [PATCH] hostapd: let ubus switch_chan move a 6 GHz radio wider than
- 20 MHz
+Subject: [PATCH 66/66] hostapd: let ubus switch_chan move a 6 GHz radio wider
+ than 20 MHz
 
 hostapd_switch_chan() passed no segment indexes to
 hostapd_set_freq_params(), which then sets center_freq1 to the 40 MHz
@@ -28,23 +28,23 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index b28ef891c92..c14392e9b73 100644
+index fc919bbbf3..b28ef891c9 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=hostapd
--PKG_RELEASE:=11
-+PKG_RELEASE:=12
+-PKG_RELEASE:=10
++PKG_RELEASE:=11
  
  PKG_SOURCE_URL:=https://w1.fi/hostap.git
  PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/src/src/ap/ubus.c b/package/network/services/hostapd/src/src/ap/ubus.c
-index 20cc2d73bff..6bd33885500 100644
+index 1756c7e4a7..72d92027d8 100644
 --- a/package/network/services/hostapd/src/src/ap/ubus.c
 +++ b/package/network/services/hostapd/src/src/ap/ubus.c
-@@ -1062,6 +1062,15 @@ hostapd_switch_chan(struct ubus_context *ctx, struct ubus_object *obj,
+@@ -1197,6 +1197,15 @@ hostapd_switch_chan(struct ubus_context *ctx, struct ubus_object *obj,
  	if (!css.freq_params.channel)
  		return UBUS_STATUS_NOT_SUPPORTED;
  

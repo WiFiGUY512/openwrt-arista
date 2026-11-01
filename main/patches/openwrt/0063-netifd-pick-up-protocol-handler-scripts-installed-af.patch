@@ -1,8 +1,8 @@
-From 435368b904868189a87b017e6e3a484c683a55cf Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 03:26:56 -0600
-Subject: [PATCH] netifd: pick up protocol handler scripts installed after the
- start
+Subject: [PATCH 59/66] netifd: pick up protocol handler scripts installed
+ after the start
 
 netifd patch 001 (for upstream), B44: netifd read /lib/netifd/proto
 once at start, so a protocol package installed later (Aeolus installs
@@ -22,7 +22,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch
 
 diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
-index 894f48cf818..8f6ebb7f178 100644
+index d9479102ad..6eaba948bd 100644
 --- a/package/network/config/netifd/Makefile
 +++ b/package/network/config/netifd/Makefile
 @@ -1,7 +1,7 @@
@@ -36,7 +36,7 @@ index 894f48cf818..8f6ebb7f178 100644
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
 diff --git a/package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch b/package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch
 new file mode 100755
-index 00000000000..26caf9bfedc
+index 0000000000..26caf9bfed
 --- /dev/null
 +++ b/package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch
 @@ -0,0 +1,138 @@

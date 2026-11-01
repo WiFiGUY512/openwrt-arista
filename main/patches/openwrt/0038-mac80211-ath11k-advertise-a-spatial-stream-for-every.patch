@@ -1,7 +1,8 @@
-From 3aae4b295efdf0c8aa8ef447316b1344aa7fff86 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 13:35:00 -0500
-Subject: [PATCH] mac80211: ath11k: advertise a spatial stream for every chain
+Subject: [PATCH 36/66] mac80211: ath11k: advertise a spatial stream for every
+ chain
 
 ath11k patch 109 (for upstream): ath11k counted stream i only when bit
 i of the radio's chainmask was set, so a radio whose chainmask is not
@@ -21,21 +22,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/109-wifi-ath11k-advertise-a-spatial-stream-for-every-chain.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 5de442146fa..5f323c3ba13 100644
+index 4226722a83..18542ebff3 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=17
-+PKG_RELEASE:=18
+-PKG_RELEASE:=19
++PKG_RELEASE:=20
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/109-wifi-ath11k-advertise-a-spatial-stream-for-every-chain.patch b/package/kernel/mac80211/patches/ath11k/109-wifi-ath11k-advertise-a-spatial-stream-for-every-chain.patch
 new file mode 100644
-index 00000000000..25960c452cf
+index 0000000000..25960c452c
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/109-wifi-ath11k-advertise-a-spatial-stream-for-every-chain.patch
 @@ -0,0 +1,136 @@
