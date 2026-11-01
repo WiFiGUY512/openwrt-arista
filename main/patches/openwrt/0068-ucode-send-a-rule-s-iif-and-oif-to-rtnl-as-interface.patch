@@ -1,0 +1,96 @@
+From 99f48be64851b199117d0687e9ad78b4da262181 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 14:54:57 -0600
+Subject: [PATCH] ucode: send a rule's iif and oif to rtnl as interface names
+
+ucode's rtnl declared a fib rule's iif and oif (FRA_IFNAME and
+FRA_OIFNAME) as DT_NETDEV and sent the interface index, where the
+kernel reads a name string. A rule made with { oif: "lo" } was accepted
+but marked detached (flags 0x10; iif: 0x8), never matched, and read back
+with a null interface.
+
+Add patch 017 (upstream: ucode-lang/ucode, branch rtnl-rule-ifname),
+which declares both as DT_STRING. Tested on an Arista W-118: both rules
+now have flags 0 and read back as "lo".
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/utils/ucode/Makefile                  |  2 +-
+ ...ule-s-iif-and-oif-as-interface-names.patch | 49 +++++++++++++++++++
+ 2 files changed, 50 insertions(+), 1 deletion(-)
+ create mode 100755 package/utils/ucode/patches/017-rtnl-send-a-rule-s-iif-and-oif-as-interface-names.patch
+
+diff --git a/package/utils/ucode/Makefile b/package/utils/ucode/Makefile
+index 4fe6cc86001..b7315eff765 100644
+--- a/package/utils/ucode/Makefile
++++ b/package/utils/ucode/Makefile
+@@ -8,7 +8,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ucode
+-PKG_RELEASE:=4
++PKG_RELEASE:=5
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=https://github.com/ucode-lang/ucode.git
+diff --git a/package/utils/ucode/patches/017-rtnl-send-a-rule-s-iif-and-oif-as-interface-names.patch b/package/utils/ucode/patches/017-rtnl-send-a-rule-s-iif-and-oif-as-interface-names.patch
+new file mode 100755
+index 00000000000..95db85ec740
+--- /dev/null
++++ b/package/utils/ucode/patches/017-rtnl-send-a-rule-s-iif-and-oif-as-interface-names.patch
+@@ -0,0 +1,49 @@
++From 4e86b20a6209b5fd8661010a7959e5db10b2918b Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sun, 1 Nov 2026 14:50:01 -0600
++Subject: [PATCH] rtnl: send a rule's iif and oif as interface names
++
++FRA_IFNAME and FRA_OIFNAME carry an interface name, a NUL-terminated
++string; the kernel's fib rule policy reads them as NLA_STRING. The rule
++spec declared them DT_NETDEV, so rtnl sent the interface's index as a
++32-bit number. The kernel then took those four bytes for a name that
++matches no device, accepted the rule, and marked it detached:
++
++  rtnl.request(rtnl.const.RTM_NEWRULE, rtnl.const.NLM_F_CREATE,
++               { family: rtnl.const.AF_INET, oif: "lo", table: 100,
++                 priority: 100 });
++
++leaves a rule whose dump has FIB_RULE_OIF_DETACHED (0x10) in its flags,
++and which never matches; with iif, FIB_RULE_IIF_DETACHED (0x8). Reading
++such a rule back gave null for the interface, the name string being
++decoded as an index the same way.
++
++Declare both as DT_STRING, which sends and reads the name, as iproute2
++does. A script passes the same value as before. Tested on an OpenWrt
++IPQ4019 AP (32-bit ARM): with this change both rules have flags 0 and
++read back as "lo".
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ lib/rtnl.c | 4 ++--
++ 1 file changed, 2 insertions(+), 2 deletions(-)
++
++diff --git a/lib/rtnl.c b/lib/rtnl.c
++index dfd8e04b..a9634dac 100644
++--- a/lib/rtnl.c
+++++ b/lib/rtnl.c
++@@ -1273,8 +1273,8 @@ static const uc_nl_nested_spec_t rule_msg = {
++ 		{ FRA_DST, "dst", DT_ANYADDR, DF_STORE_MASK|DF_FAMILY_HINT, MEMBER(fib_rule_hdr, dst_len) },
++ 		{ FRA_FWMARK, "fwmark", DT_U32, 0, NULL },
++ 		{ FRA_FWMASK, "fwmask", DT_U32, 0, NULL },
++-		{ FRA_IFNAME, "iif", DT_NETDEV, 0, NULL },
++-		{ FRA_OIFNAME, "oif", DT_NETDEV, 0, NULL },
+++		{ FRA_IFNAME, "iif", DT_STRING, 0, NULL },
+++		{ FRA_OIFNAME, "oif", DT_STRING, 0, NULL },
++ 		{ FRA_L3MDEV, "l3mdev", DT_U8, 0, NULL },
++ 		{ FRA_UID_RANGE, "uid_range", DT_NUMRANGE, 0, NULL },
++ 		{ FRA_IP_PROTO, "ip_proto", DT_U8, 0, NULL },
++-- 
++2.43.0
++
+-- 
+2.43.0
+
