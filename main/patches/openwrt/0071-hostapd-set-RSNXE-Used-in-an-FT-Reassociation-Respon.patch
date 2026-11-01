@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 18:00:00 -0600
+Subject: [PATCH 67/67] hostapd: set RSNXE Used in an FT Reassociation Response
+ only with an RSNXE
+
+hostapd set RSNXE Used in the FTE of an FT Reassociation Response
+whenever sae_pwe was 1 or 2, for any AKM, while the MIC covers an RSNXE
+only when one is written. A BSS with FT-EAP or FT-PSK and no SAE has no
+RSNXE, so with sae_pwe set the response claimed one the AP does not
+advertise, and wpa_supplicant dropped the roam with reason 13 (invalid
+element). 25.12.2's wifi-scripts set sae_pwe=2 on wpa3-mixed and WPA3
+Enterprise BSSes, so every FT-EAP roam to such an AP failed.
+
+Set RSNXE Used only when the response includes an RSNXE. Sent upstream
+to hostap.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/hostapd/Makefile     |  2 +-
+ ...ociation-Response-only-with-an-RSNXE.patch | 74 +++++++++++++++++++
+ 2 files changed, 75 insertions(+), 1 deletion(-)
+ create mode 100644 package/network/services/hostapd/patches/076-FT-set-RSNXE-Used-in-Reassociation-Response-only-with-an-RSNXE.patch
+
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+index b28ef891c9..c14392e9b7 100644
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=11
++PKG_RELEASE:=12
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/network/services/hostapd/patches/076-FT-set-RSNXE-Used-in-Reassociation-Response-only-with-an-RSNXE.patch b/package/network/services/hostapd/patches/076-FT-set-RSNXE-Used-in-Reassociation-Response-only-with-an-RSNXE.patch
+new file mode 100644
+index 0000000000..3da35a853a
+--- /dev/null
++++ b/package/network/services/hostapd/patches/076-FT-set-RSNXE-Used-in-Reassociation-Response-only-with-an-RSNXE.patch
+@@ -0,0 +1,74 @@
++From 0783f8a79da8dcbafe82979defbdf34a3c9e136c Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sun, 1 Nov 2026 17:25:51 -0600
++Subject: [PATCH] FT: Set RSNXE Used in Reassociation Response only with an
++ RSNXE
++
++The AP set RSNXE Used in the FTE of an FT protocol Reassociation
++Response frame whenever sae_pwe was 1 or 2, for any AKM, while the MIC
++covers an RSNXE only when one is written. A BSS with FT-EAP or FT-PSK
++and no SAE AKM has no RSNXE, so with sae_pwe set (OpenWrt 25.12 sets it
++on such a BSS) the frame claimed an RSNXE that the AP does not
++advertise. wpa_supplicant rejects that ("FT: FTE indicated that AP uses
++RSNXE, but RSNXE was not included in Beacon/Probe Response frames") and
++deauthenticates with reason 13 (invalid element), so every FT roam to
++such a BSS failed.
++
++Write the RSNXE before the FTE and set RSNXE Used only when the
++response includes one, which is what the MIC covers. Responses that
++include an RSNXE, as with SAE H2E, are unchanged.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ src/ap/wpa_auth_ft.c | 27 +++++++++++++++------------
++ 1 file changed, 15 insertions(+), 12 deletions(-)
++
++diff --git a/src/ap/wpa_auth_ft.c b/src/ap/wpa_auth_ft.c
++index e12f2ad..02e9402 100644
++--- a/src/ap/wpa_auth_ft.c
+++++ b/src/ap/wpa_auth_ft.c
++@@ -2714,7 +2714,21 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
++ 		anonce = NULL;
++ 		snonce = NULL;
++ 	}
++-	rsnxe_used = (auth_alg == WLAN_AUTH_FT) &&
+++	if (omit_rsnxe) {
+++		rsnxe_len = 0;
+++	} else {
+++		res = wpa_write_rsnxe(&sm->wpa_auth->conf, rsnxe,
+++				      sizeof(rsnxe_buf));
+++		if (res < 0) {
+++			os_free(subelem);
+++			return NULL;
+++		}
+++		rsnxe_len = res;
+++	}
+++	/* RSNXE Used tells the STA that the MIC covers an RSNXE. Without one
+++	 * (e.g., FT-EAP or FT-PSK with sae_pwe set, but no SAE), the STA would
+++	 * reject the response for an RSNXE the AP does not advertise. */
+++	rsnxe_used = (auth_alg == WLAN_AUTH_FT) && rsnxe_len &&
++ 		(conf->sae_pwe == SAE_PWE_HASH_TO_ELEMENT ||
++ 		 conf->sae_pwe == SAE_PWE_BOTH);
++ #ifdef CONFIG_TESTING_OPTIONS
++@@ -2782,17 +2796,6 @@ u8 * wpa_sm_write_assoc_resp_ies(struct wpa_state_machine *sm, u8 *pos,
++ 	if (ric_start == pos)
++ 		ric_start = NULL;
++ 
++-	if (omit_rsnxe) {
++-		rsnxe_len = 0;
++-	} else {
++-		res = wpa_write_rsnxe(&sm->wpa_auth->conf, rsnxe,
++-				      sizeof(rsnxe_buf));
++-		if (res < 0) {
++-			pos = NULL;
++-			goto fail;
++-		}
++-		rsnxe_len = res;
++-	}
++ #ifdef CONFIG_TESTING_OPTIONS
++ 	if (auth_alg == WLAN_AUTH_FT &&
++ 	    sm->wpa_auth->conf.rsnxe_override_ft_set) {
++-- 
++2.43.0
++
+-- 
+2.43.0
+
