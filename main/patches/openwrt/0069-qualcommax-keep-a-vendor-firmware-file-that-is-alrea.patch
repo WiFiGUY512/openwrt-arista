@@ -1,0 +1,56 @@
+From 9d1741ec7dfbea8cf2c215022df2eeecdab130b4 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 15:03:38 -0600
+Subject: [PATCH] qualcommax: keep a vendor firmware file that is already there
+
+12-ath11k-vendor-firmware extracts the vendor's amss.bin and m3.bin
+from its system whenever the driver asks for either and finds it
+missing, and copied both. A unit given another amss.bin, kept across a
+sysupgrade in /etc/sysupgrade.conf, lost it at the first boot after the
+upgrade: the driver asked for m3.bin, which was not kept, and the
+script wrote the vendor's amss.bin over the kept one. Seen on an Arista
+C-360: its 6 GHz card started on the kept firmware at 18 s, its other
+QCN9074 card re-probed at 33 s on the vendor's.
+
+Copy only the files that are missing.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../etc/hotplug.d/firmware/12-ath11k-vendor-firmware           | 3 +++
+ .../etc/hotplug.d/firmware/12-ath11k-vendor-firmware           | 3 +++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+index 95ffb6d122d..95707e8c071 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+@@ -22,7 +22,10 @@ vendor_firmware_extract_mmc() {
+ 	unsquashfs -n -d "$tmp" "$dev" \
+ 		$(for f in "$@"; do echo "$src/$f"; done) > /dev/null 2>&1
+ 	mkdir -p "/lib/firmware/${FIRMWARE%/*}"
++	# a file already there stays: one kept across a sysupgrade, or put
++	# there by hand, is the one wanted
+ 	for f in "$@"; do
++		[ -e "/lib/firmware/${FIRMWARE%/*}/$f" ] && continue
+ 		[ -s "$tmp/$src/$f" ] && cp "$tmp/$src/$f" "/lib/firmware/${FIRMWARE%/*}/$f"
+ 	done
+ 	rm -rf "$tmp"
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+index bd2b17183d3..113883e2259 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
+@@ -33,7 +33,10 @@ vendor_firmware_extract() {
+ 		unsquashfs -n -d "$tmp" "$node" \
+ 			$(for f in "$@"; do echo "$src/$f"; done) > /dev/null 2>&1
+ 		mkdir -p "/lib/firmware/${FIRMWARE%/*}"
++		# a file already there stays: one kept across a sysupgrade, or put
++		# there by hand, is the one wanted
+ 		for f in "$@"; do
++			[ -e "/lib/firmware/${FIRMWARE%/*}/$f" ] && continue
+ 			[ -s "$tmp/$src/$f" ] && cp "$tmp/$src/$f" "/lib/firmware/${FIRMWARE%/*}/$f"
+ 		done
+ 		rm -rf "$tmp"
+-- 
+2.43.0
+
