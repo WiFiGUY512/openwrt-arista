@@ -1,0 +1,122 @@
+From 4ee0e7614fcd63e9bb2d4295be8266141728fc26 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 02:58:31 -0600
+Subject: [PATCH] ath10k-ct: report the TX power the firmware applies
+
+ath10k-ct patch 993 (for upstream), B117: ath10k-ct has no get_txpower,
+so iw showed mac80211's limit (the regulatory maximum with power auto)
+while the firmware sent less. On the W-118's 5 GHz radio on channel 36:
+iw 23 dBm, firmware 20.5 dBm; with limits of 17/12/8 dBm the firmware's
+pdev stats figure (0.5 dBm units) followed exactly. Report that figure,
+as ath11k does, so every radio's iw txpower means the same thing.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/ath10k-ct/Makefile             |  2 +-
+ ...rt-the-TX-power-the-firmware-applies.patch | 78 +++++++++++++++++++
+ 2 files changed, 79 insertions(+), 1 deletion(-)
+ create mode 100755 package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
+
+diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+index aa4347a6a62..90215eb5c12 100644
+--- a/package/kernel/ath10k-ct/Makefile
++++ b/package/kernel/ath10k-ct/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ath10k-ct
+-PKG_RELEASE:=4
++PKG_RELEASE:=5
+ 
+ PKG_LICENSE:=GPLv2
+ PKG_LICENSE_FILES:=
+diff --git a/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch b/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
+new file mode 100755
+index 00000000000..626630fa849
+--- /dev/null
++++ b/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
+@@ -0,0 +1,78 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ath10k-ct: report the TX power the firmware applies
++
++ath10k has no get_txpower operation, so "iw dev" shows what mac80211
++configured: the channel's regulatory maximum, or the user's limit. The
++firmware then applies its own target power and band-edge limits under
++that, and reports the result in the pdev stats as the channel TX power,
++in 0.5 dBm units. On an Arista W-118 (IPQ4019, 10.4 firmware), 5 GHz
++channel 36 in the US:
++
++  limit       iw dev    pdev stats "Channel TX power"
++  auto        23 dBm    41 (20.5 dBm)
++  17 dBm      17 dBm    34
++  12 dBm      12 dBm    24
++   8 dBm       8 dBm    16
++
++So with no user limit the radio sends 20.5 dBm while iw says 23.
++Report the pdev stats figure, as ath11k does, and fall back to
++mac80211's own answer when the firmware gives none.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/ath10k-7.2/mac.c
+++++ b/ath10k-7.2/mac.c
++@@ -9730,6 +9730,44 @@
++ }
++ 
++ 
+++/* The TX power the firmware applies on the channel: its target power after
+++ * band-edge limits and the configured limit, from the pdev stats in 0.5 dBm
+++ * units, as ath11k reports. Without it mac80211 would report the configured
+++ * limit, which is the regulatory maximum unless a user limit is set.
+++ */
+++static int ath10k_get_txpower(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+++			      unsigned int link_id, int *dbm)
+++{
+++#ifdef CONFIG_ATH10K_DEBUGFS
+++	struct ath10k *ar = hw->priv;
+++	const struct ath10k_fw_stats_pdev *pdev;
+++	u32 chan_tx_power = 0;
+++
+++	mutex_lock(&ar->conf_mutex);
+++	if (ar->state == ATH10K_STATE_ON && !ath10k_debug_fw_stats_request(ar)) {
+++		spin_lock_bh(&ar->data_lock);
+++		pdev = list_first_entry_or_null(&ar->debug.fw_stats.pdevs,
+++						struct ath10k_fw_stats_pdev, list);
+++		if (pdev)
+++			chan_tx_power = pdev->chan_tx_power;
+++		spin_unlock_bh(&ar->data_lock);
+++	}
+++	mutex_unlock(&ar->conf_mutex);
+++
+++	if (chan_tx_power) {
+++		*dbm = chan_tx_power / 2;
+++		return 0;
+++	}
+++#endif
+++
+++	/* no figure from the firmware: what mac80211 itself would report */
+++	*dbm = vif->bss_conf.txpower;
+++	if (*dbm == INT_MIN)
+++		return -EINVAL;
+++
+++	return 0;
+++}
+++
++ static u64 ath10k_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
++ {
++ 	u64 rv = 0;
++@@ -10637,6 +10675,7 @@
++ 	.get_antenna			= ath10k_get_antenna,
++ 	.reconfig_complete		= ath10k_reconfig_complete,
++ 	.get_survey			= ath10k_get_survey,
+++	.get_txpower			= ath10k_get_txpower,
++ 	.set_bitrate_mask		= ath10k_mac_op_set_bitrate_mask,
++ 	.link_sta_rc_update		= ath10k_sta_rc_update,
++ 	.offset_tsf			= ath10k_offset_tsf,
+-- 
+2.43.0
+
