@@ -1,17 +1,24 @@
 #!/bin/sh /etc/rc.common
 # Arista C-360: power the nRF52833 BLE controller on once bluetooth-uart has
-# attached it (hci0), with a static random address from this unit's BLE MAC
-# (0:ART at 0x40, the top two bits set), as Arista's system does: an LE-only
-# controller cannot be powered on without an identity address. It is left
-# not advertising. C-360 only.
+# attached it (hci0), with this unit's public address, as Arista's system
+# does. Arista's Zephyr controller firmware starts without one (it reports
+# 00:00:00:00:00:00); its vendor command Write BD_ADDR (0xfc06) sets it, here
+# to the unit's BLE MAC (0:ART at 0x40). An LE-only controller cannot be
+# powered on without an identity address, and the kernel looks for one in
+# the address it read at the previous power on, so the first power on uses a
+# static random address (the same MAC with the top two bits set). Once the
+# controller reports the public address, the static one is cleared: while it
+# is set, the kernel uses it as the identity. If the write fails, the static
+# address stays. It is left not advertising. C-360 only.
 
 START=99
 
 # btmgmt registers stdin with its event loop: give it a pipe, and a bound.
+# The output goes to $OUT, if set.
 run_bounded() {
 	local secs=$1 pid s=0
 	shift
-	true | "$@" >/dev/null 2>&1 &
+	true | "$@" >"${OUT:-/dev/null}" 2>&1 &
 	pid=$!
 	while kill -0 $pid 2>/dev/null; do
 		if [ $s -ge $secs ]; then
@@ -26,17 +33,36 @@ run_bounded() {
 	wait $pid
 }
 
-ble_static_addr() {
-	local mtd addr b0
+mgmt() {
+	run_bounded 10 btmgmt --index 0 "$@"
+}
+
+# this unit's BLE MAC, as six hex bytes
+ble_mac() {
+	local mtd addr
 	mtd=$(grep -i '"0:art"' /proc/mtd | cut -d: -f1)
 	[ -n "$mtd" ] || return 1
 	addr=$(hexdump -s 0x40 -n 6 -e '6/1 "%02x "' "/dev/$mtd" 2>/dev/null)
 	case "$addr" in
 	""|"ff ff ff ff ff ff"*|"00 00 00 00 00 00"*) return 1 ;;
 	esac
-	set -- $addr
-	b0=$(printf '%02x' $((0x$1 | 0xc0)))
-	echo "$b0:$2:$3:$4:$5:$6"
+	echo $addr
+}
+
+bd_addr() {
+	hciconfig hci0 | sed -n 's/.*BD Address: \([0-9A-F:]*\).*/\1/p'
+}
+
+# write_bd_addr B1 .. B6: Zephyr vendor Write BD_ADDR, least significant
+# byte first; true if the controller answers with status 0
+write_bd_addr() {
+	local out=/tmp/arista-c360-ble.$$ ret
+	OUT=$out run_bounded 5 hcitool -i hci0 cmd 0x3f 0x0006 0x$6 0x$5 0x$4 0x$3 0x$2 0x$1
+	# Command Complete: 1 packet, opcode 0xfc06, status 0
+	[ "$(sed -n '/HCI Event: 0x0e/{n;p}' $out | tr -d ' ')" = 0106FC00 ]
+	ret=$?
+	rm -f $out
+	return $ret
 }
 
 boot() {
@@ -55,13 +81,41 @@ boot() {
 		[ $i -ge 30 ] && { logger -t arista-c360-ble "hci0 never became available to mgmt"; exit 0; }
 		sleep 1
 	  done
-	  addr=$(ble_static_addr)
-	  [ -n "$addr" ] && { run_bounded 10 btmgmt --index 0 static-addr "$addr" ||
-		logger -t arista-c360-ble "static-addr $addr rejected or timed out"; }
-	  if run_bounded 10 btmgmt --index 0 power on; then
-		logger -t arista-c360-ble "hci0 powered on, static address ${addr:-none} (not advertising)"
+	  mac=$(ble_mac)
+	  [ -n "$mac" ] || logger -t arista-c360-ble "no BLE MAC in ART"
+	  set -- $mac
+	  static=${mac:+$(printf '%02x' $((0x$1 | 0xc0))):$2:$3:$4:$5:$6}
+	  public=${mac:+$(echo "$1:$2:$3:$4:$5:$6" | tr a-f A-F)}
+	  # a static address can be set only while the controller is off
+	  mgmt power off
+	  [ -n "$static" ] && { mgmt static-addr "$static" ||
+		logger -t arista-c360-ble "static-addr $static rejected or timed out"; }
+	  mgmt power on || { logger -t arista-c360-ble "hci0 power on failed or timed out"; exit 0; }
+	  if [ -n "$public" ] && [ "$(bd_addr)" != "$public" ]; then
+		if write_bd_addr $mac; then
+			# the kernel reads the new address at the next power on
+			mgmt power off
+			mgmt power on
+		else
+			logger -t arista-c360-ble "Write BD_ADDR $public rejected or timed out"
+		fi
+	  fi
+	  addr="static address ${static:-none}"
+	  if [ -n "$public" ] && [ "$(bd_addr)" = "$public" ]; then
+		mgmt power off
+		if mgmt static-addr 00:00:00:00:00:00 && mgmt power on; then
+			addr="public address $public"
+		else
+			logger -t arista-c360-ble "hci0 would not power on with its public address alone"
+			mgmt power off
+			mgmt static-addr "$static"
+			mgmt power on
+		fi
+	  fi
+	  if hciconfig hci0 | grep -q UP; then
+		logger -t arista-c360-ble "hci0 powered on, $addr (not advertising)"
 	  else
-		logger -t arista-c360-ble "hci0 power on failed or timed out"
+		logger -t arista-c360-ble "hci0 power on failed"
 	  fi
 	) &
 }
