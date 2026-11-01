@@ -1,13 +1,14 @@
-From 4ee0e7614fcd63e9bb2d4295be8266141728fc26 Mon Sep 17 00:00:00 2001
+From 8160a3b0325db39e1a49fff000fdffb1c652b61f Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
-Date: Sun, 1 Nov 2026 02:58:31 -0600
+Date: Sun, 1 Nov 2026 03:22:24 -0600
 Subject: [PATCH] ath10k-ct: report the TX power the firmware applies
 
 ath10k-ct patch 993 (for upstream), B117: ath10k-ct has no get_txpower,
 so iw showed mac80211's limit (the regulatory maximum with power auto)
 while the firmware sent less. On the W-118's 5 GHz radio on channel 36:
 iw 23 dBm, firmware 20.5 dBm; with limits of 17/12/8 dBm the firmware's
-pdev stats figure (0.5 dBm units) followed exactly. Report that figure,
+pdev stats figure (0.5 dBm units) followed exactly. Report that figure
+while the vdev is started (in a restart the firmware reads 63, 31.5 dBm),
 as ath11k does, so every radio's iw txpower means the same thing.
 
 Bump PKG_RELEASE.
@@ -16,8 +17,8 @@ Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  package/kernel/ath10k-ct/Makefile             |  2 +-
- ...rt-the-TX-power-the-firmware-applies.patch | 78 +++++++++++++++++++
- 2 files changed, 79 insertions(+), 1 deletion(-)
+ ...rt-the-TX-power-the-firmware-applies.patch | 84 +++++++++++++++++++
+ 2 files changed, 85 insertions(+), 1 deletion(-)
  create mode 100755 package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
 
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
@@ -35,10 +36,10 @@ index aa4347a6a62..90215eb5c12 100644
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch b/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
 new file mode 100755
-index 00000000000..626630fa849
+index 00000000000..77b43e9929e
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/993-ath10k-ct-report-the-TX-power-the-firmware-applies.patch
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,84 @@
 +From: Christopher Griffin <christophergriffin05@gmail.com>
 +Subject: [PATCH] ath10k-ct: report the TX power the firmware applies
 +
@@ -56,15 +57,16 @@ index 00000000000..626630fa849
 +   8 dBm       8 dBm    16
 +
 +So with no user limit the radio sends 20.5 dBm while iw says 23.
-+Report the pdev stats figure, as ath11k does, and fall back to
-+mac80211's own answer when the firmware gives none.
++Report the pdev stats figure, as ath11k does, while the vdev is
++started, and fall back to mac80211's own answer otherwise: during a
++restart the firmware reports 63 (31.5 dBm) whatever the channel.
 +
 +Assisted-by: Claude:claude-opus-5-5
 +Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 +---
 +--- a/ath10k-7.2/mac.c
 ++++ b/ath10k-7.2/mac.c
-+@@ -9730,6 +9730,44 @@
++@@ -9730,6 +9730,49 @@
 + }
 + 
 + 
@@ -78,11 +80,16 @@ index 00000000000..626630fa849
 ++{
 ++#ifdef CONFIG_ATH10K_DEBUGFS
 ++	struct ath10k *ar = hw->priv;
+++	struct ath10k_vif *arvif = ath10k_vif_to_arvif(vif);
 ++	const struct ath10k_fw_stats_pdev *pdev;
 ++	u32 chan_tx_power = 0;
 ++
+++	/* Only while the vdev runs on its channel: in a restart the firmware
+++	 * reports 63 (31.5 dBm), whatever the channel.
+++	 */
 ++	mutex_lock(&ar->conf_mutex);
-++	if (ar->state == ATH10K_STATE_ON && !ath10k_debug_fw_stats_request(ar)) {
+++	if (ar->state == ATH10K_STATE_ON && arvif->is_started &&
+++	    !ath10k_debug_fw_stats_request(ar)) {
 ++		spin_lock_bh(&ar->data_lock);
 ++		pdev = list_first_entry_or_null(&ar->debug.fw_stats.pdevs,
 ++						struct ath10k_fw_stats_pdev, list);
@@ -109,7 +116,7 @@ index 00000000000..626630fa849
 + static u64 ath10k_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 + {
 + 	u64 rv = 0;
-+@@ -10637,6 +10675,7 @@
++@@ -10637,6 +10680,7 @@
 + 	.get_antenna			= ath10k_get_antenna,
 + 	.reconfig_complete		= ath10k_reconfig_complete,
 + 	.get_survey			= ath10k_get_survey,
