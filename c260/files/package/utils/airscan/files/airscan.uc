@@ -64,7 +64,8 @@ const HEAL_LATER = 3600;   // seconds before another, after one that did not bri
 
 let conn, cfg, radio = {}, state = "idle", busy = false;
 let loan = { until: 0, to: null };
-let heal = { count: 0, failed: 0, last: 0, next: 0, check: false, times: [], told: false };
+let heal = { count: 0, failed: 0, last: 0, next: 0, check: false, times: [], told: false,
+	     unbound: null, probed: 0 };
 let results = { spectrum: null, bss: null, clients: {}, ble: {} };
 let last = { spectral: 0, bss: 0, clients: 0, ble: 0 };
 let next = { spectral: 0, bss: 0, ble: 0 };
@@ -1007,6 +1008,7 @@ heal_radio = function(done) {
 	if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
 	for (let i in own_ifaces()) iface_del(i);
 	fs.writefile(`${dir}/unbind`, radio.pci);
+	heal.unbound = dir;
 	let tries = 0;
 	function wait() {
 		// its phy is there once the firmware has started, about ten seconds
@@ -1019,6 +1021,7 @@ heal_radio = function(done) {
 	}
 	later(3000, () => {
 		fs.writefile(`${dir}/bind`, radio.pci);
+		heal.unbound = null;
 		later(1000, wait);
 	});
 };
@@ -1110,6 +1113,19 @@ function loan_end(why) {
 	loan.to = null;
 }
 
+// probe_driver asks the kernel to bind a driver to a scan radio that has
+// none, as one left between a heal's unbind and its bind is (an airscan
+// killed there), or one anyone else unbound: no one else would bind it
+// again. Once a minute at the most.
+function probe_driver() {
+	let dev = `/sys/bus/pci/devices/${radio.pci}`;
+	if (!radio.pci || !fs.access(dev) || fs.readlink(`${dev}/driver`) || time() < heal.probed + 60)
+		return;
+	heal.probed = time();
+	note_error("the scan radio has no driver: asking the kernel to bind one");
+	fs.writefile("/sys/bus/pci/drivers_probe", radio.pci);
+}
+
 function run_next() {
 	if (busy) return;
 	if (loan.until) {
@@ -1129,6 +1145,7 @@ function run_next() {
 	}
 	if (!resolve_radio()) {
 		state = "waiting for scan radio";
+		probe_driver();
 		later(5000, run_next);
 		return;
 	}
@@ -1169,6 +1186,11 @@ function kill_children() {
 }
 
 function cleanup() {
+	if (heal.unbound) {
+		log("stopping in the middle of a heal: binding the scan radio's driver again");
+		fs.writefile(`${heal.unbound}/bind`, radio.pci);
+		heal.unbound = null;
+	}
 	kill_children();
 	capture_close();
 	if (wp.sock) { wp.sock.close(); wp.sock = null; }
