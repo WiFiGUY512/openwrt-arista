@@ -1,0 +1,57 @@
+From 72c7f399efb24fa06343da6c241548c560e418dd Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 04:30:30 -0600
+Subject: [PATCH] hostapd: take cleared vendor elements out of the beacons
+
+ubus set_vendor_elements updates the beacons after it sets new
+elements, but clearing them (an empty string) only freed the stored
+elements and returned. The beacons kept the old elements until
+something else happened to rebuild them: on an Arista W-118 (ath10k),
+every beacon in the 2 s after a clear still carried the cleared
+element, while probe responses, which hostapd builds per request,
+already had dropped it.
+
+Update the beacons after clearing too.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/hostapd/Makefile          | 2 +-
+ package/network/services/hostapd/src/src/ap/ubus.c | 6 +++++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+index fde88c1da4d..fc919bbbf3f 100644
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=9
++PKG_RELEASE:=10
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/network/services/hostapd/src/src/ap/ubus.c b/package/network/services/hostapd/src/src/ap/ubus.c
+index 7b0c6504d81..20cc2d73bff 100644
+--- a/package/network/services/hostapd/src/src/ap/ubus.c
++++ b/package/network/services/hostapd/src/src/ap/ubus.c
+@@ -1148,7 +1148,11 @@ hostapd_vendor_elements(struct ubus_context *ctx, struct ubus_object *obj,
+ 	if (len == 0) {
+ 		wpabuf_free(bss->vendor_elements);
+ 		bss->vendor_elements = NULL;
+-		return 0;
++
++		/* and out of the beacons, which would keep them otherwise */
++		if (ieee802_11_update_beacons(hapd->iface) != 0)
++			return UBUS_STATUS_NOT_SUPPORTED;
++		return UBUS_STATUS_OK;
+ 	}
+ 
+ 	elems = wpabuf_alloc(len);
+-- 
+2.43.0
+
