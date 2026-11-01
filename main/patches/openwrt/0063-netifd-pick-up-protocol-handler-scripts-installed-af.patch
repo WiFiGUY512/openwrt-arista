@@ -1,0 +1,183 @@
+From 435368b904868189a87b017e6e3a484c683a55cf Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 03:26:56 -0600
+Subject: [PATCH] netifd: pick up protocol handler scripts installed after the
+ start
+
+netifd patch 001 (for upstream), B44: netifd read /lib/netifd/proto
+once at start, so a protocol package installed later (Aeolus installs
+vxlan after every sysupgrade) stayed unusable until netifd restarted,
+which takes every interface down. On a reload, also read the scripts
+not seen yet, each once; an interface whose handler now exists is set
+up again with it (interface_change_config sees a different handler).
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/netifd/Makefile        |   2 +-
+ ...er-scripts-installed-after-the-start.patch | 138 ++++++++++++++++++
+ 2 files changed, 139 insertions(+), 1 deletion(-)
+ create mode 100755 package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch
+
+diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
+index 894f48cf818..8f6ebb7f178 100644
+--- a/package/network/config/netifd/Makefile
++++ b/package/network/config/netifd/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifd
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
+diff --git a/package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch b/package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch
+new file mode 100755
+index 00000000000..26caf9bfedc
+--- /dev/null
++++ b/package/network/config/netifd/patches/001-proto-shell-pick-up-handler-scripts-installed-after-the-start.patch
+@@ -0,0 +1,138 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] proto-shell: pick up handler scripts installed after the start
++
++netifd reads the protocol handler scripts in /lib/netifd/proto once,
++when it starts. A protocol package installed later (vxlan, wireguard,
++...) leaves an interface that uses it on the "none" handler until netifd
++is restarted; a reload does not help, and a restart takes every
++interface down.
++
++On a reload, also read the scripts that netifd has not seen yet, each
++of them once. An interface whose handler then exists gets a different
++proto_handler than before, so interface_change_config() sets it up
++again with it.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/handler.c
+++++ b/handler.c
++@@ -230,7 +230,8 @@
++ 	fclose(file);
++ }
++ 
++-void netifd_init_script_handlers(int dir_fd, script_dump_cb cb)
+++void netifd_init_script_handlers(int dir_fd, script_dump_cb cb,
+++				 script_skip_cb skip)
++ {
++ 	glob_t g;
++ 	int prev_fd;
++@@ -242,8 +243,12 @@
++ 		return;
++ 	}
++ 
++-	for (i = 0; i < g.gl_pathc; i++)
+++	for (i = 0; i < g.gl_pathc; i++) {
+++		if (skip && skip(g.gl_pathv[i]))
+++			continue;
+++
++ 		netifd_parse_script_handler(g.gl_pathv[i], cb);
+++	}
++ 	netifd_dir_pop(prev_fd);
++ 
++ 	globfree(&g);
++--- a/handler.h
+++++ b/handler.h
++@@ -19,6 +19,7 @@
++ #include "config.h"
++ 
++ typedef void (*script_dump_cb)(const char *script, const char *name, json_object *obj);
+++typedef bool (*script_skip_cb)(const char *script);
++ typedef void (*create_extdev_handler_cb)(const char *cfg_file, const char *name,
++ 					 const char *ubus_name, bool bridge,
++ 					 const char *br_prefix, json_object *config_obj,
++@@ -44,7 +45,8 @@
++ }
++ 
++ int netifd_open_subdir(const char *name);
++-void netifd_init_script_handlers(int dir_fd, script_dump_cb cb);
+++void netifd_init_script_handlers(int dir_fd, script_dump_cb cb,
+++				 script_skip_cb skip);
++ void netifd_init_extdev_handlers(int dir_fd, create_extdev_handler_cb cb);
++ char *netifd_handler_parse_config(struct uci_blob_param_list *config, json_object *obj);
++ void netifd_handler_free_config(struct uci_blob_param_list *config);
++--- a/main.c
+++++ b/main.c
++@@ -280,6 +280,9 @@
++ 
++ int netifd_reload(void)
++ {
+++	/* handler scripts installed since the start */
+++	proto_shell_init();
+++
++ 	return config_init_all();
++ }
++ 
++--- a/proto-shell.c
+++++ b/proto-shell.c
++@@ -17,6 +17,8 @@
++ #include <stdlib.h>
++ #include <stdio.h>
++ 
+++#include <libubox/avl-cmp.h>
+++
++ #include "netifd.h"
++ #include "proto.h"
++ #include "handler.h"
++@@ -24,6 +26,12 @@
++ 
++ static int proto_fd = -1;
++ 
+++struct proto_shell_script {
+++	struct avl_node avl;
+++};
+++
+++static AVL_TREE(proto_shell_scripts, avl_strcmp, false, NULL);
+++
++ struct proto_shell_handler {
++ 	struct list_head list;
++ 	struct proto_handler proto;
++@@ -148,11 +156,36 @@
++ 	add_proto_handler(proto);
++ }
++ 
+++/*
+++ * Each handler script is parsed once: at start, or at the first reload that
+++ * finds it, so that a protocol package installed at run time is usable
+++ * without a restart.
+++ */
+++static bool
+++proto_shell_script_seen(const char *script)
+++{
+++	struct proto_shell_script *s;
+++	char *name;
+++
+++	if (avl_find(&proto_shell_scripts, script))
+++		return true;
+++
+++	s = calloc_a(sizeof(*s), &name, strlen(script) + 1);
+++	if (s) {
+++		s->avl.key = strcpy(name, script);
+++		avl_insert(&proto_shell_scripts, &s->avl);
+++	}
+++
+++	return false;
+++}
+++
++ void proto_shell_init(void)
++ {
++-	proto_fd = netifd_open_subdir("proto");
+++	if (proto_fd < 0)
+++		proto_fd = netifd_open_subdir("proto");
++ 	if (proto_fd < 0)
++ 		return;
++ 
++-	netifd_init_script_handlers(proto_fd, proto_shell_add_handler);
+++	netifd_init_script_handlers(proto_fd, proto_shell_add_handler,
+++				    proto_shell_script_seen);
++ }
+-- 
+2.43.0
+
