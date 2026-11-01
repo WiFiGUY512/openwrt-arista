@@ -1,0 +1,158 @@
+From ec3d64e2b0fa3c9bce36cb6c0cbf89ffe33ab778 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 04:55:22 -0600
+Subject: [PATCH] uci: keep packages loaded between batch commands
+
+uci patch 001 (for upstream), B81: uci batch unloaded every package
+after each command, so each command reloaded its package and replayed
+its whole saved delta, which grows by a line per set: on the W-118 a
+batch of 500 sections (1000 sets) took 11.2 s and 2000 sections 528 s.
+Keep a package loaded after a command that succeeded; unload after a
+failure and before show/changes/export/commit/import, which read or
+load whole packages; add reuses a loaded package. 500 sections now take
+0.21 s, 2000 take 1.8 s, with byte-identical results, and a mixed batch
+(add, lists, rename, reorder, delete, revert, a failing set, show,
+changes, commit) gives the same output and files as before.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/system/uci/Makefile                   |   2 +-
+ ...ckages-loaded-between-batch-commands.patch | 110 ++++++++++++++++++
+ 2 files changed, 111 insertions(+), 1 deletion(-)
+ create mode 100755 package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch
+
+diff --git a/package/system/uci/Makefile b/package/system/uci/Makefile
+index 11f89b0b15a..230cb39fb5c 100644
+--- a/package/system/uci/Makefile
++++ b/package/system/uci/Makefile
+@@ -9,7 +9,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=uci
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/uci.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch b/package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch
+new file mode 100755
+index 00000000000..2bb6e4293d3
+--- /dev/null
++++ b/package/system/uci/patches/001-cli-keep-packages-loaded-between-batch-commands.patch
+@@ -0,0 +1,110 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] cli: keep packages loaded between batch commands
++
++uci batch unloaded every loaded package after each command, so the next
++command loaded its package again: it parsed the config file and replayed
++the package's whole saved delta, which every set in the batch makes one
++line longer. A batch of n sets therefore took time quadratic in n or
++worse. On an Arista W-118 (IPQ4019) one section and one option per
++entry took 0.36 s for 100 entries, 11 s for 500 and 528 s for 2000;
++committing the 1000 deltas of 500 entries took 0.06 s of it.
++
++Keep a package loaded after a command that succeeded: the command has
++saved its changes, and the package in memory is the saved state. Unload
++everything after a command that failed, which may have left a package
++half changed, and before the commands that read a whole package
++(show, changes, export, commit) or load one themselves (import), so
++they see what they saw before. add uses the package when the batch has
++it loaded already, as uci_load() refuses a loaded one.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/cli.c
+++++ b/cli.c
++@@ -313,6 +313,15 @@
++ 	}
++ }
++ 
+++/* drop every loaded package: the next command loads what it needs */
+++static void unload_all(void)
+++{
+++	struct uci_element *e, *tmp;
+++
+++	uci_foreach_element_safe(&ctx->root, tmp, e)
+++		uci_unload(ctx, uci_to_package(e));
+++}
+++
++ static int package_cmd(int cmd, char *tuple)
++ {
++ 	struct uci_ptr ptr;
++@@ -383,6 +392,9 @@
++ 		/* need a package to merge */
++ 		return 255;
++ 
+++	if (flags & CLI_FLAG_BATCH)
+++		unload_all();
+++
++ 	if (flags & CLI_FLAG_MERGE) {
++ 		if (uci_load(ctx, name, &package) != UCI_OK)
++ 			package = NULL;
++@@ -420,6 +432,9 @@
++ 	if (argc > 2)
++ 		return 255;
++ 
+++	if (flags & CLI_FLAG_BATCH)
+++		unload_all();
+++
++ 	if (argc == 2)
++ 		return package_cmd(cmd, argv[1]);
++ 
++@@ -440,6 +455,7 @@
++ 
++ static int uci_do_add(int argc, char **argv)
++ {
+++	struct uci_element *e;
++ 	struct uci_package *p = NULL;
++ 	struct uci_section *s = NULL;
++ 	int ret;
++@@ -447,7 +463,12 @@
++ 	if (argc != 3)
++ 		return 255;
++ 
++-	ret = uci_load(ctx, argv[1], &p);
+++	uci_foreach_element(&ctx->root, e) {
+++		if (!strcmp(e->name, argv[1]))
+++			p = uci_to_package(e);
+++	}
+++
+++	ret = p ? UCI_OK : uci_load(ctx, argv[1], &p);
++ 	if (ret != UCI_OK)
++ 		goto done;
++ 
++@@ -591,18 +612,21 @@
++ 
++ 	flags |= CLI_FLAG_BATCH;
++ 	while (!feof(input)) {
++-		struct uci_element *e, *tmp;
++-
++ 		ret = uci_batch_cmd();
++ 		if (ret == 254)
++ 			return 0;
++ 		else if (ret == 255)
++ 			cli_error("Unknown command\n");
++ 
++-		/* clean up */
++-		uci_foreach_element_safe(&ctx->root, tmp, e) {
++-			uci_unload(ctx, uci_to_package(e));
++-		}
+++		/*
+++		 * A command that succeeded has saved its changes and left its
+++		 * package as saved, so keep it loaded: reloading it for every
+++		 * command parses the config and replays its whole delta again,
+++		 * which grows with each command. A failed command may leave a
+++		 * package half changed: start again from the saved state.
+++		 */
+++		if (ret)
+++			unload_all();
++ 	}
++ 	flags &= ~CLI_FLAG_BATCH;
++ 
+-- 
+2.43.0
+
