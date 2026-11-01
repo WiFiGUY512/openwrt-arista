@@ -1,0 +1,71 @@
+From 3e7419f01438b46961b92796925b59d713a09cdc Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 03:57:17 -0600
+Subject: [PATCH] hostapd: take only a subscriber's refusal from a ubus notify
+ response
+
+With notify_response set (usteer sets it), hostapd sends each probe,
+authentication and association as a ubus notify, waits for the
+subscribers' status codes, and refuses the client with that code when
+it is not 0. ubus_event_cb() stored every subscriber's code over the
+previous one, so the last subscriber to answer decided. A refusal from
+one subscriber was lost when another answered 0. A subscriber with no
+opinion also refused the client: a ucode subscriber whose handler
+returns nothing answers UBUS_STATUS_NO_DATA, one with no notify handler
+UBUS_STATUS_METHOD_NOT_FOUND, and hostapd used those as 802.11 status
+codes. On the BSS Transition Management query path the same codes made
+hostapd leave the answer to a subscriber that never sent one.
+
+Keep the first nonzero code, and treat NO_DATA and METHOD_NOT_FOUND as
+no opinion. Neither is a status code a subscriber would return for a
+refusal; both are what ubus answers for a subscriber that does not
+handle the notification.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/hostapd/Makefile          |  2 +-
+ package/network/services/hostapd/src/src/ap/ubus.c | 12 +++++++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+index 6cdf9134ab7..fde88c1da4d 100644
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=8
++PKG_RELEASE:=9
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/network/services/hostapd/src/src/ap/ubus.c b/package/network/services/hostapd/src/src/ap/ubus.c
+index fe7ccaafc0e..7b0c6504d81 100644
+--- a/package/network/services/hostapd/src/src/ap/ubus.c
++++ b/package/network/services/hostapd/src/src/ap/ubus.c
+@@ -2506,7 +2506,17 @@ ubus_event_cb(struct ubus_notify_request *req, int idx, int ret)
+ {
+ 	struct ubus_event_req *ureq = container_of(req, struct ubus_event_req, nreq);
+ 
+-	ureq->resp = ret;
++	/*
++	 * A subscriber that does not handle the notification has no say:
++	 * ubus answers NO_DATA for a handler that returned nothing and
++	 * METHOD_NOT_FOUND for one without a notify handler. Of the others,
++	 * the first refusal stands; a later 0 does not undo it.
++	 */
++	if (ret == UBUS_STATUS_NO_DATA || ret == UBUS_STATUS_METHOD_NOT_FOUND)
++		return;
++
++	if (!ureq->resp)
++		ureq->resp = ret;
+ }
+ 
+ int hostapd_ubus_handle_event(struct hostapd_data *hapd, struct hostapd_ubus_request *req)
+-- 
+2.43.0
+
