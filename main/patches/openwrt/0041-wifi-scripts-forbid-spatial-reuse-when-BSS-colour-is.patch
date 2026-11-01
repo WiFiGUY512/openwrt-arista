@@ -49,7 +49,7 @@ diff --git a/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80
 +			# another's, so forbid them spatial reuse. With no SR Parameter
 +			# Set at all they may use non-SRG OBSS PD up to -62 dBm, and
 +			# ignore this AP's weaker frames as an OBSS's.
-+			append base_cfg "he_spr_sr_control=$((he_spr_sr_control | 3))" "$N"
++			append base_cfg "he_spr_sr_control=3" "$N"
  		fi
  
  
@@ -66,7 +66,7 @@ diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wif
 +			 * Parameter Set at all they may use non-SRG OBSS PD up to
 +			 * -62 dBm, and ignore this AP's weaker frames as an OBSS's.
 +			 */
-+			config.he_spr_sr_control |= 3;
++			config.he_spr_sr_control = 3;
 +			append_vars(config, [ 'he_spr_sr_control' ]);
  		}
  
