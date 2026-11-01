@@ -1,0 +1,102 @@
+From 2c0d2ae874bafd78514f07c0e03f6eebaa71800d Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 02:11:38 -0600
+Subject: [PATCH] wifi-scripts: keep a radio up when the binary of its process
+ is replaced
+
+netifd checks every second that each process a radio's setup registered
+(hostapd, wpa_supplicant) is still running, by comparing /proc/<pid>/exe
+with the executable's path. When the binary is unmounted under the
+running process, as when a bind-mounted test build is taken away, the
+link no longer names that path and the check takes the process for gone:
+it tears the radio down, the setup registers the same live process
+again, and a second later the check fails again. Every radio then goes
+through teardown and setup 40 to 50 times a minute until the daemon is
+restarted, and nothing counts it against the setup retries.
+
+Also accept a process that still has the start time it had when it was
+registered. A process that ended and left its PID to another would not.
+
+Seen on an Arista W-118 and an Arista C-260 with OpenWrt main.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/wifi-scripts/Makefile  |  2 +-
+ .../files/lib/netifd/wireless-device.uc       | 28 ++++++++++++++++++-
+ 2 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index 681a20cdbbc..4821c2ff18e 100644
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=11
++PKG_RELEASE:=12
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc b/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc
+index 768c71fff2a..dfea18281b8 100644
+--- a/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc
++++ b/package/network/config/wifi-scripts/files/lib/netifd/wireless-device.uc
+@@ -2,7 +2,7 @@
+ import * as ubus from "ubus";
+ import * as uloop from "uloop";
+ import { is_equal } from "./utils.uc";
+-import { access, lsdir } from "fs";
++import { access, lsdir, readfile } from "fs";
+ 
+ const wds_sta_re = /^(.+)\.sta[0-9]+$/;
+ 
+@@ -284,11 +284,36 @@ function wdev_proc_reset(wdev)
+ 	wdev.procs = [];
+ }
+ 
++/*
++ * A running process's start time, in clock ticks since boot (field 22 of
++ * /proc/<pid>/stat); none for a process that has ended (a zombie).
++ */
++function proc_start_time(pid)
++{
++	let stat = readfile(`/proc/${pid}/stat`);
++	if (!stat)
++		return null;
++
++	let fields = split(substr(stat, rindex(stat, ")") + 2), " ");
++	if (fields[0] == "Z" || fields[0] == "X")
++		return null;
++
++	return fields[19];
++}
++
+ function __wdev_proc_check(wdev, proc)
+ {
+ 	if (netifd.process_check(proc.pid, proc.exe))
+ 		return;
+ 
++	/*
++	 * The executable path no longer matches when the binary was unmounted
++	 * or replaced under the running process. It is still the same process
++	 * if it started when it did; a reused PID would not have.
++	 */
++	if (proc.start != null && proc_start_time(proc.pid) == proc.start)
++		return;
++
+ 	wdev.dbg(`process ${proc.exe}(${proc.pid}) no longer active`);
+ 	wdev.teardown();
+ 	return true;
+@@ -306,6 +331,7 @@ function wdev_proc_add(wdev, data)
+ 	if (!data.pid || !data.exe)
+ 		return;
+ 
++	data.start = proc_start_time(data.pid);
+ 	push(wdev.procs, data);
+ 
+ 	if (!wdev.proc_timer)
+-- 
+2.43.0
+
