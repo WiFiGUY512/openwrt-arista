@@ -1,0 +1,623 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 2 Nov 2026 08:21:47 -0600
+Subject: [PATCH] qualcommax: ipq60xx: add support for Arista C-200
+
+Hardware specification:
+- SoC: Qualcomm IPQ6010 (4x Cortex-A53), on the IPQ6018 AP-CP01-C3
+  reference design
+- RAM: 1 GiB DDR3L
+- Flash: 32 MiB SPI NOR (Winbond W25Q256JW),
+  512 MiB NAND (Hynix H27S4G8F2EDA-BC)
+- WLAN: IPQ6010: 2.4 GHz 2x2 and 5 GHz 2x2 802.11ax
+- Ethernet: lan1 10/100/1000 (Qualcomm Atheros AR8033, SGMII), PoE in
+- TPM: Infineon SLB9670 (TPM 2.0), SPI
+- LEDs: power, 2.4 GHz, 5 GHz and LAN, each green and red
+- Button: reset (pinhole)
+- UART: RJ-45 console port, RS-232 levels, 115200 8N1
+- Power: 802.3af PoE on lan1, or 12 V DC
+
+Flash layout: the stock firmware keeps two slots, their kernels in SPI
+NOR (HL_backup0, HL_backup1) and their roots in NAND ("rootfs",
+"rootfs_1"); pri picks the slot. OpenWrt takes NAND slot 0 for UBI
+(kernel, rootfs, rootfs_data); slot 1 stays as a fallback. Slot 0 may
+be the one the stock firmware runs (pri=0); it is replaced all the
+same, and pri=1 makes slot 1 the fallback. The device tree appends
+ubi.mtd=rootfs and root=/dev/ubiblock0_1, so the root is found whatever
+U-Boot passes.
+
+Flash instructions (console needed):
+1. Stop U-Boot: it waits 2 s and stops only for the string
+   s6.D5r4Gnb89ZEWSW6Kq.
+   Do not let the stock firmware boot meanwhile: its boot script saves
+   the U-Boot environment on every boot.
+2. Boot the initramfs from a TFTP server:
+     setenv ipaddr <AP address>; setenv serverip <TFTP server>
+     setenv bootargs console=ttyMSM0,115200n8 rootwait panic=0
+     tftpboot 0x60000000 openwrt-qualcommax-ipq60xx-arista_c-200-initramfs-uImage.itb
+     bootm 0x60000000#config@cp01-c3
+3. Back up all MTD partitions; 0:ART holds the unit's calibration data
+   and MAC address and exists nowhere else.
+4. Copy the factory image to /tmp and write it to slot 0 ("rootfs",
+   mtd0 in /proc/mtd):
+     ubidetach -p /dev/mtd0; ubiformat /dev/mtd0 -y -f /tmp/factory.ubi
+5. Set the boot command, in one environment write, and reboot:
+     fw_setenv -s - <<'EOF'
+     owrt_args console=ttyMSM0,115200n8 rootwait panic=10
+     owrt_parts setenv mtdids nand0=nand0; setenv mtdparts mtdparts=nand0:0x10000000@0x0(ubi)
+     owrt_load ubi part ubi && ubi read 0x44000000 kernel
+     owrt_boot run owrt_parts owrt_load && bootm 0x44000000#config@cp01-c3
+     arista_unset setenv mtdids; setenv mtdparts
+     arista_args if test ${pri} = 0; then setenv bootargs ${ba0}; else setenv bootargs ${ba1}; fi
+     arista_boot run arista_unset arista_args ubootscript
+     bootcmd setenv bootargs ${owrt_args}; run owrt_boot; run arista_boot
+     pri 1
+     EOF
+
+The stock boot (bootipq) checks image signatures; this boot command
+loads OpenWrt's kernel from UBI instead and falls back to the stock
+boot, slot 1. The stock boot script saves the environment, so the
+fallback first puts the stock bootargs and partition settings back.
+
+Return to stock: fw_setenv bootcmd 'run ubootscript', then reboot.
+
+MAC addresses:
+- lan1: 0:ART 0x18 (label)
+- WLAN: from the calibration data
+
+Calibration data for the IPQ6010's radios is read from 0:ART through an
+NVMEM cell (0x1000); the board data is ipq-wifi-arista_c-200.
+
+The port is in the LAN by default, with DHCP. The LAN LED is green
+while the port has a link, and the power LED green once the system is
+up (red while it boots, in failsafe and during an upgrade), as on the
+Arista W-318. The TPM is held in reset until gpio79 is driven high, as
+the stock firmware does before loading its driver; a gpio-hog does it.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../uboot-envtools/files/qualcommax_ipq60xx   |   1 +
+ package/firmware/ipq-wifi/Makefile            |   2 +
+ target/linux/qualcommax/dts/ipq6010-c-200.dts | 429 ++++++++++++++++++
+ target/linux/qualcommax/image/ipq60xx.mk      |  13 +
+ .../ipq60xx/base-files/etc/board.d/01_leds    |   3 +
+ .../ipq60xx/base-files/etc/board.d/02_network |   3 +
+ .../base-files/lib/upgrade/platform.sh        |   1 +
+ 7 files changed, 452 insertions(+)
+ create mode 100644 target/linux/qualcommax/dts/ipq6010-c-200.dts
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
+index 5163070b08..2e4b5f754c 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
+@@ -16,6 +16,7 @@ ubootenv_add_mtd() {
+ case "$board" in
+ 8devices,mango-dvk|\
+ 8devices,mango-dvk-sfp|\
++arista,c-200|\
+ arista,w-318|\
+ cambiumnetworks,xe3-4)
+ 	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
+diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
+index aeb371420d..9bf4a330ca 100644
+--- a/package/firmware/ipq-wifi/Makefile
++++ b/package/firmware/ipq-wifi/Makefile
+@@ -32,6 +32,7 @@ ALLWIFIBOARDS:= \
+ 	alfa-network_ap120c-ax \
+ 	aliyun_ap8220 \
+ 	arcadyan_aw1000 \
++	arista_c-200 \
+ 	arista_c-230 \
+ 	arista_c-260 \
+ 	arista_c-360 \
+@@ -252,6 +253,7 @@ $(eval $(call generate-ipq-wifi-package,8devices_mango,8devices Mango))
+ $(eval $(call generate-ipq-wifi-package,alfa-network_ap120c-ax,ALFA Network AP120C-AX))
+ $(eval $(call generate-ipq-wifi-package,aliyun_ap8220,Aliyun AP8220))
+ $(eval $(call generate-ipq-wifi-package,arcadyan_aw1000,Arcadyan AW1000))
++$(eval $(call generate-ipq-wifi-package,arista_c-200,Arista C-200))
+ $(eval $(call generate-ipq-wifi-package,arista_c-230,Arista C-230))
+ $(eval $(call generate-ipq-wifi-package,arista_c-260,Arista C-260))
+ $(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
+diff --git a/target/linux/qualcommax/dts/ipq6010-c-200.dts b/target/linux/qualcommax/dts/ipq6010-c-200.dts
+new file mode 100644
+index 0000000000..da8d79a70e
+--- /dev/null
++++ b/target/linux/qualcommax/dts/ipq6010-c-200.dts
+@@ -0,0 +1,429 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/dts-v1/;
++
++#include "ipq6018.dtsi"
++#include "ipq6018-ess.dtsi"
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++	model = "Arista C-200";
++	compatible = "arista,c-200", "qcom,ipq6018";
++
++	aliases {
++		serial0 = &blsp1_uart3;
++		label-mac-device = &port_lan1;
++		led-boot = &led_power_red;
++		led-failsafe = &led_power_red;
++		led-running = &led_power_green;
++		led-upgrade = &led_power_red;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++		bootargs-append = " ubi.mtd=rootfs root=/dev/ubiblock0_1";
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		reset-button {
++			label = "reset";
++			gpios = <&tlmm 19 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_power_green: led-0 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
++		};
++
++		led_power_red: led-1 {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&tlmm 31 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-2 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_2GHZ;
++			gpios = <&tlmm 33 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-3 {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_WLAN_2GHZ;
++			gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-4 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_5GHZ;
++			gpios = <&tlmm 36 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-5 {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_WLAN_5GHZ;
++			gpios = <&tlmm 35 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-6 {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_LAN;
++			gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
++		};
++
++		led-7 {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_LAN;
++			gpios = <&tlmm 24 GPIO_ACTIVE_HIGH>;
++		};
++	};
++};
++
++&blsp1_uart3 {
++	pinctrl-0 = <&serial_3_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&rpm {
++	status = "disabled";
++};
++
++&tlmm {
++	/* TZ has exclusive control over GPIO20 */
++	gpio-reserved-ranges = <20 1>;
++
++	mdio_pins: mdio-pins {
++		mdc {
++			pins = "gpio64";
++			function = "mdc";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++
++		mdio {
++			pins = "gpio65";
++			function = "mdio";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++	};
++
++	/* the TPM's SPI (QUP 2), chip select on GPIO 70 */
++	tpm_spi_pins: tpm-spi-state {
++		spi {
++			pins = "gpio69", "gpio71", "gpio72";
++			function = "blsp1_spi";
++			drive-strength = <8>;
++			bias-pull-down;
++		};
++
++		cs {
++			pins = "gpio70";
++			function = "blsp1_spi";
++			drive-strength = <8>;
++			bias-disable;
++		};
++	};
++
++	/* the TPM is held in reset until GPIO 79 is driven high */
++	tpm-reset-hog {
++		gpio-hog;
++		gpios = <79 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "tpm-reset";
++	};
++
++	spi_0_pins: spi-0-state {
++		pins = "gpio38", "gpio39", "gpio40", "gpio41";
++		function = "blsp0_spi";
++		drive-strength = <8>;
++		bias-pull-down;
++	};
++};
++
++&edma {
++	status = "okay";
++};
++
++&mdio {
++	status = "okay";
++	pinctrl-0 = <&mdio_pins>;
++	pinctrl-names = "default";
++	reset-gpios = <&tlmm 75 GPIO_ACTIVE_LOW>;
++	reset-delay-us = <10000>;
++	reset-post-delay-us = <50000>;
++
++	ar8033: ethernet-phy@6 {
++		compatible = "ethernet-phy-ieee802.3-c22";
++		reg = <6>;
++	};
++};
++
++&switch {
++	status = "okay";
++
++	ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@0 {
++			reg = <0>;
++			ethernet = <&edma>;
++			phy-mode = "internal";
++
++			fixed-link {
++				speed = <1000>;
++				full-duplex;
++			};
++		};
++
++		/* the one port, PoE in */
++		port_lan1: port@1 {
++			reg = <1>;
++			label = "lan1";
++			phy-handle = <&ar8033>;
++			nvmem-cells = <&macaddr_art_18>;
++			nvmem-cell-names = "mac-address";
++			phy-mode = "sgmii";
++			pcs-handle = <&uniphy0 0>;
++		};
++	};
++};
++
++&uniphy0 {
++	status = "okay";
++};
++
++/* the stock firmware's NOR layout; its kernels are in HL_backup0 and 1 */
++&blsp1_spi1 {
++	pinctrl-0 = <&spi_0_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "0:SBL1";
++				reg = <0x0 0xc0000>;
++				read-only;
++			};
++
++			partition@c0000 {
++				label = "0:MIBIB";
++				reg = <0xc0000 0x10000>;
++				read-only;
++			};
++
++			partition@d0000 {
++				label = "0:BOOTCONFIG";
++				reg = <0xd0000 0x20000>;
++				read-only;
++			};
++
++			partition@f0000 {
++				label = "0:BOOTCONFIG1";
++				reg = <0xf0000 0x20000>;
++				read-only;
++			};
++
++			partition@110000 {
++				label = "0:QSEE";
++				reg = <0x110000 0x1a0000>;
++				read-only;
++			};
++
++			partition@2b0000 {
++				label = "0:QSEE_1";
++				reg = <0x2b0000 0x1a0000>;
++				read-only;
++			};
++
++			partition@450000 {
++				label = "0:DEVCFG";
++				reg = <0x450000 0x10000>;
++				read-only;
++			};
++
++			partition@460000 {
++				label = "0:DEVCFG_1";
++				reg = <0x460000 0x10000>;
++				read-only;
++			};
++
++			partition@470000 {
++				label = "0:RPM";
++				reg = <0x470000 0x40000>;
++				read-only;
++			};
++
++			partition@4b0000 {
++				label = "0:RPM_1";
++				reg = <0x4b0000 0x40000>;
++				read-only;
++			};
++
++			partition@4f0000 {
++				label = "0:CDT";
++				reg = <0x4f0000 0x10000>;
++				read-only;
++			};
++
++			partition@500000 {
++				label = "0:CDT_1";
++				reg = <0x500000 0x10000>;
++				read-only;
++			};
++
++			partition@510000 {
++				label = "0:APPSBLENV";
++				reg = <0x510000 0x10000>;
++			};
++
++			partition@520000 {
++				label = "0:APPSBL";
++				reg = <0x520000 0x100000>;
++				read-only;
++			};
++
++			partition@620000 {
++				label = "0:APPSBL_1";
++				reg = <0x620000 0x100000>;
++				read-only;
++			};
++
++			partition@720000 {
++				label = "0:ART";
++				reg = <0x720000 0x40000>;
++				read-only;
++
++				nvmem-layout {
++					compatible = "fixed-layout";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					macaddr_art_18: macaddr@18 {
++						reg = <0x18 0x6>;
++					};
++
++					caldata_ipq6018: calibration@1000 {
++						reg = <0x1000 0x10000>;
++					};
++				};
++			};
++
++			partition@760000 {
++				label = "HL_backup0";
++				reg = <0x760000 0x800000>;
++				read-only;
++			};
++
++			partition@f60000 {
++				label = "HL_backup1";
++				reg = <0xf60000 0x800000>;
++				read-only;
++			};
++
++			partition@1760000 {
++				label = "CONFIG";
++				reg = <0x1760000 0x400000>;
++				read-only;
++			};
++
++			partition@1b60000 {
++				label = "LOGGING";
++				reg = <0x1b60000 0x100000>;
++				read-only;
++			};
++
++			partition@1c60000 {
++				label = "DEVCERT";
++				reg = <0x1c60000 0x20000>;
++				read-only;
++			};
++
++			partition@1c80000 {
++				label = "RESERVED";
++				reg = <0x1c80000 0x380000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&blsp1_spi2 {
++	pinctrl-0 = <&tpm_spi_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	tpm@1 {
++		compatible = "tcg,tpm_tis-spi";
++		reg = <1>;
++		spi-max-frequency = <500000>;
++	};
++};
++
++&wifi {
++	status = "okay";
++	qcom,calibration-variant = "Arista-C200";
++	nvmem-cells = <&caldata_ipq6018>;
++	nvmem-cell-names = "calibration";
++};
++
++&qpic_bam {
++	status = "okay";
++};
++
++&qpic_nand {
++	status = "okay";
++
++	/* absorbs the partitions the bootloader adds at boot */
++	partitions {
++		status = "disabled";
++	};
++
++	nand@0 {
++		reg = <0>;
++		nand-ecc-strength = <4>;
++		nand-ecc-step-size = <512>;
++		nand-bus-width = <8>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			/* the stock firmware's first slot */
++			partition@0 {
++				label = "rootfs";
++				reg = <0x0 0x10000000>;
++				linux,rootfs;
++			};
++
++			/* the stock firmware's second slot, kept as a fallback */
++			partition@10000000 {
++				label = "rootfs_1";
++				reg = <0x10000000 0x10000000>;
++				read-only;
++			};
++		};
++	};
++};
+diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
+index 9d67bd2895..7a3a080700 100644
+--- a/target/linux/qualcommax/image/ipq60xx.mk
++++ b/target/linux/qualcommax/image/ipq60xx.mk
+@@ -65,6 +65,19 @@ define Device/alfa-network_ap120c-ax
+ endef
+ TARGET_DEVICES += alfa-network_ap120c-ax
+ 
++define Device/arista_c-200
++	$(call Device/FitImage)
++	$(call Device/UbiFit)
++	DEVICE_VENDOR := Arista
++	DEVICE_MODEL := C-200
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	DEVICE_DTS_CONFIG := config@cp01-c3
++	SOC := ipq6010
++	DEVICE_PACKAGES := ipq-wifi-arista_c-200 kmod-tpm-tis-spi
++endef
++TARGET_DEVICES += arista_c-200
++
+ define Device/arista_w-318
+ 	$(call Device/FitImage)
+ 	DEVICE_VENDOR := Arista
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
+index be44f16326..9812f40b7c 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/01_leds
+@@ -7,6 +7,9 @@ board_config_update
+ board=$(board_name)
+ 
+ case "$board" in
++arista,c-200)
++	ucidef_set_led_netdev "lan1" "LAN1" "green:lan" "lan1" "link"
++	;;
+ arista,w-318)
+ 	ucidef_set_led_netdev "uplink" "UPLINK" "green:uplink" "uplink" "link"
+ 	;;
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
+index 5ae00cec5b..fe0253ff4f 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
+@@ -20,6 +20,9 @@ ipq60xx_setup_interfaces()
+ 	wallys,dr6018s)
+ 		ucidef_set_interfaces_lan_wan "lan" "wan"
+ 		;;
++	arista,c-200)
++		ucidef_set_interface_lan "lan1" "dhcp"
++		;;
+ 	arista,w-318)
+ 		ucidef_set_interface_lan "uplink lan1 lan2 lan3" "dhcp"
+ 		;;
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
+index de81f2bc25..0ad52f749b 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
+@@ -246,6 +246,7 @@ platform_do_upgrade() {
+ 		fw_setenv bootcount 0
+ 		nand_do_upgrade "$1"
+ 		;;
++	arista,c-200|\
+ 	glinet,gl-ax1800|\
+ 	glinet,gl-axt1800|\
+ 	netgear,rbr350|\
+-- 
+2.43.0
+

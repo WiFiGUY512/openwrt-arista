@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 2 Nov 2026 08:21:47 -0600
+Subject: [PATCH] qualcommax: ipq60xx: c-200: light the radio LEDs
+
+The 2.4 and 5 GHz LEDs had no trigger. Both radios are the IPQ6010's,
+on one device, and their phy numbers change when ath11k is reloaded,
+so board.d cannot name them. A hotplug script ties each LED to its
+radio by device path and band instead, as on the Arista W-318, with the
+radio's phyNradio trigger: the LED is lit while the radio is enabled.
+
+Tested on a unit: each LED lights while its radio is up and goes dark
+when it stops.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../hotplug.d/ieee80211/12-arista-c-200-leds  | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+ create mode 100755 target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-200-leds
+
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-200-leds b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-200-leds
+new file mode 100755
+index 0000000000..17c2b8f0a9
+--- /dev/null
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-200-leds
+@@ -0,0 +1,26 @@
++#!/bin/sh
++# Arista C-200: each radio LED follows its radio, found by device path.
++# Phy numbers follow the order the radios were first found in. Both radios
++# are the IPQ6010's, so the band tells them apart. "phyNradio" lights the
++# LED while the radio is enabled.
++
++[ "$ACTION" = add ] || exit 0
++
++. /lib/functions.sh
++
++[ "$(board_name)" = arista,c-200 ] || exit 0
++
++case "$(readlink "/sys/class/ieee80211/$DEVICENAME/device")" in
++*/c000000.wifi)
++	if iw phy "$DEVICENAME" info | grep -q "Band 1:"; then
++		led=green:wlan-2ghz
++	else
++		led=green:wlan-5ghz
++	fi
++	;;
++*)
++	exit 0
++	;;
++esac
++
++echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
+-- 
+2.43.0
+

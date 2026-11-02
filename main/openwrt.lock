@@ -10,9 +10,9 @@ FEED_routing=https://git.openwrt.org/feed/routing.git^ea8633da9c461a9bdc62a03234
 FEED_telephony=https://git.openwrt.org/feed/telephony.git^9bcb6d71db03377ff49ccb099be763add9a5b059
 FEED_video=https://github.com/openwrt/video.git^4582d70fd21665c4d53b740c76bdf0b390ef9c88
 # The radios' board files (ipq-wifi): qca-wireless at OpenWrt's commit, with
-# the four board-file pull requests' commits on it (#176 C-360, #175 C-260,
-# #178 W-318, #179 W-118) and the C-230's (446cb90d, branch arista-c230, not
-# yet a pull request), combined locally. Each adds its own files, so the
+# the board-file pull requests' commits on it (#176 C-360, merged since;
+# #175 C-260, #178 W-318, #179 W-118, #182 C-230) and the C-200's (87c49861,
+# branch arista-c200), combined locally. Each adds its own files, so the
 # result is QCA_COMMIT whoever builds it.
 QCA_URL=https://git.openwrt.org/project/firmware/qca-wireless.git
 QCA_BASE=5c5244c0b4fcd86738dfbf7a83d978b4ded574ef
@@ -20,6 +20,6 @@ QCA_PR_URL=https://github.com/WiFiGUY512/firmware_qca-wireless.git
 QCA_PICKS="584b567e48177d77bacfea4c5231166a11acf48f 90d2a1bf410895851028407f2b0234d0e9273299
 	587e0bfcf9aecaad0c86083e9e06b153feeb835e 8df024253680192e2cc8f088ab6947274fe1abbe
 	94ee56aa681d61796c2a8e4186f45b9de7c2f1a8 e6b6b90b71a29dfe8a2254a45ac5542c09a53c5a
-	446cb90d9b1d68ecb012cd88af85a47f712839ed"
-QCA_COMMIT=250addf56cfbd066bc81a4c54d95c044b7a8dd99
+	446cb90d9b1d68ecb012cd88af85a47f712839ed 87c49861216258cf4ba6bc1ce53fcc8b98df342b"
+QCA_COMMIT=f7635bfb9cf72336d21615aa610d4ba95267ad96
 QCA_DATE=2026-10-19T00:00:00Z

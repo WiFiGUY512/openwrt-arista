@@ -1,6 +1,10 @@
 CONFIG_TARGET_qualcommax=y
 CONFIG_TARGET_qualcommax_ipq60xx=y
-CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_arista_w-318=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_arista_w-318=y
+CONFIG_TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_arista_c-200=y
+CONFIG_TARGET_DEVICE_PACKAGES_qualcommax_ipq60xx_DEVICE_arista_w-318="airscan luci-app-airscan arista-w318-power kmod-bluetooth kmod-hci-uart bluez-utils bluez-utils-extra bluez-utils-btmon kmod-usb-storage kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1"
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
 CONFIG_TARGET_INITRAMFS_COMPRESSION_GZIP=y
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
@@ -9,20 +13,22 @@ CONFIG_ALL_KMODS=y
 CONFIG_PACKAGE_wpad-mbedtls=y
 CONFIG_PACKAGE_luci=y
 CONFIG_PACKAGE_input-support=y
-CONFIG_PACKAGE_kmod-bluetooth=y
-CONFIG_PACKAGE_kmod-hci-uart=y
-CONFIG_PACKAGE_bluez-utils=y
-CONFIG_PACKAGE_bluez-utils-extra=y
-CONFIG_PACKAGE_bluez-utils-btmon=y
-CONFIG_PACKAGE_arista-w318-power=y
-CONFIG_PACKAGE_airscan=y
-CONFIG_PACKAGE_luci-app-airscan=y
 CONFIG_PACKAGE_dfs-look=y
 CONFIG_PACKAGE_tpm2-tools=y
-CONFIG_PACKAGE_kmod-usb-storage=y
-CONFIG_PACKAGE_kmod-fs-vfat=y
-CONFIG_PACKAGE_kmod-nls-cp437=y
-CONFIG_PACKAGE_kmod-nls-iso8859-1=y
+# the W-318's alone (no scan radio, Bluetooth or USB on the C-200): built,
+# and in the W-318's image through its device packages above
+CONFIG_PACKAGE_kmod-bluetooth=m
+CONFIG_PACKAGE_kmod-hci-uart=m
+CONFIG_PACKAGE_bluez-utils=m
+CONFIG_PACKAGE_bluez-utils-extra=m
+CONFIG_PACKAGE_bluez-utils-btmon=m
+CONFIG_PACKAGE_arista-w318-power=m
+CONFIG_PACKAGE_airscan=m
+CONFIG_PACKAGE_luci-app-airscan=m
+CONFIG_PACKAGE_kmod-usb-storage=m
+CONFIG_PACKAGE_kmod-fs-vfat=m
+CONFIG_PACKAGE_kmod-nls-cp437=m
+CONFIG_PACKAGE_kmod-nls-iso8859-1=m
 # IPsec with the factory identity in the TPM: built for the feed, not in the images
 CONFIG_PACKAGE_strongswan=m
 CONFIG_PACKAGE_strongswan-charon=m

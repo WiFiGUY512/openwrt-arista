@@ -1,23 +1,24 @@
 # OpenWrt main
 
-The C-360, C-260, C-230, W-318 and W-118 on OpenWrt main, as the lab units run them. Main
+The C-360, C-260, C-230, W-318, C-200 and W-118 on OpenWrt main, as the lab units run them. Main
 has the new Ethernet driver (qca_edma with multi-queue RX and TX: 9.3 Gb/s
 up and 4.5 Gb/s down at 10G on the C-360, against 1.4 and 2.05 on 25.12),
 and the devices' upstream pull requests are written for it.
 
 ```
 main/build-main.sh ipq807x     # the C-360, the C-260 and the C-230
-main/build-main.sh ipq60xx     # the W-318
+main/build-main.sh ipq60xx     # the W-318 and the C-200
 main/build-main.sh ipq40xx     # the W-118 (target ipq40xx)
 ```
 
-Out, in `out/main/<version>/`: `c360/`, `c260/`, `c230/`, `w318/`, `w118/`
+Out, in `out/main/<version>/`: `c360/`, `c260/`, `c230/`, `w318/`, `c200/`, `w118/`
 with each model's images (including the C-360's USB stick image),
 `feed-<subtarget>/` with the build's packages and every kernel module, and
 `SHA256SUMS`. The models' `INSTALL.md` cover installing; main's images are
-named `arista_c-360`, `arista_c-260`, `arista_c-230`, `arista_w-318` and
-`arista_w-118`, and their board names are `arista,c-360`, `arista,c-260`,
-`arista,c-230`, `arista,w-318` and `arista,w-118`.
+named `arista_c-360`, `arista_c-260`, `arista_c-230`, `arista_w-318`,
+`arista_c-200` and `arista_w-118`, and their board names are `arista,c-360`,
+`arista,c-260`, `arista,c-230`, `arista,w-318`, `arista,c-200` and
+`arista,w-118`.
 
 **An image says which port build it is.** `<version>` (git describe of
 this repository) goes into OpenWrt's version code, so on any unit
@@ -26,10 +27,10 @@ this repository) goes into OpenWrt's version code, so on any unit
 v2026.10.17.1-57-g1234567)'`. `DISTRIB_REVISION` stays the OpenWrt revision,
 and the image file names are unchanged.
 
-**Every network port is in the LAN by default**, as upstream review settled
-for all four models: on a fresh install the C-360's and C-260's Ethernet 1
-and 2, the W-318's uplink and Network 1-3, the W-118's uplink and LAN 1-3
-are all in `br-lan`, which runs no spanning tree. Two of them cabled to the
+**Every network port is in the LAN by default**, as upstream review settled:
+on a fresh install the C-360's and C-260's Ethernet 1 and 2, the W-318's
+uplink and Network 1-3, the W-118's uplink and LAN 1-3 and the C-200's one
+port are all in `br-lan`, which runs no spanning tree. Two of them cabled to the
 same switch make a loop: cable one, or turn on STP, or take the others out
 of the bridge (the port tools do). Upgrades keep a unit's own settings.
 
@@ -244,6 +245,11 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     chains summed to -42 to -44 dBm: -40 to -42 reported, -45 to -48
     with -95; the S23 on the stock driver read 3-4 dB under its chains.
     mac80211 PKG_RELEASE 20.
+  - 0073-0074: the C-200 (device, radio LEDs), as its pull request
+    ([#26410](https://github.com/openwrt/openwrt/pull/26410)) stands; made
+    on top of 0001-0072, so it sits next to the W-318's entries in the
+    shared ipq60xx lists. Its board file is
+    openwrt/firmware_qca-wireless#191.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
@@ -261,9 +267,8 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     (`../c360/README.md`, "IPsec with the TPM identity"). Built for the feed
     (`=m`), not in the images. Not yet sent upstream.
 - The board files (`ipq-wifi`): qca-wireless at OpenWrt's commit with the
-  four board-file pull requests on it (#175 C-260, #176 C-360, #178 W-318,
-  #179 W-118),
-  combined by the build with a fixed committer and date, so it is the same
+  board-file pull requests on it (#175 C-260, #176 C-360 (merged since),
+  #178 W-318, #179 W-118, #182 C-230, #191 C-200), combined by the build with a fixed committer and date, so it is the same
   commit (`QCA_COMMIT`) for everyone.
 - `<model>/files/`: the models' packages and scripts: airscan and its LuCI
   app, the power policies, the C-360's radio plan, board data by country,

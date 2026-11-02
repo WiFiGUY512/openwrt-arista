@@ -4,9 +4,9 @@
 #	main/build-main.sh <ipq807x|ipq60xx|ipq40xx> [OpenWrt directory]
 #
 # ipq807x builds the C-360, the C-260 and the C-230 (one multi-profile build:
-# one kernel, one module feed), ipq60xx the W-318 (both target qualcommax), and
-# ipq40xx the W-118 (target ipq40xx, subtarget generic). What it builds from,
-# all in this repository:
+# one kernel, one module feed), ipq60xx the W-318 and the C-200 (the same way;
+# both target qualcommax), and ipq40xx the W-118 (target ipq40xx, subtarget
+# generic). What it builds from, all in this repository:
 #   main/openwrt.lock        OpenWrt main, the feeds, and the board files'
 #                            qca-wireless commits
 #   main/patches/openwrt/    the devices as their upstream pull requests
@@ -32,7 +32,7 @@ MAIN=$HERE/main
 SUB=$1
 case $SUB in
 ipq807x) TARGET=qualcommax PROFILE=ipq807x MODELS="c360 c260 c230" DEVICES="arista_c-360 arista_c-260 arista_c-230" ;;
-ipq60xx) TARGET=qualcommax PROFILE=ipq60xx MODELS="w318" DEVICES="arista_w-318" ;;
+ipq60xx) TARGET=qualcommax PROFILE=ipq60xx MODELS="w318 c200" DEVICES="arista_w-318 arista_c-200" ;;
 ipq40xx) TARGET=ipq40xx PROFILE=generic MODELS="w118" DEVICES="arista_w-118" ;;
 *) echo "no subtarget $SUB (ipq807x, ipq60xx or ipq40xx)" >&2; exit 2 ;;
 esac
