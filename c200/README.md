@@ -16,8 +16,8 @@ Seen on one unit (2026-11-01/02) unless marked otherwise.
 - **Installing.** OpenWrt in NAND slot 0 as UBI, booted by its own U-Boot
   `bootcmd`, with Arista's system in slot 1 (NOR `HL_backup1`, NAND
   `rootfs_1`) as the fallback. Booting by itself from NAND, settings kept
-  across reboots. (`sysupgrade`: not yet run on a unit. The fallback
-  booting Arista: not yet run.)
+  across reboots, `sysupgrade` keeping settings. The fallback booting
+  Arista from slot 1: run once by hand (`run arista_args ubootscript`).
 - **Both radios** (ath11k), with the unit's calibration from ART and Arista's
   board data (`ipq-wifi-arista_c-200`: its US file with the regulatory table
   of its own CE file, which the public firmware can read; see
@@ -26,10 +26,9 @@ Seen on one unit (2026-11-01/02) unless marked otherwise.
   client at VHT MCS 9, 80 MHz, 2 streams. US rules from the board data:
   2402-2472, 5170-5330, 5490-5730 (DFS) and 5735-5835 MHz.
 - **Ethernet.** lan1 at 1 Gb/s, MAC from ART (the label MAC), in `br-lan`
-  with DHCP. Receive 941 Mbit/s. **Transmit about 650 Mbit/s with about
-  0.5% of frames lost at any rate** (B132, open): another device on the
-  same switch path sends 936 Mbit/s with no loss, and no counter on the
-  unit sees the loss.
+  with DHCP: TCP 943 Mbit/s out with no retransmits, 941 in, from -108
+  (0075). Before 0075 the port's TX clock ran from the UNIPHY RX clock
+  and about 0.5% of sent frames broke (B132, openwrt/openwrt#26414).
 - **LEDs.** All eight (power, 2.4, 5, LAN; green and red each), checked on
   the panel. Power green while running, red while booting, in failsafe and
   during an upgrade; LAN green with a link; 2.4 and 5 green while their

@@ -14,7 +14,7 @@ first boot.
 | [C-360](c360/README.md) | Qualcomm IPQ8076A + QCN9074 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the scan radio, both 10 GbE ports |
 | [C-260](c260/README.md) | Qualcomm IPQ8078A + QCA9882 | 25.12, main | Working: all radios, the scan radio, Bluetooth, both Ethernet ports (5 Gb/s, PoE in on either), LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [C-230](c230/README.md) | Qualcomm IPQ8071A + QCA9882 | main | Working on one unit: all radios (access points on the IPQ8071A's), the scan radio, Bluetooth (with Arista's PS keys file), both Ethernet ports (5 Gb/s with PoE in, 1 Gb/s), LEDs, button, USB, TPM, PoE power policy, install and sysupgrade |
-| [C-200](c200/README.md) | Qualcomm IPQ6010 | main | Working on one unit: both radios, Ethernet (transmit loses about 0.5% of frames, being looked into), LEDs, button, TPM, install; sysupgrade not yet run |
+| [C-200](c200/README.md) | Qualcomm IPQ6010 | main | Working on one unit: both radios, Ethernet (943 Mbit/s out with 0075), LEDs, button, TPM, install and sysupgrade |
 | [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [W-118](w118/README.md) | Qualcomm IPQ4019 + QCA9882 | main | Working: all radios, Bluetooth LE, Ethernet, LEDs, button, PoE out, install and sysupgrade; the scan radio's airscan not yet run |
 
