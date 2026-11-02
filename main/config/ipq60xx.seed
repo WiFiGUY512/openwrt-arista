@@ -15,6 +15,10 @@ CONFIG_PACKAGE_luci=y
 CONFIG_PACKAGE_input-support=y
 CONFIG_PACKAGE_dfs-look=y
 CONFIG_PACKAGE_tpm2-tools=y
+# in every model's images (on the others they come with airscan and the power
+# policies, which the C-200 does not have)
+CONFIG_PACKAGE_iwinfo=y
+CONFIG_PACKAGE_lldpd=y
 # the W-318's alone (no scan radio, Bluetooth or USB on the C-200): built,
 # and in the W-318's image through its device packages above
 CONFIG_PACKAGE_kmod-bluetooth=m
