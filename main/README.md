@@ -250,6 +250,13 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     on top of 0001-0072, so it sits next to the W-318's entries in the
     shared ipq60xx lists. Its board file is
     openwrt/firmware_qca-wireless#191.
+  - 0075 (B132): the UNIPHY PCS points a port's RX and TX source clocks
+    at its UNIPHY's RX and TX clocks at link up. The boot loader leaves the
+    IPQ6018's port 1 TX source on the UNIPHY RX clock at 125 MHz, and a
+    125 MHz request kept that parent, so the C-200's MAC sent on the clock
+    recovered from its AR8033: about 0.5% of sent frames lost at any rate
+    (TCP out 650 Mbit/s). With the TX parent: 943 Mbit/s, no retransmits,
+    0 of 100000 full-size pings lost. For upstream.
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).

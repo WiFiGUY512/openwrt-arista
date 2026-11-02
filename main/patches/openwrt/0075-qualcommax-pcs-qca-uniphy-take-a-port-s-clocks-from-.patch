@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 2 Nov 2026 09:57:07 -0600
+Subject: [PATCH] qualcommax: pcs-qca-uniphy: take a port's clocks from its
+ UNIPHY's
+
+On the Arista C-200 (IPQ6010, an AR8033 on UNIPHY0 channel 0 over
+SGMII) about 0.5% of the frames lan1 sent were lost, at any rate: TCP
+went out at 650 Mbit/s with about 270 retransmits a second while it came
+in at 941. The vendor firmware on the same unit, cable and switch port
+lost none.
+
+nss_port1_tx_clk_src runs from uniphy0_gcc_rx_clk. The boot loader
+leaves it there at 125 MHz, and the PCS asks the port clocks for 125
+MHz, a rate they already have, so the clock framework keeps that parent,
+although the GCC rate table puts 125 MHz on UNIPHY0_TX. The MAC then
+sends on the clock recovered from the PHY's SGMII stream, which runs off
+the PHY's own crystal, while the SerDes sends on the UNIPHY's. With the
+vendor's SSDK the UNIPHY clocks read 0 until it sets the mode, so its
+later 125 MHz request is a real change and lands on the table's parent.
+
+Point a port's RX and TX source muxes at the UNIPHY's RX and TX clocks
+when the link comes up. Where they are right already nothing changes, as
+on the IPQ8074's ports 5 and 6 on UNIPHY1 and UNIPHY2.
+
+Tested on a C-200: lan1 sends TCP at 943 Mbit/s with no retransmits,
+and a ping flood with full-size frames loses none of 100000, against
+0.465% before.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../files/drivers/net/pcs/pcs-qca-uniphy.c    | 30 +++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c b/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c
+index 5615ef68eff..e5220ad7f7c 100644
+--- a/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c
++++ b/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c
+@@ -874,6 +874,31 @@ static int uniphy_link_up_usxgmii(struct phylink_pcs *pcs, int speed)
+ 	return regmap_set_bits(uniphy->regmap, XPCS_DIG_CTRL, XPCS_USXG_ADPT_RESET);
+ }
+ 
++/* A port's RX and TX clocks come from this UNIPHY's RX and TX clocks, as
++ * the GCC rate tables have them. The boot loader can leave a port's TX
++ * source mux on the UNIPHY RX clock at the same 125 MHz, and setting a rate
++ * the clock already has does not change its parent: the MAC then sends on
++ * the clock recovered from the PHY, and frames break where the two drift
++ * apart (an AR8033 on SGMII lost about 0.5% of what it sent). Point the
++ * source mux, the first clock up from the port clock that can take this
++ * UNIPHY clock as a parent, at it.
++ */
++static void uniphy_port_clk_set_source(struct clk *port_clk, struct clk *src)
++{
++	struct clk *clk = port_clk;
++	int i;
++
++	for (i = 0; i < 3; i++) {
++		clk = clk_get_parent(clk);
++		if (!clk)
++			return;
++		if (clk_has_parent(clk, src)) {
++			clk_set_parent(clk, src);
++			return;
++		}
++	}
++}
++
+ static void qca_uniphy_pcs_link_up(struct phylink_pcs *pcs,
+ 				   unsigned int neg_mode,
+ 				   phy_interface_t interface,
+@@ -883,6 +908,11 @@ static void qca_uniphy_pcs_link_up(struct phylink_pcs *pcs,
+ 	struct qca_uniphy *uniphy = upcs->uniphy;
+ 	int ret = 0;
+ 
++	uniphy_port_clk_set_source(uniphy->clks[port_rx_clk_idx(upcs)].clk,
++				   uniphy->rx_clk.hw.clk);
++	uniphy_port_clk_set_source(uniphy->clks[port_tx_clk_idx(upcs)].clk,
++				   uniphy->tx_clk.hw.clk);
++
+ 	switch (interface) {
+ 	case PHY_INTERFACE_MODE_SGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+-- 
+2.43.0
+
