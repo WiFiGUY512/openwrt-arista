@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 1 Nov 2026 19:50:00 -0600
+Subject: [PATCH] netifd: set up again a device that the kernel deleted
+
+netifd took the kernel's removal of a device into account only for the
+devices it did not create. When the kernel deleted one it had created,
+as it deletes a vxlan with its lower device, netifd kept the device as
+present and up, and neither a reload nor an ifup created it again. A
+vxlan whose tunnel link is a bridge's vlan device was lost this way
+when netifd set the vlan device up again on a change of the bridge's
+ports (B35/B42: an Aeolus tunnel, until netifd restarted).
+
+002 cycles such a device's presence, as a restarting configuration
+change does, so its users claim it again and it is created anew. 003
+lets a bridge retry a member that failed to come up when it was added,
+for a vxlan created again before its lower device is back. Both are
+upstream netifd commits on openwrt/netifd, sent as a pull request.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/netifd/Makefile        |  2 +-
+ ...device-again-that-the-kernel-deleted.patch | 62 +++++++++++++++++++
+ ...at-fails-to-come-up-when-it-is-added.patch | 45 ++++++++++++++
+ 3 files changed, 108 insertions(+), 1 deletion(-)
+ create mode 100755 package/network/config/netifd/patches/002-device-set-up-a-device-again-that-the-kernel-deleted.patch
+ create mode 100755 package/network/config/netifd/patches/003-bridge-retry-a-member-that-fails-to-come-up-when-it-is-added.patch
+
+diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
+index 6eaba948bd..bf8c69d0bf 100644
+--- a/package/network/config/netifd/Makefile
++++ b/package/network/config/netifd/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifd
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
+diff --git a/package/network/config/netifd/patches/002-device-set-up-a-device-again-that-the-kernel-deleted.patch b/package/network/config/netifd/patches/002-device-set-up-a-device-again-that-the-kernel-deleted.patch
+new file mode 100755
+index 0000000000..2e960ee783
+--- /dev/null
++++ b/package/network/config/netifd/patches/002-device-set-up-a-device-again-that-the-kernel-deleted.patch
+@@ -0,0 +1,62 @@
++From 721e8cbc7ba5c9598ee44e03556d2ccb41663269 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sun, 1 Nov 2026 19:33:52 -0600
++Subject: [PATCH 2/3] device: set up a device again that the kernel deleted
++
++netifd takes the kernel's removal of a device into account only for
++devices that it did not create. The kernel also deletes devices that
++netifd created: a vxlan, vlan or macvlan device goes with its lower
++device. That happens, for example, when netifd sets up a bridge's vlan
++device again on a change of the bridge's ports, and a vxlan uses that
++vlan device as its tunnel link. netifd kept the deleted device as
++present and up, so neither a reload nor an ifup created it again, and a
++bridge with the device as a member kept its claim. The tunnel stayed
++gone until netifd restarted.
++
++When a device that netifd created, and that is in use, is removed and no
++device of its name exists, cycle its presence, as a restarting
++configuration change does. Its users release it and claim it again,
++which creates it anew.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ device.c | 22 ++++++++++++++++++++--
++ 1 file changed, 20 insertions(+), 2 deletions(-)
++
++diff --git a/device.c b/device.c
++index 48274b7..1e0da9c 100644
++--- a/device.c
+++++ b/device.c
++@@ -1812,8 +1812,26 @@ void device_hotplug_event(const char *name, bool add)
++ 	netifd_ucode_hotplug_event(name, add);
++ 
++ 	dev = device_find(name);
++-	if (!dev || dev->type != &simple_device_type)
+++	if (!dev)
+++		return;
+++
+++	if (dev->type == &simple_device_type) {
+++		device_set_present(dev, add);
++ 		return;
+++	}
++ 
++-	device_set_present(dev, add);
+++	/*
+++	 * The kernel also deletes devices that netifd created: a vxlan, vlan
+++	 * or macvlan device goes with its lower device, e.g. when netifd sets
+++	 * up a bridge's vlan device again. netifd would keep such a device as
+++	 * present and in use, and nothing would create it again. Cycle its
+++	 * presence, so that its users release it and claim it again, which
+++	 * creates it anew.
+++	 */
+++	if (!add && dev->present && dev->active && !system_if_resolve(dev)) {
+++		D(DEVICE, "%s '%s' was deleted, setting it up again",
+++		  dev->type->name, dev->ifname);
+++		device_set_present(dev, false);
+++		device_set_present(dev, true);
+++	}
++ }
++-- 
++2.52.0.windows.1
++
+diff --git a/package/network/config/netifd/patches/003-bridge-retry-a-member-that-fails-to-come-up-when-it-is-added.patch b/package/network/config/netifd/patches/003-bridge-retry-a-member-that-fails-to-come-up-when-it-is-added.patch
+new file mode 100755
+index 0000000000..ab2f009cac
+--- /dev/null
++++ b/package/network/config/netifd/patches/003-bridge-retry-a-member-that-fails-to-come-up-when-it-is-added.patch
+@@ -0,0 +1,45 @@
++From f8777dacece648a3ae944b423481504ec3454f55 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sun, 1 Nov 2026 19:40:48 -0600
++Subject: [PATCH 3/3] bridge: retry a member that fails to come up when it is
++ added
++
++The bridge retries the members that failed to come up only after it
++was set up or its configuration was reloaded. A member device that is
++added later and fails, for example a vxlan created again while its
++lower device is not back yet, stayed out of the bridge, although its
++device came up a moment later.
++
++Retry the members, as after the bridge's setup, when a member that is
++added fails to come up.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ bridge.c | 9 ++++++++-
++ 1 file changed, 8 insertions(+), 1 deletion(-)
++
++diff --git a/bridge.c b/bridge.c
++index 33c834a..bda16d1 100644
++--- a/bridge.c
+++++ b/bridge.c
++@@ -1384,8 +1384,15 @@ bridge_member_cb(struct device_user *dep, enum device_event ev)
++ 		if (!bst->dev.active)
++ 			break;
++ 
++-		if (bridge_enable_member(bm))
+++		if (bridge_enable_member(bm)) {
+++			/*
+++			 * A member that netifd creates can fail to come up
+++			 * while a device it depends on is set up again, e.g.
+++			 * a vxlan whose lower device is being created anew
+++			 */
+++			bridge_check_retry(bst);
++ 			break;
+++		}
++ 
++ 		/*
++ 		 * Adding a bridge member can overwrite the bridge mtu
++-- 
++2.52.0.windows.1
++
+-- 
+2.43.0
+
