@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 3 Nov 2026 00:47:35 -0600
+Subject: [PATCH] qualcommax: ipq60xx: w-318: stop 5 GHz at channel 165
+
+Keep the IPQ6010's 5 GHz radio inside the W-318's certification: its
+board data gives the US 5735-5895 MHz, so channels 169-177 came up, but
+the W-318's FCC grant (TOR-W318) ends at 5825 MHz, channel 165.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/qualcommax/dts/ipq6010-w-318.dts | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/target/linux/qualcommax/dts/ipq6010-w-318.dts b/target/linux/qualcommax/dts/ipq6010-w-318.dts
+index ebed39869fd..9c92dc95062 100644
+--- a/target/linux/qualcommax/dts/ipq6010-w-318.dts
++++ b/target/linux/qualcommax/dts/ipq6010-w-318.dts
+@@ -542,4 +542,10 @@
+ 	qcom,ath11k-calibration-variant = "Arista-W318";
+ 	nvmem-cells = <&caldata_ipq6018>;
+ 	nvmem-cell-names = "calibration";
++
++	/*
++	 * The board data allows 5 GHz up to 5895 MHz in the US, but the
++	 * W-318 is certified only up to channel 165 (5825 MHz).
++	 */
++	ieee80211-freq-limit = <2402000 2482000>, <5170000 5835000>;
+ };
+-- 
+2.52.0.windows.1
+
