@@ -1,0 +1,246 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 3 Nov 2026 09:00:00 -0600
+Subject: [PATCH] netifd: keep an address that another interface also holds
+
+Two interfaces on one device can hold the same address, for example a
+plain interface and one with ip4table that lease on the same bridge
+VLAN. When one went down, netifd deleted the address for it, and the
+kernel dropped every route through it, including the other interface's
+routes in its own table, which netifd still listed and never put back.
+Coming up in the other order, one interface took away the other's
+prefix route in the main table.
+
+Add patch 004, which leaves the address and the kernel's prefix route
+in place while another interface relies on them. Tested on an Arista
+W-118 with two interfaces holding 10.39.0.1/24 on one bridge, one with
+ip4table and a route, taken up and down in both orders: stock netifd
+lost the address, the table's routes or the main prefix route in 7 of
+9 steps; with the patch all 9 came out right.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/netifd/Makefile        |   2 +-
+ ...ss-that-another-interface-also-holds.patch | 194 ++++++++++++++++++
+ 2 files changed, 195 insertions(+), 1 deletion(-)
+ create mode 100644 package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch
+
+diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
+index bf8c69d..42b6812 100644
+--- a/package/network/config/netifd/Makefile
++++ b/package/network/config/netifd/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifd
+-PKG_RELEASE:=3
++PKG_RELEASE:=4
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
+diff --git a/package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch b/package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch
+new file mode 100644
+index 0000000..8268eee
+--- /dev/null
++++ b/package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch
+@@ -0,0 +1,194 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Tue, 3 Nov 2026 00:58:34 -0600
++Subject: [PATCH] interface-ip: keep an address that another interface also
++ holds
++
++Two interfaces on one device can hold the same address, for example a
++plain interface and one with ip4table that lease on the same bridge
++VLAN. The kernel keeps one copy of the address. When one of the
++interfaces went down, netifd deleted the address for it, and with it
++the kernel dropped every route through it, including the other
++interface's routes in its own table. netifd still listed those routes
++and the address as the other interface's, and nothing put them back.
++
++The same sharing broke the main table the other way round: an
++interface with ip4table or a metric removes the kernel's prefix route
++for its address when it moves the subnet route to its table, also when
++another interface relies on that prefix route; and an interface that
++joins an address that only such interfaces hold gets no prefix route,
++because the kernel adds one only with a new address.
++
++Leave an address in place while another interface on the device holds
++it, leave the kernel's prefix route to an interface that relies on it
++and take it away when the last such interface lets go, and give an
++interface that joins such an address a subnet route of its own.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ interface-ip.c | 107 ++++++++++++++++++++++++++++++++++++++++++++++---
++ 1 file changed, 101 insertions(+), 6 deletions(-)
++
++diff --git a/interface-ip.c b/interface-ip.c
++index 12504e8..89d8714 100644
++--- a/interface-ip.c
+++++ b/interface-ip.c
++@@ -607,6 +607,66 @@ interface_addr_find_current(struct vlist_tree *tree, struct device_addr *a_old)
++ 	return NULL;
++ }
++ 
+++/*
+++ * Two interfaces on one device can hold the same address, say two
+++ * interfaces that lease on one bridge. The kernel keeps one copy of it,
+++ * so removing it for one interface also takes it, and every route that
+++ * uses it, from the other. With main_only, only an interface that relies
+++ * on the kernel's prefix route in the main table counts.
+++ */
+++static struct interface *
+++interface_addr_holder(struct interface *iface, struct device *dev,
+++		      struct device_addr *addr, bool main_only)
+++{
+++	struct interface *other;
+++	struct device_addr *a;
+++
+++	vlist_for_each_element(&interfaces, other, node) {
+++		struct interface_ip_settings *ip;
+++		int i;
+++
+++		if (other == iface || other->l3_dev.dev != dev)
+++			continue;
+++
+++		for (i = 0; i < 2; i++) {
+++			ip = i ? &other->config_ip : &other->proto_ip;
+++			if (!ip->enabled)
+++				continue;
+++
+++			vlist_for_each_element(&ip->addr, a, node) {
+++				if (!a->enabled || (a->flags & DEVADDR_EXTERNAL))
+++					continue;
+++
+++				if ((a->flags & DEVADDR_FAMILY) != (addr->flags & DEVADDR_FAMILY) ||
+++				    a->mask != addr->mask ||
+++				    memcmp(&a->addr, &addr->addr, sizeof(a->addr)))
+++					continue;
+++
+++				if (main_only && (other->metric || a->policy_table))
+++					continue;
+++
+++				return other;
+++			}
+++		}
+++	}
+++
+++	return NULL;
+++}
+++
+++/*
+++ * An interface that relies on the kernel's prefix route joins an address
+++ * that only interfaces with their own table or metric hold: the address
+++ * is there already, so the kernel adds no prefix route, and the others
+++ * removed theirs
+++ */
+++static bool
+++interface_addr_needs_subnet_route(struct interface *iface, struct device *dev,
+++				  struct device_addr *addr)
+++{
+++	return interface_addr_holder(iface, dev, addr, false) &&
+++	       !interface_addr_holder(iface, dev, addr, true);
+++}
+++
++ static int
++ neighbor_cmp(const void *k1, const void *k2, void *ptr)
++ {
++@@ -677,7 +737,8 @@ interface_handle_subnet_route(struct interface *iface, struct device_addr *addr,
++ 		return;
++ 
++ 	r->flags |= DEVROUTE_PROTO;
++-	system_del_route(dev, r);
+++	if (!interface_addr_holder(iface, dev, addr, true))
+++		system_del_route(dev, r);
++ 
++ 	r->flags &= ~DEVROUTE_PROTO;
++ 	interface_set_route_info(iface, r);
++@@ -685,6 +746,31 @@ interface_handle_subnet_route(struct interface *iface, struct device_addr *addr,
++ 	system_add_route(dev, r);
++ }
++ 
+++/*
+++ * The last interface that relied on the kernel's prefix route lets go of an
+++ * address that others keep in their own tables: take the route away as they
+++ * did when they took the address
+++ */
+++static void
+++interface_drop_kernel_subnet_route(struct interface *iface, struct device *dev,
+++				   struct device_addr *addr)
+++{
+++	struct device_route r;
+++
+++	if (addr->subnet.iface || addr_is_offlink(dev, addr) ||
+++	    interface_addr_holder(iface, dev, addr, true))
+++		return;
+++
+++	memset(&r, 0, sizeof(r));
+++	r.flags = addr->flags | DEVROUTE_PROTO;
+++	r.mask = addr->mask;
+++	memcpy(&r.addr, &addr->addr, sizeof(r.addr));
+++	clear_if_addr(&r.addr, r.mask);
+++
+++	if (system_resolve_rt_proto("kernel", &r.proto))
+++		system_del_route(dev, &r);
+++}
+++
++ static void
++ interface_add_addr_rules(struct device_addr *addr, bool enabled)
++ {
++@@ -784,8 +870,12 @@ interface_update_proto_addr(struct vlist_tree *tree,
++ 				if (!a_kept || !a_kept->subnet.iface)
++ 					interface_handle_subnet_route(iface, a_old, false);
++ 
++-				if (!a_kept)
++-					system_del_address(dev, a_old);
+++				if (!a_kept) {
+++					if (!interface_addr_holder(iface, dev, a_old, false))
+++						system_del_address(dev, a_old);
+++					else
+++						interface_drop_kernel_subnet_route(iface, dev, a_old);
+++				}
++ 
++ 				if (!(a_kept && addr_is_offlink(dev, a_kept)) &&
++ 				    addr_is_offlink(dev, a_old) && (a_old->mask < (v6 ? 128 : 32))) {
++@@ -830,7 +920,8 @@ interface_update_proto_addr(struct vlist_tree *tree,
++ 				if (system_add_address(dev, a_new))
++ 					a_new->failed = true;
++ 
++-				if (iface->metric || a_new->policy_table)
+++				if (iface->metric || a_new->policy_table ||
+++				    interface_addr_needs_subnet_route(iface, dev, a_new))
++ 					interface_handle_subnet_route(iface, a_new, true);
++ 			}
++ 
++@@ -1847,7 +1938,8 @@ void interface_ip_set_enabled(struct interface_ip_settings *ip, bool enabled)
++ 			system_add_address(dev, addr);
++ 
++ 			addr->policy_table = (v6) ? iface->ip6table : iface->ip4table;
++-			if (iface->metric || addr->policy_table)
+++			if (iface->metric || addr->policy_table ||
+++			    interface_addr_needs_subnet_route(iface, dev, addr))
++ 				interface_handle_subnet_route(iface, addr, true);
++ 
++ 			if (addr_is_offlink(dev, addr) && (addr->mask < (v6 ? 128 : 32))) {
++@@ -1872,7 +1964,10 @@ void interface_ip_set_enabled(struct interface_ip_settings *ip, bool enabled)
++ 				interface_add_addr_rules(addr, true);
++ 		} else {
++ 			interface_handle_subnet_route(iface, addr, false);
++-			system_del_address(dev, addr);
+++			if (!interface_addr_holder(iface, dev, addr, false))
+++				system_del_address(dev, addr);
+++			else
+++				interface_drop_kernel_subnet_route(iface, dev, addr);
++ 
++ 			if (addr_is_offlink(dev, addr) && (addr->mask < (v6 ? 128 : 32))) {
++ 				struct device_route route;
++-- 
++2.52.0.windows.1
++
+-- 
+2.52.0.windows.1
+
