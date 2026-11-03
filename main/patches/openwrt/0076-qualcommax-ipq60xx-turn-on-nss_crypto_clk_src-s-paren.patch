@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 3 Nov 2026 01:30:00 -0600
+Subject: [PATCH] qualcommax: ipq60xx: turn on nss_crypto_clk_src's parents
+ while it switches
+
+Every IPQ60xx board with the PPE logs a WARNING at boot,
+"nss_crypto_clk_src: rcg didn't update its configuration", from
+clk-rcg2's update_config, when the PPE node's assigned-clock-rates set
+GCC_NSS_CRYPTO_CLK. Nothing has the clock enabled yet, and the rate it
+gets (the table's 300 MHz, from nss_crypto_pll) needs a source nothing
+has turned on, so the RCG cannot finish the switch. The clock reaches
+its rate later anyway, once the PPE enables it.
+
+Give nss_crypto_clk_src CLK_OPS_PARENT_ENABLE, so the clock framework
+turns on the old and the new parent while it switches.
+
+Seen on the Arista C-200 and W-318 (IPQ6010).
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ ...s_crypto_clk_src-s-parents-to-switch.patch | 44 +++++++++++++++++++
+ 1 file changed, 44 insertions(+)
+ create mode 100644 target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch
+
+diff --git a/target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch b/target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch
+new file mode 100644
+index 0000000..4f17bb2
+--- /dev/null
++++ b/target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch
+@@ -0,0 +1,44 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Tue, 3 Nov 2026 01:30:00 -0600
++Subject: [PATCH] clk: qcom: gcc-ipq6018: turn on nss_crypto_clk_src's parents
++ while it switches
++
++Every IPQ6018 board with the PPE warns once at boot:
++
++  nss_crypto_clk_src: rcg didn't update its configuration.
++  WARNING: CPU: 3 PID: 1 at drivers/clk/qcom/clk-rcg2.c:136 update_config+0xac/0xc0
++  Call trace:
++   update_config+0xac/0xc0 (P)
++   clk_rcg2_configure+0x84/0x98
++   clk_rcg2_set_rate_and_parent+0x2c/0x44
++   clk_change_rate+0x7c/0x298
++   clk_core_set_rate_nolock+0x154/0x260
++   clk_set_rate+0x38/0x14c
++   of_clk_set_defaults+0x234/0x4c0
++   platform_probe+0x38/0xa4
++
++The PPE node's assigned-clock-rates set GCC_NSS_CRYPTO_CLK while
++nothing has the clock enabled. The rate lands on the table's entry from
++nss_crypto_pll, which nothing has turned on either, and an RCG cannot
++finish switching to a source that is not running. The clock reaches
++its rate anyway once a consumer enables it, so only the warning shows.
++
++Set CLK_OPS_PARENT_ENABLE, so the clock framework turns on the old and
++the new parent around the switch, as other Qualcomm clock controllers
++do for RCGs that change source while off.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/clk/qcom/gcc-ipq6018.c | 1 +
++ 1 file changed, 1 insertion(+)
++
++--- a/drivers/clk/qcom/gcc-ipq6018.c
+++++ b/drivers/clk/qcom/gcc-ipq6018.c
++@@ -971,6 +971,7 @@ static struct clk_rcg2 nss_crypto_clk_src = {
++ 		.name = "nss_crypto_clk_src",
++ 		.parent_data = gcc_xo_nss_crypto_pll_gpll0,
++ 		.num_parents = 3,
+++		.flags = CLK_OPS_PARENT_ENABLE,
++ 		.ops = &clk_rcg2_ops,
++ 	},
++ };
+-- 
+2.52.0.windows.1
+
