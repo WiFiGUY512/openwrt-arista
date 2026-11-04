@@ -1,12 +1,14 @@
 #!/bin/bash
 # build-main.sh: build the Arista images on OpenWrt main from source.
 #
-#	main/build-main.sh <ipq807x|ipq60xx|ipq40xx> [OpenWrt directory]
+#	main/build-main.sh <ipq807x|ipq60xx|ipq40xx|filogic> [OpenWrt directory]
 #
 # ipq807x builds the C-360, the C-260 and the C-230 (one multi-profile build:
 # one kernel, one module feed), ipq60xx the W-318 and the C-200 (the same way;
-# both target qualcommax), and ipq40xx the W-118 (target ipq40xx, subtarget
-# generic). What it builds from, all in this repository:
+# both target qualcommax), ipq40xx the W-118 (target ipq40xx, subtarget
+# generic), and filogic the OpenWrt One (target mediatek, subtarget filogic:
+# not an Arista, but on the same network, so it runs the same build). What it
+# builds from, all in this repository:
 #   main/openwrt.lock        OpenWrt main, the feeds, and the board files'
 #                            qca-wireless commits
 #   main/patches/openwrt/    the devices as their upstream pull requests
@@ -34,7 +36,8 @@ case $SUB in
 ipq807x) TARGET=qualcommax PROFILE=ipq807x MODELS="c360 c260 c230" DEVICES="arista_c-360 arista_c-260 arista_c-230" ;;
 ipq60xx) TARGET=qualcommax PROFILE=ipq60xx MODELS="w318 c200" DEVICES="arista_w-318 arista_c-200" ;;
 ipq40xx) TARGET=ipq40xx PROFILE=generic MODELS="w118" DEVICES="arista_w-118" ;;
-*) echo "no subtarget $SUB (ipq807x, ipq60xx or ipq40xx)" >&2; exit 2 ;;
+filogic) TARGET=mediatek PROFILE=filogic MODELS="one" DEVICES="openwrt_one" ;;
+*) echo "no subtarget $SUB (ipq807x, ipq60xx, ipq40xx or filogic)" >&2; exit 2 ;;
 esac
 W=$(realpath -m "${2:-$HERE/build/main/openwrt}")
 VERSION=$(git -C "$HERE" describe --tags --always --dirty 2>/dev/null || echo unversioned)
@@ -214,8 +217,10 @@ make -j"$(nproc)" IGNORE_ERRORS=m >build-$SUB.log 2>&1 ||
 
 # 7. collect: each model's images, and the subtarget's packages
 mkdir -p "$OUT"
+set -- $DEVICES
 for m in $MODELS; do
-	d=arista_${m:0:1}-${m:1}
+	d=$1
+	shift
 	rm -rf "$OUT/$m"
 	mkdir -p "$OUT/$m"
 	cp $O/*"$d"[.-]* "$OUT/$m/"

@@ -1,0 +1,11 @@
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_mediatek_filogic_DEVICE_openwrt_one=y
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+CONFIG_ALL_KMODS=y
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+CONFIG_PACKAGE_wpad-mbedtls=y
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_dfs-look=y
+CONFIG_PACKAGE_ubi-utils=y
+CONFIG_PACKAGE_uboot-envtools=y
