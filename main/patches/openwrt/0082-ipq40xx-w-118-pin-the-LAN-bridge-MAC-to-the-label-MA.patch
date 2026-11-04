@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 4 Nov 2026 03:45:00 -0600
+Subject: [PATCH] ipq40xx: w-118: pin the LAN bridge MAC to the label MAC
+
+The port keeps the uplink and LAN 1-3 in one LAN bridge, as an AP
+uses its uplink. The uplink carries the label MAC (ART 0x0, the one
+Arista uses) and LAN 1-3 the gmac's (ART 0x6). With no MAC set,
+netifd gives the bridge the MAC of the first member present when it
+sets the bridge up, in name order: the uplink at boot, lan1 after a
+later reload. So br-lan went from 88:b1:e1:03:16:1f to ...:1e on a
+network reload with the same config. Set the LAN MAC to the label MAC
+in board.d, as google,wifi does for its WAN.
+
+B111: board.d run into a temporary board.json gives lan macaddr
+88:b1:e1:03:16:1f; with that macaddr on its br-lan, the W-118 kept the
+label MAC and its DHCP lease across a reload and a restart.
+
+Upstream #26028 doesn't need it: there the uplink is the WAN and
+LAN 1-3 alone form the LAN.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/ipq40xx/base-files/etc/board.d/02_network | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/target/linux/ipq40xx/base-files/etc/board.d/02_network b/target/linux/ipq40xx/base-files/etc/board.d/02_network
+index f0f0566..95aa83d 100644
+--- a/target/linux/ipq40xx/base-files/etc/board.d/02_network
++++ b/target/linux/ipq40xx/base-files/etc/board.d/02_network
+@@ -192,6 +192,9 @@ ipq40xx_setup_macs()
+ 	local label_mac=""
+ 
+ 	case "$board" in
++	arista,w-118)
++		lan_mac=$(get_mac_label)
++		;;
+ 	avm,fritzbox-7530)
+ 		local tffsdev=$(find_mtd_chardev "nand-tffs")
+ 		wan_mac=$(/usr/bin/fritz_tffs_nand -b -d $tffsdev -n macdsl)
+-- 
+2.52.0
