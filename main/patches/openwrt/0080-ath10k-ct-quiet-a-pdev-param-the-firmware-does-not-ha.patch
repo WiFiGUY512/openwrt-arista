@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 4 Nov 2026 01:25:00 -0600
+Subject: [PATCH] ath10k-ct: quiet a pdev param the firmware does not have
+
+ath10k-ct patch 994 (for upstream), B135: on 10.x firmware every radio
+start logs "pdev param 0 not supported by firmware" (idle_ps_config,
+whose -EOPNOTSUPP ath10k_start() already takes as no error), and every
+station association logs it again with "failed to enable peer stats
+info: -95" (peer_stats_info_enable, a TLV-firmware param). Report an
+unsupported pdev param at debug level, as an unsupported vdev param
+is, and let ath10k_bss_assoc() take -EOPNOTSUPP as no error.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/ath10k-ct/Makefile             |  2 +-
+ ...k-ct-quiet-an-unsupported-pdev-param.patch | 52 +++++++++++++++++++
+ 2 files changed, 53 insertions(+), 1 deletion(-)
+
+diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+index 90215eb..5a3a1e1 100644
+--- a/package/kernel/ath10k-ct/Makefile
++++ b/package/kernel/ath10k-ct/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ath10k-ct
+-PKG_RELEASE:=5
++PKG_RELEASE:=6
+ 
+ PKG_LICENSE:=GPLv2
+ PKG_LICENSE_FILES:=
+diff --git a/package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch b/package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch
+new file mode 100644
+index 0000000..fc0c5c4
+--- /dev/null
++++ b/package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch
+@@ -0,0 +1,52 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ath10k-ct: quiet a pdev param the firmware does not have
++
++On 10.x firmware every start of the radio logs
++
++  ath10k_pci 0000:01:00.0: pdev param 0 not supported by firmware
++
++and every association of a station interface logs it again, followed by
++
++  ath10k_pci 0000:01:00.0: failed to enable peer stats info: -95
++
++ath10k_start() sets idle_ps_config and ath10k_bss_assoc() sets
++peer_stats_info_enable, which only the TLV firmware maps; for the others
++the pdev param map holds WMI_PDEV_PARAM_UNSUPPORTED, and the set returns
++-EOPNOTSUPP after a warning. ath10k_start() already takes -EOPNOTSUPP as
++no error, so the warning says nothing.
++
++Report an unsupported pdev param at debug level, as an unsupported vdev
++param already is, and let ath10k_bss_assoc() take -EOPNOTSUPP as no
++error too. A caller that needs the param still warns with the error.
++
++Seen on QCA9882 scan radios (CT 10.1 firmware) on Arista C-260s and a
++W-118: 204 "pdev param 0" and 62 "peer stats info" warnings in 10 hours
++of scans and client tests on one C-260.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/ath10k-7.2/wmi.c
+++++ b/ath10k-7.2/wmi.c
++@@ -7288,8 +7288,8 @@ ath10k_wmi_op_gen_pdev_set_param(struct
++ 	struct sk_buff *skb;
++ 
++ 	if (id == WMI_PDEV_PARAM_UNSUPPORTED) {
++-		ath10k_warn(ar, "pdev param %d not supported by firmware\n",
++-			    id);
+++		ath10k_dbg(ar, ATH10K_DBG_WMI,
+++			   "pdev param %d not supported by firmware\n", id);
++ 		return ERR_PTR(-EOPNOTSUPP);
++ 	}
++ 
++--- a/ath10k-7.2/mac.c
+++++ b/ath10k-7.2/mac.c
++@@ -3764,7 +3764,7 @@ static void ath10k_bss_assoc(struct ieee
++ 
++ 	ret = ath10k_wmi_pdev_set_param(ar,
++ 					ar->wmi.pdev_param->peer_stats_info_enable, 1);
++-	if (ret)
+++	if (ret && ret != -EOPNOTSUPP)
++ 		ath10k_warn(ar, "failed to enable peer stats info: %d\n", ret);
++ 
++ 	ret = ath10k_wmi_vdev_up(ar, arvif->vdev_id, arvif->aid, arvif->bssid);
+-- 
+2.52.0
