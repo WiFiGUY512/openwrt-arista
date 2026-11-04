@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 4 Nov 2026 02:25:00 -0600
+Subject: [PATCH] hostapd: ACS: fall back to the BSS-based study
+
+hostapd patch 889 (for upstream, hostap list), B138: with a 6 GHz
+QCN9074 radio at 160 MHz and one channel per block in chanlist, ACS
+failed and the radio stayed down whenever the radio had run on another
+channel before (that channel keeps the only survey entry with a noise
+floor; port 0035 rightly reports none for the others). Fall back to the
+BSS-based study when the survey-based one finds no channel, and clear
+the BSS-based mark at ACS cleanup.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/hostapd/Makefile     |  2 +-
+ ...based-study-when-the-survey-finds-no.patch | 67 +++++++++++++++++++
+ 2 files changed, 68 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+index c14392e..ffaa096 100644
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=12
++PKG_RELEASE:=13
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch b/package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch
+new file mode 100644
+index 0000000..8f1abe4
+--- /dev/null
++++ b/package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch
+@@ -0,0 +1,67 @@
++From c927563edeb439756e718b4011ee6058be9e5fe7 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Wed, 4 Nov 2026 02:25:00 -0600
++Subject: [PATCH] ACS: Fall back to the BSS-based study when the survey finds no
++ channel
++
++acs_study() falls back to the BSS-based study only when no channel at
++all has sufficient survey data. When some do, but none that can be
++selected, ACS fails and the interface is not started. ath11k on
++QCN9074 reports a noise floor on 6 GHz only for a channel the radio
++operated on, so at 160 MHz with one channel per block in chanlist the
++radio failed to start after it had run on another channel.
++
++Run the BSS-based study in that case too, and clear its per-channel
++mark at ACS cleanup.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/src/ap/acs.c
+++++ b/src/ap/acs.c
++@@ -350,6 +350,7 @@ static void acs_cleanup_mode(struct host
++ 		chan->flag |= HOSTAPD_CHAN_SURVEY_LIST_INITIALIZED;
++ 		chan->min_nf = 0;
++ 		chan->punct_bitmap = 0;
+++		chan->interference_bss_based = false;
++ 	}
++ }
++ 
++@@ -1316,6 +1317,21 @@ static int acs_study_options(struct host
++ }
++ 
++ 
+++static bool acs_studied_bss_based(struct hostapd_iface *iface)
+++{
+++	int i;
+++
+++	if (!iface->current_mode)
+++		return false;
+++
+++	for (i = 0; i < iface->current_mode->num_channels; i++)
+++		if (iface->current_mode->channels[i].interference_bss_based)
+++			return true;
+++
+++	return false;
+++}
+++
+++
++ static void acs_study(struct hostapd_iface *iface)
++ {
++ 	struct hostapd_channel_data *ideal_chan;
++@@ -1328,6 +1344,16 @@ static void acs_study(struct hostapd_ifa
++ 	}
++ 
++ 	ideal_chan = acs_find_ideal_chan(iface);
+++	if (!ideal_chan && !acs_studied_bss_based(iface)) {
+++		/* The survey data was sufficient for some channels, but none
+++		 * that could be selected, e.g., when the driver reports no
+++		 * noise floor for the others. Use the BSS-based study, as
+++		 * when no channel has sufficient survey data. */
+++		wpa_printf(MSG_INFO,
+++			   "ACS: Survey based ACS found no channel - trying BSS-based ACS");
+++		if (acs_study_bss_based(iface) == 0)
+++			ideal_chan = acs_find_ideal_chan(iface);
+++	}
++ 	if (!ideal_chan) {
++ 		wpa_printf(MSG_ERROR, "ACS: Failed to compute ideal channel");
++ 		err = -1;
+-- 
+2.52.0
