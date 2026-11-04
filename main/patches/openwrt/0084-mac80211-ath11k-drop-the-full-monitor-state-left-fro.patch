@@ -1,0 +1,223 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 4 Nov 2026 11:43:40 -0600
+Subject: [PATCH] mac80211: ath11k: drop the full monitor state left from
+ before a stop
+
+B100: a QCN9074 scan radio (C-360) went deaf after a client test that
+borrowed it as a station, until airscan bound its driver again (4 of 7
+loans on the Living Room unit, 2026-11-04 08:22-09:33). ath11k's full
+monitor mode keeps a PPDU held for its status buffer across a monitor
+stop, while the status ring is reaped on the plain path; after the
+restart the held PPDU ID reads as older than the status ring's about
+half the time, the hold never ends, the destination ring fills and the
+RXDMA stops.
+
+Add ath11k 118, sent to ath-next: drop the held PPDU and the destination
+ring entries behind it when the monitor starts, and bound a hold to the
+status ring's size. Tested in RAM on the Living Room C-360 (with 0083):
+9 of 9 loans clean, no destination ring backpressure, the bound never
+needed. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |   2 +-
+ ...onitor-state-left-from-before-a-stop.patch | 172 ++++++++++++++++++
+ 2 files changed, 173 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index e9d165f..f4024cd 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=27
++PKG_RELEASE:=28
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch b/package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch
+new file mode 100644
+index 0000000..e5bba93
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch
+@@ -0,0 +1,172 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH ath-next] wifi: ath11k: drop the full monitor state left from before a monitor stop
++
++In full monitor mode (QCN9074) the monitor destination ring is read
++first, and the PPDU it ends on is held, together with the destination
++ring, until its status buffer turns up on the monitor status ring. A
++status buffer with the same PPDU ID delivers the PPDU and ends the
++hold; one that reads as newer (LEAD) drops the PPDU and ends it; one
++that reads as older (LAG) keeps the hold.
++
++The hold outlives a monitor stop. While the monitor is stopped,
++ath11k_dp_rx_process_mon_rings() reaps the status ring on the plain
++path, so the held PPDU's status buffer is gone. When the monitor starts
++again, the held PPDU ID is compared with whatever the status ring
++carries after the gap, and the 16-bit compare in
++ath11k_dp_rx_mon_update_status_buf_state() reads LEAD or LAG depending
++on how far the PPDU counter moved meanwhile. After a long, busy stop it
++reads LAG about half the time, and then the hold never ends: the
++destination ring fills, the firmware reports backpressure on the
++monitor destination ring, and the radio receives nothing more, scan
++results included, until the driver is bound again.
++
++Seen with a QCN9074 used as a scanning radio and lent, for about 25 s
++at a time, as the station of a client test: it went deaf after 4 of 7
++loans, each time with the hold set, the status ring empty (buf_state
++DP_MON_STATUS_REPLINISH) and the destination ring full. The monitor
++also stops and starts at each channel change of a scan, and a PPDU was
++held at nearly every start (4022 of 4033).
++
++When the monitor starts, drop the held PPDU and the destination ring
++entries left behind it, and clear the hold. Also bound a hold: more
++status buffers than the status ring holds cannot come before the held
++PPDU's own, so drop the PPDU then rather than wait.
++
++With this, the radio kept receiving after 9 of 9 such loans.
++
++Fixes: 7e2ea2e94704 ("ath11k: Process full monitor mode rx support")
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/dp.h
+++++ b/drivers/net/wireless/ath/ath11k/dp.h
++@@ -162,6 +162,7 @@ struct ath11k_mon_data {
++ 	bool hold_mon_dst_ring;
++ 	enum dp_mon_status_buf_state buf_state;
++ 	dma_addr_t mon_status_paddr;
+++	u32 hold_status_bufs;
++ 	struct dp_full_mon_mpdu *mon_mpdu;
++ 	struct hal_sw_mon_ring_entries sw_mon_entries;
++ 	struct ath11k_pdev_mon_stats rx_mon_stats;
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -5660,6 +5660,15 @@ ath11k_dp_rx_process_full_mon_status_rin
++ 			   pmon->buf_state == DP_MON_STATUS_LEAD) {
++ 			sw_mon_entries->drop_ppdu = true;
++ 			pmon->hold_mon_dst_ring = false;
+++		} else if (quota &&
+++			   ++pmon->hold_status_bufs > DP_RXDMA_MON_STATUS_RING_SIZE) {
+++			/* More status buffers than the ring holds came before
+++			 * this PPDU's own: it is not coming.
+++			 */
+++			ath11k_dbg(ab, ATH11K_DBG_DATA, "full mon: ppdu %u held past %u status buffers, dropped\n",
+++				   sw_mon_entries->ppdu_id, pmon->hold_status_bufs);
+++			sw_mon_entries->drop_ppdu = true;
+++			pmon->hold_mon_dst_ring = false;
++ 		}
++ 
++ 		if (!quota)
++@@ -5737,6 +5746,7 @@ static int ath11k_dp_full_mon_process_rx
++ 		pmon->buf_state = DP_MON_STATUS_LAG;
++ 		pmon->mon_status_paddr = sw_mon_entries->mon_status_paddr;
++ 		pmon->hold_mon_dst_ring = true;
+++		pmon->hold_status_bufs = 0;
++ next_entry:
++ 		ring_entry = ath11k_hal_srng_dst_get_next_entry(ar->ab,
++ 								mon_dst_srng);
++@@ -5762,6 +5772,71 @@ reap_status_ring:
++ 	return quota;
++ }
++ 
+++/* Drop what full monitor mode kept from before the monitor was stopped: a
+++ * PPDU held for its status buffer and the destination ring entries behind
+++ * it. While the monitor is stopped the status ring is reaped on the plain
+++ * path, so their status buffers are gone, and a hold that compares its
+++ * PPDU ID with what the status ring carries after the gap can wait for
+++ * good. The destination ring then fills and stalls the RXDMA.
+++ */
+++void ath11k_dp_rx_full_mon_reset(struct ath11k *ar)
+++{
+++	struct ath11k_base *ab = ar->ab;
+++	struct ath11k_pdev_dp *dp = &ar->dp;
+++	struct ath11k_mon_data *pmon = &dp->mon_data;
+++	struct hal_sw_mon_ring_entries *sw_mon_entries = &pmon->sw_mon_entries;
+++	struct sk_buff *head_msdu, *tail_msdu, *msdu, *next;
+++	struct hal_srng *mon_dst_srng;
+++	u32 rx_bufs_used = 0, entries = 0;
+++	bool held;
+++	u16 ppdu_id;
+++	void *ring_entry;
+++
+++	spin_lock_bh(&pmon->mon_lock);
+++
+++	held = pmon->hold_mon_dst_ring;
+++	ppdu_id = sw_mon_entries->ppdu_id;
+++	ath11k_dp_rx_full_mon_drop_ppdu(&ab->dp, pmon->mon_mpdu);
+++
+++	mon_dst_srng = &ab->hal.srng_list[dp->rxdma_mon_dst_ring.ring_id];
+++	spin_lock_bh(&mon_dst_srng->lock);
+++	ath11k_hal_srng_access_begin(ab, mon_dst_srng);
+++	while ((ring_entry = ath11k_hal_srng_dst_peek(ab, mon_dst_srng))) {
+++		head_msdu = NULL;
+++		tail_msdu = NULL;
+++		rx_bufs_used += ath11k_dp_rx_full_mon_mpdu_pop(ar, ring_entry,
+++							       &head_msdu,
+++							       &tail_msdu,
+++							       sw_mon_entries);
+++		for (msdu = head_msdu; msdu; msdu = next) {
+++			next = msdu->next;
+++			dev_kfree_skb_any(msdu);
+++		}
+++		entries++;
+++		ath11k_hal_srng_dst_get_next_entry(ab, mon_dst_srng);
+++	}
+++	ath11k_hal_srng_access_end(ab, mon_dst_srng);
+++	spin_unlock_bh(&mon_dst_srng->lock);
+++
+++	pmon->hold_mon_dst_ring = false;
+++	pmon->hold_status_bufs = 0;
+++	pmon->mon_status_paddr = 0;
+++	pmon->mon_ppdu_status = DP_PPDU_STATUS_START;
+++	memset(sw_mon_entries, 0, sizeof(*sw_mon_entries));
+++
+++	spin_unlock_bh(&pmon->mon_lock);
+++
+++	if (rx_bufs_used)
+++		ath11k_dp_rxbufs_replenish(ab, dp->mac_id,
+++					   &dp->rxdma_mon_buf_ring,
+++					   rx_bufs_used,
+++					   HAL_RX_BUF_RBM_SW3_BM);
+++
+++	if (held || entries)
+++		ath11k_dbg(ab, ATH11K_DBG_DATA, "full mon: monitor start: dropped %s ppdu %u, %u dest ring entries\n",
+++			   held ? "held" : "no held", ppdu_id, entries);
+++}
+++
++ int ath11k_dp_rx_process_mon_rings(struct ath11k_base *ab, int mac_id,
++ 				   struct napi_struct *napi, int budget)
++ {
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.h
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.h
++@@ -81,6 +81,7 @@ int ath11k_dp_htt_tlv_iter(struct ath11k
++ 			   int (*iter)(struct ath11k_base *ar, u16 tag, u16 len,
++ 				       const void *ptr, void *data),
++ 			   void *data);
+++void ath11k_dp_rx_full_mon_reset(struct ath11k *ar);
++ int ath11k_dp_rx_process_mon_rings(struct ath11k_base *ab, int mac_id,
++ 				   struct napi_struct *napi, int budget);
++ int ath11k_dp_rx_process_mon_status(struct ath11k_base *ab, int mac_id,
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -1185,6 +1185,9 @@ static int ath11k_mac_monitor_start(stru
++ 		return ret;
++ 	}
++ 
+++	if (ar->ab->hw_params.full_monitor_mode)
+++		ath11k_dp_rx_full_mon_reset(ar);
+++
++ 	set_bit(ATH11K_FLAG_MONITOR_STARTED, &ar->monitor_flags);
++ 
++ 	ar->num_started_vdevs++;
+-- 
+2.43.0
+
