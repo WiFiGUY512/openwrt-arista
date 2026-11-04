@@ -667,6 +667,7 @@ function on_air() {
 }
 
 let heal_radio;   // assigned below: it closes the capture, which is declared further down
+let busy_looks = 0;   // looks in a row that heard nothing and had a scan pass refused (B142)
 
 function run_bss(done) {
 	cfg = load_config();
@@ -681,6 +682,7 @@ function run_bss(done) {
 	let began = time(), before = local_macs();
 
 	function looked() {
+		busy_looks = 0;
 		iface_del(STA);
 		look_mine = before;
 		look_secs = time() - began;
@@ -724,8 +726,11 @@ function run_bss(done) {
 			fs.unlink(tmp);
 			if (code != 0) {
 				note_error(`bss: scan exited ${code}: ${substr(text, 0, 120)}`);
-				// A failed 6 GHz pass leaves the look what the first heard.
-				if (i > 0) { looked(); return; }
+				// A failed 6 GHz pass leaves the look what the first heard. A look
+				// that heard nothing and had a pass refused (-EBUSY: a scan still
+				// running on the radio, as right after boot) says the radio was busy,
+				// not that it is deaf: no verdict from it, unless the next is the same.
+				if (i > 0 && (length(heard) || ++busy_looks >= 2)) { looked(); return; }
 				iface_del(STA);
 				done();
 				return;
