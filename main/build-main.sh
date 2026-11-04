@@ -184,7 +184,7 @@ for f in feeds/*/; do
 	apply_patches "feeds/$f" "$W/.main-patches/feeds-$f" "$MAIN/patches/feeds/$f/"*.patch
 done
 ./scripts/feeds update -i >/dev/null
-./scripts/feeds install squashfs-tools luci bluez curl >/dev/null
+./scripts/feeds install squashfs-tools luci bluez curl snmpd-ssl nmap usteer >/dev/null
 say "feeds: $(sed 's/^src-git \([a-z]*\) .*\^\(.\{8\}\).*/\1 \2/' feeds.conf | tr '\n' ' ')"
 
 # 6. configure and build
