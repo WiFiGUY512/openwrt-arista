@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 4 Nov 2026 01:20:00 -0600
+Subject: [PATCH] ipq40xx: w-118: keep 5 GHz off channel 144
+
+Keep the IPQ4019's 5 GHz radio inside the W-118's certification: the
+W-118's FCC grant (TOR-W118) has U-NII-2C only up to 5700 MHz, channel
+140, and no U-NII-4, but the radio offered channel 144 (5720 MHz) as an
+ordinary DFS channel, and 169-177 as no-IR. The QCA9882 scan radio is
+left as it is: it listens there and does not serve.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+diff --git a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+--- a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
++++ b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+@@ -420,6 +420,13 @@
+ 	nvmem-cells = <&precal_art_5000>;
+ 	nvmem-cell-names = "pre-calibration";
+ 	qcom,ath10k-calibration-variant = "Arista-W118";
++
++	/*
++	 * The W-118 is certified for U-NII-2C only up to 5700 MHz (channel
++	 * 140) and not for U-NII-4: leave out channel 144 and 169-177.
++	 */
++	ieee80211-freq-limit = <2402000 2482000>, <5170000 5710000>,
++			       <5735000 5835000>;
+ 	status = "okay";
+ };
+ 
+-- 
+2.52.0
