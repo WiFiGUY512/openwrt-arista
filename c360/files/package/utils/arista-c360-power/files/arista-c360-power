@@ -8,8 +8,9 @@
 # DC supply is plugged in. A DC supply or 802.3bt on either input is full
 # power. On 802.3at (or af) alone the USB port is turned off, the serving
 # radios' transmit power is capped (Arista's values: 15 dBm at 2.4 GHz, 18 dBm
-# at 5 and 6 GHz), and the 2.4 GHz radio uses 2 of its 4 chains (mask 3, TX
-# and RX). The scan radio is left alone.
+# at 5 and 6 GHz), the scan radio's to 15 dBm too (DEGRADE_THIRD_RADIO,
+# TXPWR_SCAN_MIN), and the 2.4 GHz radio uses 2 of its 4 chains (mask 3, TX
+# and RX).
 #
 # Without a DC supply, the power a switch reports by LLDP that it allocated
 # on a port (lldpd, Power via MDI TLV) decides that input's class instead of
@@ -139,7 +140,9 @@ band_cap() { # band_cap <phy>: the cap in dBm for the phy's band
 	fi
 }
 
-# The caps, on every serving radio; a lower txpower set in uci is kept.
+# The caps, on every serving radio and the scan radio; a lower txpower set in
+# uci is kept. The scan radio's holds while airscan adds and removes its
+# interfaces: mac80211 keeps a phy's limit for the interfaces it creates.
 # mac80211.sh sets each radio's power again when Wi-Fi restarts, so this runs
 # again then (hotplug).
 radios_apply() {
@@ -148,12 +151,11 @@ radios_apply() {
 	local sec phy cap user
 	rm -f $STATE.caps.new
 	for sec in $(wifi_devices); do
-		[ "$sec" = "$scan" ] && continue
 		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
 		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
 		user=$(uci -q get wireless.$sec.txpower)
 		if [ $level = limited ] && [ "$(opt radios 1)" = 1 ]; then
-			cap=$(band_cap $phy)
+			if [ "$sec" = "$scan" ]; then cap=$(opt txpower_scan 15); else cap=$(band_cap $phy); fi
 			[ -n "$user" ] && [ "$user" -le "$cap" ] 2>/dev/null && continue
 			iw phy $phy set txpower limit $((cap * 100)) && echo "$sec $phy $cap" >> $STATE.caps.new
 		elif grep -q "^$sec " $STATE.caps 2>/dev/null; then
