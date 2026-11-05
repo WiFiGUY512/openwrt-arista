@@ -1,0 +1,85 @@
+From 9660d4fd89f942a030ac7ca899fc25864b4fb452 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 09:49:08 -0600
+Subject: [PATCH] ath10k-ct: quiet spectral reports cut short by the firmware
+
+B153: the QCA9882 scan radios logged 'failed to parse phyerr tlv payload'
+hundreds of times a day. A debug build showed the firmware sends some FFT
+reports with a record shorter than their TLV header says (176-244 of 268
+bytes); the parser is right to drop them. Log them at debug level.
+Add ath10k-ct 995, bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/ath10k-ct/Makefile             |  2 +-
+ ...ectral-reports-cut-short-by-firmware.patch | 44 +++++++++++++++++++
+ 2 files changed, 45 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch
+
+diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
+index 5a3a1e1..fad6e4e 100644
+--- a/package/kernel/ath10k-ct/Makefile
++++ b/package/kernel/ath10k-ct/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ath10k-ct
+-PKG_RELEASE:=6
++PKG_RELEASE:=7
+ 
+ PKG_LICENSE:=GPLv2
+ PKG_LICENSE_FILES:=
+diff --git a/package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch b/package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch
+new file mode 100644
+index 0000000..43f4b4b
+--- /dev/null
++++ b/package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch
+@@ -0,0 +1,44 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] ath10k-ct: quiet spectral reports cut short by the firmware
++
++The QCA988x 10.x firmware sends some spectral FFT reports with a record
++length (buf_len) shorter than the length in the report's own TLV header:
++on a QCA9882 scan radio, 352 'failed to parse phyerr tlv payload' warnings
++in 3.3 h, each a 268-byte FFT TLV (len 264, tag 0xfb, sig 0xbb) in a
++176-244 byte record. The parser is right to drop them, but they are not
++errors of the host: log them at debug level.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/ath10k-7.2/wmi.c
+++++ b/ath10k-7.2/wmi.c
++@@ -4735,10 +4735,15 @@ void ath10k_wmi_event_spectral_scan(stru
++ 
++ 	buf_len = phyerr->buf_len;
++ 
+++	/* QCA988x firmware sends some FFT reports cut short (buf_len below the
+++	 * length in their TLV header): drop those quietly, they are not host
+++	 * errors.
+++	 */
++ 	while (i < buf_len) {
++ 		if (i + sizeof(*tlv) > buf_len) {
++-			ath10k_warn(ar, "failed to parse phyerr tlv header at byte %d\n",
++-				    i);
+++			ath10k_dbg(ar, ATH10K_DBG_WMI,
+++				   "spectral report cut short by firmware: tlv header at byte %d of %d\n",
+++				   i, buf_len);
++ 			return;
++ 		}
++ 
++@@ -4747,8 +4752,9 @@ void ath10k_wmi_event_spectral_scan(stru
++ 		tlv_buf = &phyerr->buf[i + sizeof(*tlv)];
++ 
++ 		if (i + sizeof(*tlv) + tlv_len > buf_len) {
++-			ath10k_warn(ar, "failed to parse phyerr tlv payload at byte %d\n",
++-				    i);
+++			ath10k_dbg(ar, ATH10K_DBG_WMI,
+++				   "spectral report cut short by firmware: tlv payload at byte %d of %d\n",
+++				   i, buf_len);
++ 			return;
++ 		}
++ 
+-- 
+2.43.0
+
