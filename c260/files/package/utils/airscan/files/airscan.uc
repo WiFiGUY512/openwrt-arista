@@ -872,8 +872,11 @@ function on_frame(pkt) {
 	if (bssid && !(hex(substr(bssid, 0, 2)) & 1)) c.bssid = bssid;
 	if (tx_is_sta && cap.freq) {
 		let s = radiotap_signal(pkt);
-		// ath11k fills radiotap signal with its default noise floor (-95) on the C-360's radio: not a measurement
-		if (s != null && s < 0 && !(s == -95 && radio.driver == "ath11k")) {
+		// Not measurements: a level above -15 dBm is the AP's own radio on the same channel
+		// transmitting into the scan radio's reading (Garage, 2026-11-05: -6 dBm from one frame
+		// on its own 5 GHz channel), and -95 is ath11k's default noise floor, which every
+		// QCN9074 monitor frame carried before port 0092 (B156).
+		if (s != null && s < -15 && !(s == -95 && radio.driver == "ath11k")) {
 			let d = cap.sig[sta] ||= { sum: 0, n: 0 };
 			d.sum += s;
 			d.n++;
