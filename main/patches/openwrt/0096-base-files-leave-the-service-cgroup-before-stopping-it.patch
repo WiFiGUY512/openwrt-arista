@@ -1,0 +1,66 @@
+From bb6aad439935f66b6836100af217c629aaf83eb3 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 13:24:35 -0600
+Subject: [PATCH] base-files: leave the service cgroup before stopping it
+
+B76, from openwrt/openwrt#26470 (branch b76-rc-common-cgroup) as it stands, its
+PKG_RELEASE changes replaced by the port's own bumps.
+
+Since procd 39b5aac8c1 ("service: clean up descendant processes for
+non-jail instances"), procd kills what is left in an instance's cgroup
+when its main process exits. A restart run from inside the service runs
+in that cgroup: its stop takes the shell running it with it, and the
+start after it never runs. restart() ignores SIGTERM across its stop
+for this case, but the cgroup is killed with SIGKILL.
+
+A shell over SSH runs in dropbear's cgroup, so
+`/etc/init.d/dropbear restart` from an SSH session leaves dropbear
+stopped, and the device unreachable over SSH until a reboot. A daemon
+that restarts its own service, as after an update, stays stopped the
+same way.
+
+Before procd_kill, move the shell to the root cgroup when it is in the
+cgroup of the service it stops.
+
+Tested on an Arista W-118 (ipq40xx, procd 0d3c5dc1), with a second
+dropbear on port 2222 as its own procd service:
+- before: its restart from a session on port 2222 closed the session,
+  and port 2222 stayed refused, the service gone from procd.
+- after: the session closed, and port 2222 took a new session 6 s
+  later.
+A test daemon that runs its own service's restart never came back
+before, and came back with a new PID after, twice in a row.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/base-files/files/etc/rc.common | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/package/base-files/files/etc/rc.common b/package/base-files/files/etc/rc.common
+index abf72ea3372..1a4a9fea6b1 100755
+--- a/package/base-files/files/etc/rc.common
++++ b/package/base-files/files/etc/rc.common
+@@ -153,9 +153,19 @@ extra_command "enabled" "Check if service is started on boot"
+ 		_procd_ubus_call list
+ 	}
+ 
++	# procd kills what is left in an instance's cgroup when the instance
++	# exits: leave the service's cgroup before stopping it, so that a
++	# restart run from inside the service lives on to start it again
++	_procd_leave_cgroup() {
++		grep -qs "^0::/services/$1/" /proc/$$/cgroup &&
++			echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null
++		return 0
++	}
++
+ 	stop() {
+ 		procd_lock
+ 		stop_service "$@"
++		_procd_leave_cgroup "$(basename ${basescript:-$initscript})"
+ 		procd_kill "$(basename ${basescript:-$initscript})" "$1"
+ 		if eval "type service_stopped" 2>/dev/null >/dev/null; then
+ 			service_stopped
+-- 
+2.43.0
+

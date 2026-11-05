@@ -1,0 +1,67 @@
+From 42162541848d94c36c1ad657c01da06c04cced5c Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 13:24:32 -0600
+Subject: [PATCH] hostapd: let wpad hear udebug appear
+
+B55, from openwrt/openwrt#26469 (branch b55-wpad-acl-object-add) as it stands, its
+PKG_RELEASE changes replaced by the port's own bumps.
+
+hostapd and wpa_supplicant take their udebug ring config through a
+libubus subscriber with new_obj_cb, which registers for the
+ubus.object.add event so that it can subscribe to the udebug object
+whenever it appears. They run as the network user, whose ACL has no
+listen entry, so ubusd refuses that registration, and libubus does not
+report it. They find udebugd only through the lookup at their own start:
+
+- udebugd started after them, as when it is installed on a running
+  system, is never found, and they keep no rings until wpad restarts.
+- After udebugd restarts, their rings attach again, but they no longer
+  get config changes: a ring turned on or off stays as it was.
+
+Allow listening for ubus.object.add.
+
+Tested on an Arista W-118 (ipq40xx), udebug.hostapd enabled with
+wpa_nl_rx:
+- before: udebugd installed after hostapd started kept the config, and
+  hostapd had no ring; after a udebugd restart, turning wpa_nl_tx on
+  made no ring.
+- after: with udebugd started after hostapd, hostapd made wpa_log,
+  wpa_nl_rx and wpa_nl_tx, and wpa_supplicant its wpa_log; after a
+  udebugd restart, wpa_nl_ctrl turned on appeared, and wpa_nl_tx turned
+  off went away.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/hostapd/Makefile            | 2 +-
+ package/network/services/hostapd/files/wpad_acl.json | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+index 8e31027bbc5..22fe5fa579f 100644
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=15
++PKG_RELEASE:=16
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+diff --git a/package/network/services/hostapd/files/wpad_acl.json b/package/network/services/hostapd/files/wpad_acl.json
+index 8719affe01e..54785a408ba 100644
+--- a/package/network/services/hostapd/files/wpad_acl.json
++++ b/package/network/services/hostapd/files/wpad_acl.json
+@@ -18,6 +18,7 @@
+ 		}
+ 	},
+ 	"subscribe": [ "udebug" ],
++	"listen": [ "ubus.object.add" ],
+ 	"publish": [ "hostapd", "hostapd.*", "wpa_supplicant", "wpa_supplicant.*", "hostapd-auth" ],
+ 	"send": [ "bss.*", "wps_credentials" ]
+ }
+-- 
+2.43.0
+

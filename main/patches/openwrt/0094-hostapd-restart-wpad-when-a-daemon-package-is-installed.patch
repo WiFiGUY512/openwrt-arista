@@ -1,0 +1,109 @@
+From 7a82fd6ec15a3b10f843a5217d9c1d75f0a6d534 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 13:24:30 -0600
+Subject: [PATCH] hostapd: restart wpad when a daemon package is installed
+
+B49, from openwrt/openwrt#26468 (branch b49-wpad-restart-on-install) as it stands, its
+PKG_RELEASE changes replaced by the port's own bumps.
+
+/etc/init.d/wpad belongs to hostapd-common, so the packages that bring
+the hostapd and wpa_supplicant binaries have no init script, and their
+default scripts never start or stop the service. Installed on a running
+system, they leave it in one of two wrong states:
+
+- On their own, as an upgrade or in place of another build, they leave
+  the old hostapd and wpa_supplicant running the deleted binary, so the
+  new build's features are missing until the next reboot.
+- With hostapd-common upgraded in the same apk transaction, as when
+  wpad-basic-mbedtls is swapped for wpad-mbedtls from a newer feed, apk
+  purges the old build first, and hostapd-common's post-upgrade runs
+  /etc/init.d/wpad start while no binary is installed. start_service
+  then declares no instance, procd stops the running ones, and nothing
+  starts them again: every wireless interface stays down until someone
+  runs /etc/init.d/wpad start.
+
+Give these packages a postinst that restarts the service when it is
+enabled on a running system. netifd sets the wireless interfaces up
+again once hostapd is back on ubus, without a wifi reload.
+
+Tested on an Arista W-118 (ipq40xx), one PSK BSS on radio2, with apk:
+- wpad-basic-mbedtls r12 -> wpad-mbedtls r13, hostapd-common r12 -> r13,
+  without this change: hostapd and wpa_supplicant gone, no wpad
+  instance left in procd, the BSS still off the air after 60 s.
+- wpad-mbedtls r13 -> wpad-basic-mbedtls r14, hostapd-common r13 -> r14,
+  with it: the new binary runs and the BSS beacons within 5 s.
+- wpad-basic-mbedtls r14 -> wpad-mbedtls r14 alone, with it: the new
+  binary runs, where the deleted one kept running before, and the BSS
+  beacons within 5 s.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/services/hostapd/Makefile | 44 ++++++++++++++++++++++-
+ 1 file changed, 43 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
+index dcf5d61df2c..8e31027bbc5 100644
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=14
++PKG_RELEASE:=15
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+@@ -807,6 +807,48 @@ Package/wpa-supplicant-mesh-openssl/install = $(Package/wpa-supplicant/install)
+ Package/wpa-supplicant-mesh-wolfssl/install = $(Package/wpa-supplicant/install)
+ Package/wpa-supplicant-mesh-mbedtls/install = $(Package/wpa-supplicant/install)
+ 
++# Installed on a running system, in place of another build or as an upgrade,
++# the new binary is not running yet: the old hostapd and wpa_supplicant keep
++# running the deleted file, or none runs at all, when hostapd-common's upgrade
++# started the service while no binary was installed and procd dropped its
++# instances. Restart the service on the new binary; netifd sets the wireless
++# interfaces up again on it.
++define Package/wpad/postinst
++#!/bin/sh
++[ -n "$${IPKG_INSTROOT}" ] || ! /etc/init.d/wpad enabled || /etc/init.d/wpad restart
++exit 0
++endef
++Package/hostapd/postinst = $(Package/wpad/postinst)
++Package/hostapd-basic/postinst = $(Package/wpad/postinst)
++Package/hostapd-basic-openssl/postinst = $(Package/wpad/postinst)
++Package/hostapd-basic-wolfssl/postinst = $(Package/wpad/postinst)
++Package/hostapd-basic-mbedtls/postinst = $(Package/wpad/postinst)
++Package/hostapd-mini/postinst = $(Package/wpad/postinst)
++Package/hostapd-openssl/postinst = $(Package/wpad/postinst)
++Package/hostapd-wolfssl/postinst = $(Package/wpad/postinst)
++Package/hostapd-mbedtls/postinst = $(Package/wpad/postinst)
++Package/wpad-basic/postinst = $(Package/wpad/postinst)
++Package/wpad-basic-openssl/postinst = $(Package/wpad/postinst)
++Package/wpad-basic-wolfssl/postinst = $(Package/wpad/postinst)
++Package/wpad-basic-mbedtls/postinst = $(Package/wpad/postinst)
++Package/wpad-mini/postinst = $(Package/wpad/postinst)
++Package/wpad-openssl/postinst = $(Package/wpad/postinst)
++Package/wpad-wolfssl/postinst = $(Package/wpad/postinst)
++Package/wpad-mbedtls/postinst = $(Package/wpad/postinst)
++Package/wpad-mesh-openssl/postinst = $(Package/wpad/postinst)
++Package/wpad-mesh-wolfssl/postinst = $(Package/wpad/postinst)
++Package/wpad-mesh-mbedtls/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-basic/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-mini/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-p2p/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-openssl/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-wolfssl/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-mbedtls/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-mesh-openssl/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-mesh-wolfssl/postinst = $(Package/wpad/postinst)
++Package/wpa-supplicant-mesh-mbedtls/postinst = $(Package/wpad/postinst)
++
+ ifeq ($(BUILD_VARIANT),$(WPA_CLI_VARIANT))
+   define Package/wpa-cli/install
+ 	$(INSTALL_DIR) $(1)/usr/sbin
+-- 
+2.43.0
+
