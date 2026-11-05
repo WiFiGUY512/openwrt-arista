@@ -1,0 +1,110 @@
+From 7419ee87be75eb9e68575bd5881a372500276bf4 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 12:53:53 -0600
+Subject: [PATCH] mac80211: ath11k: keep the PPDU status for the full monitor
+ delivery
+
+B156: every frame the C-360 scan radios (QCN9074, full monitor mode)
+delivered had radiotap signal -95 dBm, no TSFT and its descriptor's
+rate, so airscan had no client levels from them. Since 2a2451a34afd
+(backports 7.2) a PPDU from a station without a peer names peer ID 0,
+the failed lookup clears mon_ppdu_info, and full monitor delivers after
+that. Drop the clear after each status buffer (the loop clears before
+each parse). W-318 QCN9072 as a lone 6 GHz monitor: 311/313 frames at
+-95 before, 307/309 with their level and TSFT after. Sent to ath-next
+as "wifi: ath11k: keep the PPDU status for the full monitor delivery".
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...status-for-the-full-monitor-delivery.patch | 63 +++++++++++++++++++
+ 2 files changed, 64 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 65d092d..019cf51 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=31
++PKG_RELEASE:=32
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch b/package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch
+new file mode 100644
+index 0000000..59418fb
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch
+@@ -0,0 +1,63 @@
++From d95493af83ac2f4b11fd45c9c18f7540145b52f4 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Thu, 5 Nov 2026 12:51:44 -0600
++Subject: [PATCH] wifi: ath11k: keep the PPDU status for the full monitor
++ delivery
++
++In full monitor mode (QCN9074), ath11k_dp_rx_process_full_mon_status_ring()
++reaps the status buffer of the held PPDU with
++ath11k_dp_rx_process_mon_status() and then delivers the PPDU's MPDUs with
++pmon->mon_ppdu_info, the status that function parsed. But
++ath11k_dp_rx_process_mon_status() clears mon_ppdu_info again after each
++status buffer whose PPDU names a peer ID, whether the peer is found or
++not. Since commit 2a2451a34afd ("wifi: ath11k: fix peer resolution on rx
++path when peer_id=0") a PPDU from a station without a peer, which is
++every frame a monitor hears from other BSSs, names peer ID 0 and is
++cleared too. Every frame a QCN9074 monitor delivers then has an empty
++status: signal -95 dBm (the default noise floor and a zero rssi_comb),
++no TSFT, and the rate of its rx descriptor instead of its PPDU's.
++
++Each status buffer is already parsed from a cleared status. Drop the
++clear after it, so that the status of the last parsed PPDU stays for the
++delivery. The other monitor path is not affected: it delivers from
++within the loop, before the clear.
++
++On a QCN9074 alone in monitor mode on 6 GHz (5975, 6135 and 6455 MHz,
++frames from neighbouring APs), 311 of 313 frames had signal -95 dBm and
++TSFT 0 before. After, 307 of 309 had their received level (-79 and
++-80 dBm for the nearest AP's beacons) and their TSFT, and the beacons
++their 6 Mb/s rate instead of 48.
++
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++
++Fixes: 67a9d399fcb0 ("ath11k: enable RX PPDU stats in monitor co-exist mode")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/dp_rx.c | 6 ++++--
++ 1 file changed, 4 insertions(+), 2 deletions(-)
++
++diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
++index 6d95f7b343a55..8bee3bfe33dfe 100644
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -5290,6 +5290,10 @@ int ath11k_dp_rx_process_mon_status(struct ath11k_base *ab, int mac_id,
++ 		if (log_type != ATH11K_PKTLOG_TYPE_INVALID)
++ 			trace_ath11k_htt_rxdesc(ar, skb->data, log_type, rx_buf_sz);
++ 
+++		/* Each status buffer is parsed from a clear status. The last one's
+++		 * stays in mon_ppdu_info: full monitor mode delivers its PPDU after
+++		 * this returns, with that status (signal, TSFT, rate).
+++		 */
++ 		memset(ppdu_info, 0, sizeof(*ppdu_info));
++ 		ppdu_info->peer_id = HAL_INVALID_PEERID;
++ 		hal_status = ath11k_hal_rx_parse_mon_status(ab, ppdu_info, skb);
++@@ -5334,8 +5338,6 @@ int ath11k_dp_rx_process_mon_status(struct ath11k_base *ab, int mac_id,
++ 		rcu_read_unlock();
++ 
++ 		dev_kfree_skb_any(skb);
++-		memset(ppdu_info, 0, sizeof(*ppdu_info));
++-		ppdu_info->peer_id = HAL_INVALID_PEERID;
++ 	}
++ exit:
++ 	return num_buffs_reaped;
+-- 
+2.43.0
+
