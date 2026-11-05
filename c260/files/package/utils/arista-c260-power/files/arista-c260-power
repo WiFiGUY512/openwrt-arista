@@ -15,8 +15,12 @@
 # 25.5 dBm at 5 GHz, to the whole dBm below: mac80211 takes no halves) and
 # the Bluetooth controller is turned off. Arista's
 # profile names the USB port too, but its USB function does nothing, and its
-# chains stay as they are; so here. Arista also turns the scan radio down;
-# this leaves the scan radio alone, as on the C-360.
+# chains stay as they are; so here. Arista also turns the scan radio down
+# (DEGRADE_THIRD_RADIO): its profile caps it at 20 dBm (TXPWR_SCAN_MIN 40),
+# though its 8023af.sh hands TXPowLim an unset variable and so only cuts
+# the radio to one chain. Here the scan radio gets the 20 dBm cap, as on the
+# C-360, and keeps its chains: airscan holds the radio, whose antennas can
+# change only while it is down.
 #
 # Without a DC supply, the power a switch reports by LLDP that it allocated
 # on a port (lldpd, Power via MDI TLV) decides that port's class instead of
@@ -162,13 +166,15 @@ radios_apply() {
 	local sec phy cap user
 	rm -f $STATE.caps.new
 	for sec in $(wifi_devices); do
-		[ "$sec" = "$scan" ] && continue
-		[ "$(uci -q get wireless.$sec.airscan)" = 1 ] && continue
 		phy=$(iwinfo nl80211 phyname $sec 2>/dev/null)
 		[ -n "$phy" ] && [ -e /sys/class/ieee80211/$phy ] || continue
 		user=$(uci -q get wireless.$sec.txpower)
 		if [ $level = limited ] && [ "$(opt radios 1)" = 1 ]; then
-			cap=$(band_cap $phy)
+			if [ "$sec" = "$scan" ] || [ "$(uci -q get wireless.$sec.airscan)" = 1 ]; then
+				cap=$(opt txpower_scan 20)
+			else
+				cap=$(band_cap $phy)
+			fi
 			[ -n "$user" ] && [ "$user" -le "$cap" ] 2>/dev/null && continue
 			iw phy $phy set txpower limit $((cap * 100)) && echo "$sec $phy $cap" >> $STATE.caps.new
 		elif grep -q "^$sec " $STATE.caps 2>/dev/null; then
