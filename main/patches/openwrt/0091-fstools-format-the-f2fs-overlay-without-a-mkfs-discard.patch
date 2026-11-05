@@ -1,0 +1,69 @@
+From 5982f8d79ab9e63e70a221d55e74a862c1a47b64 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 10:35:52 -0600
+Subject: [PATCH] fstools: format the f2fs overlay without a mkfs discard
+
+B155: the W-318 (eMMC) spent ~64 s of its first boot after every
+sysupgrade in mkfs.f2fs's default whole-device discard of its 256 MiB
+rootfs_data (4 MiB discard units, ~1 s each). The overlay is mounted
+with f2fs runtime discard. Pass -t 0. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/system/fstools/Makefile               |  2 +-
+ ...t-the-f2fs-overlay-without-a-discard.patch | 29 +++++++++++++++++++
+ 2 files changed, 30 insertions(+), 1 deletion(-)
+ create mode 100644 package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch
+
+diff --git a/package/system/fstools/Makefile b/package/system/fstools/Makefile
+index 18ff62f..24e5e8e 100644
+--- a/package/system/fstools/Makefile
++++ b/package/system/fstools/Makefile
+@@ -8,7 +8,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=fstools
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/fstools.git
+diff --git a/package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch b/package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch
+new file mode 100644
+index 0000000..630ac9c
+--- /dev/null
++++ b/package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch
+@@ -0,0 +1,29 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] libfstools: format the f2fs overlay without a discard
++
++mkfs.f2fs discards the whole device before formatting by default. On
++eMMC with a slow discard this dominates the first boot after every
++sysupgrade: on an Arista W-318 (Toshiba 004GA0, 4 MiB discard units) the
++256 MiB rootfs_data took 64 s between 'has not been formatted yet' and
++the mount, about 1 s per 4 MiB discard. mkfs.f2fs itself needs well
++under a second there.
++
++The overlay is mounted with f2fs's runtime discard, so blocks f2fs frees
++are still reported to the device. Pass -t 0 to skip the mkfs discard.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/libfstools/common.c
+++++ b/libfstools/common.c
++@@ -220,9 +220,9 @@ do_format:
++ 			if (use_f2fs_compression()) {
++ 				ULOG_INFO("f2fs overlay compression enabled\n");
++ 				snprintf(str, sizeof(str),
++-					 "mkfs.f2fs -q -f -O extra_attr,compression -l rootfs_data %s", v->blk);
+++					 "mkfs.f2fs -q -f -t 0 -O extra_attr,compression -l rootfs_data %s", v->blk);
++ 			} else {
++-				snprintf(str, sizeof(str), "mkfs.f2fs -q -f -l rootfs_data %s", v->blk);
+++				snprintf(str, sizeof(str), "mkfs.f2fs -q -f -t 0 -l rootfs_data %s", v->blk);
++ 			}
++ 		} else {
++ 			snprintf(str, sizeof(str), "mkfs.ext4 -q -F -L rootfs_data %s", v->blk);
+-- 
+2.43.0
+
