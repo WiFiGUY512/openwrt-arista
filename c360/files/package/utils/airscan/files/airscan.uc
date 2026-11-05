@@ -112,7 +112,11 @@ function add_event(ev) {
 	ev.time = time();
 	push(events, ev);
 	if (length(events) > 200) shift(events);
-	log(`${ev.type}: ${ev.bssid} "${ev.ssid ?? ""}" ${ev.freq} MHz${ev.frames ? ` (${ev.frames} frames)` : ""}`);
+	let more = ev.frames ? ` (${ev.frames} frames` +
+		(ev.most_to ? `, ${ev.most_frames} to ${ev.most_to} of ${ev.stations} stations` : "") +
+		(ev.reasons && length(ev.reasons) ? `, reasons ${join(" ", map(keys(ev.reasons), (r) => `${r}x${ev.reasons[r]}`))}` : "") +
+		")" : "";
+	log(`${ev.type}: ${ev.bssid} "${ev.ssid ?? ""}" ${ev.freq} MHz${more}`);
 	write_json("events", { time: time(), list: events });
 }
 
@@ -607,6 +611,11 @@ function probe_wanted(f) {
 //   30 s, so a look just after a channel switch still lists the old one.
 let look_mine = {}, look_secs = 0;
 
+// trusted_bssid: the BSSID is in trusted_bssid (an entry may be a prefix).
+function trusted_bssid(bssid) {
+	return length(filter(cfg.trusted_bssid, (p) => substr(bssid, 0, length(p)) == p)) > 0;
+}
+
 function classify(list) {
 	let mine = local_macs();
 	let ssids = [ ...cfg.trusted_ssid, ...own_ssids() ];
@@ -626,7 +635,7 @@ function classify(list) {
 		if (w?.vlans) b.wired_vlans = w.vlans;
 		if (b.spoofed) b.class = "spoofed";
 		else if (b.own) b.class = "own";
-		else if (length(filter(cfg.trusted_bssid, (p) => substr(b.bssid, 0, length(p)) == p))) b.class = "trusted";
+		else if (trusted_bssid(b.bssid)) b.class = "trusted";
 		else if (b.wired === true) b.class = ours ? "verified" : "wired_rogue";
 		else if (ours) {
 			let sib = filter(wired_bssids, (x) => siblings(x, b.bssid))[0];
@@ -645,13 +654,20 @@ function reclassify() {
 	if (!results.bss) return;
 	let list = results.bss.list;
 	classify(list);
-	let unlisted = [];
+	let unlisted = [], mine = local_macs();
+	// a BSSID that relays our probes but was not heard in the scan: our own,
+	// a trusted one, the sibling of a trusted one heard, or a wired rogue
 	for (let b, w in wp.bss) {
 		if (!w.hit_windows || length(filter(list, (x) => x.bssid == b))) continue;
-		let sib = filter(list, (x) => x.trusted && siblings(x.bssid, b))[0];
-		push(unlisted, { bssid: b, freq: w.freq, vlans: w.vlans, sibling_of: sib?.bssid,
-			class: sib ? "verified_sibling" : "wired_rogue" });
-		if (!sib) add_event({ type: "wired_rogue", bssid: b, ssid: null, freq: w.freq, vlans: w.vlans });
+		let sib = null, cls;
+		if (mine[b] != null) cls = "own";
+		else if (trusted_bssid(b)) cls = "trusted";
+		else {
+			sib = filter(list, (x) => x.trusted && siblings(x.bssid, b))[0];
+			cls = sib ? "verified_sibling" : "wired_rogue";
+		}
+		push(unlisted, { bssid: b, freq: w.freq, vlans: w.vlans, sibling_of: sib?.bssid, class: cls });
+		if (cls == "wired_rogue") add_event({ type: "wired_rogue", bssid: b, ssid: null, freq: w.freq, vlans: w.vlans });
 	}
 	results.bss.unlisted_wired = unlisted;
 	write_json("bss", results.bss);
@@ -810,10 +826,23 @@ function on_frame(pkt) {
 			if (cap.hit[bs] == null || cap.hit[bs] === true) cap.hit[bs] = v;
 		}
 	}
-	if (ftype == 0 && (sub == 10 || sub == 12) && cap.freq) {
-		let d = cap.deauth[mac_at(pkt, rlen + 16)] ||= { frames: 0, broadcast: 0 };
+	// Deauthentication and disassociation sent as the AP (transmitter = BSSID:
+	// the AP itself, or someone spoofing it), first transmissions only. A
+	// client leaving sends them too, with its own address, and a frame nobody
+	// acknowledged comes again with the Retry bit: neither is a flood. The
+	// reason code (when the frame is not protected) and the addressees tell a
+	// stuck client (reason 7 to one station, again and again) from an attack.
+	if (ftype == 0 && (sub == 10 || sub == 12) && cap.freq && !(fc & 0x0800) &&
+	    length(pkt) >= rlen + 24 && mac_at(pkt, rlen + 10) == mac_at(pkt, rlen + 16)) {
+		let d = cap.deauth[mac_at(pkt, rlen + 16)] ||= { frames: 0, broadcast: 0, reasons: {}, to: {} };
+		let ra = mac_at(pkt, rlen + 4);
 		d.frames++;
-		if (mac_at(pkt, rlen + 4) == "ff:ff:ff:ff:ff:ff") d.broadcast++;
+		if (ra == "ff:ff:ff:ff:ff:ff") d.broadcast++;
+		else d.to[ra] = (d.to[ra] || 0) + 1;
+		if (!(fc & 0x4000) && length(pkt) >= rlen + 26) {
+			let r = `${ord(pkt, rlen + 24) | (ord(pkt, rlen + 25) << 8)}`;
+			d.reasons[r] = (d.reasons[r] || 0) + 1;
+		}
 	}
 	if (ftype == 0) {
 		if (sub == 4) {                                   // probe request
@@ -934,7 +963,9 @@ function run_client_slice(done) {
 		for (let b, d in cap.deauth) {
 			if (d.frames < DEAUTH_FLOOD * cfg.client_dwell / 1000.0) continue;
 			let known = filter(results.bss?.list || [], (x) => x.bssid == b)[0];
-			add_event({ type: "deauth_flood", bssid: b, ssid: known?.ssid, freq: f, frames: d.frames, broadcast: d.broadcast });
+			let to = sort(keys(d.to), (x, y) => d.to[y] - d.to[x]);
+			add_event({ type: "deauth_flood", bssid: b, ssid: known?.ssid, freq: f, frames: d.frames, broadcast: d.broadcast,
+				reasons: d.reasons, stations: length(to), most_to: to[0], most_frames: to[0] ? d.to[to[0]] : 0 });
 		}
 		if (cap.probed) {
 			let mine = local_macs();
