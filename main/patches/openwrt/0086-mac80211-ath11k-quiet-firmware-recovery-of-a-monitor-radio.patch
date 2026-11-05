@@ -1,0 +1,151 @@
+From b0d338214e72f6c4bebbe02a1806c785dc6b0989 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 04:37:53 -0600
+Subject: [PATCH] mac80211: ath11k: quiet firmware recovery of a monitor radio
+
+B147: every firmware recovery logged "failed to process regulatory
+info -22" for the deliberate skip of the chan-list event. B148: when a
+monitor channel change (airscan) met a firmware crash, the failed
+monitor stop left the vif marked started and the next channel change
+hit WARN_ON(arvif->is_started) in assign_vif_chanctx.
+
+Add ath11k 121 and 122, sent to ath-next. Tested in RAM on the Garage
+C-360 (-120 + both): four simulated asserts of the scan radio, each
+recovered in 3-4 s; no regulatory line; three caught the failed
+monitor stop, none warned (stock -120: one WARNING in one assert).
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...regulatory-event-skipped-in-recovery.patch | 41 ++++++++++++++
+ ...itor-vif-started-when-its-stop-fails.patch | 55 +++++++++++++++++++
+ 3 files changed, 97 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 9917a5d..1465dc8 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=29
++PKG_RELEASE:=30
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch b/package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch
+new file mode 100644
+index 0000000..1466a59
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch
+@@ -0,0 +1,41 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH ath-next] wifi: ath11k: don't report a regulatory event skipped in recovery
++
++During firmware recovery, ath11k_reg_handle_chan_list() deliberately
++ignores the regulatory event when the radio already has its default
++regd, but it does so by returning -EINVAL, so every recovery logs a
++failure:
++
++  ath11k_pci 0001:01:00.0: failed to process regulatory info -22
++
++Before commit 7004bdceef60 ("wifi: ath11k: store cur_regulatory_info
++for each radio") moved this code out of ath11k_reg_chan_list_event(),
++the skip freed the event's rules and returned 0.
++
++Do that again for the event (IEEE80211_REG_UNSET_AP), the same way as
++the skip of an unchanged default regd below it. The calls from mac.c
++pass the stored rules with a 6 GHz power type, never
++IEEE80211_REG_UNSET_AP; they keep getting -EINVAL during recovery, and
++the stored rules are left alone.
++
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++
++Fixes: 7004bdceef60 ("wifi: ath11k: store cur_regulatory_info for each radio")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++
++---
++--- a/drivers/net/wireless/ath/ath11k/reg.c
+++++ b/drivers/net/wireless/ath/ath11k/reg.c
++@@ -754,7 +754,10 @@ int ath11k_reg_handle_chan_list(struct a
++ 	if (test_bit(ATH11K_FLAG_RECOVERY, &ab->dev_flags) &&
++ 	    ab->default_regd[pdev_idx]) {
++ 		spin_unlock_bh(&ab->base_lock);
++-		goto retfail;
+++		if (power_type != IEEE80211_REG_UNSET_AP)
+++			goto retfail;
+++		ath11k_reg_reset_info(reg_info);
+++		return 0;
++ 	}
++ 	spin_unlock_bh(&ab->base_lock);
++ 
+diff --git a/package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch b/package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch
+new file mode 100644
+index 0000000..7eb664c
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch
+@@ -0,0 +1,55 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH ath-next] wifi: ath11k: don't leave a monitor vif started when its stop fails
++
++ath11k_mac_op_unassign_vif_chanctx() returns early, with
++arvif->is_started still set, when ath11k_mac_monitor_stop() fails for a
++monitor vif. mac80211 can't fail an unassignment and considers the
++channel context released, so the vif's next assignment, e.g. the next
++channel change of the monitor interface, hits WARN_ON(arvif->is_started)
++in ath11k_mac_op_assign_vif_chanctx() and fails with -EBUSY.
++
++A firmware crash during a monitor channel change does it. On a QCN9074
++with a monitor interface that changes channel every few hundred
++milliseconds, after simulate_fw_crash:
++
++  failed to stop monitor vdev: -110
++  failed to stop monitor during vif channel context unassignment: -110
++  WARNING: CPU: 2 PID: 15367 at drivers/net/wireless/ath/ath11k/mac.c:8499 ath11k_mac_op_assign_vif_chanctx+0x304/0x3e0 [ath11k]
++  Call trace:
++   ath11k_mac_op_assign_vif_chanctx+0x304/0x3e0 [ath11k] (P)
++   drv_assign_vif_chanctx+0xac/0x144 [mac80211]
++   ieee80211_recalc_smps_chanctx+0x278/0x940 [mac80211]
++   _ieee80211_link_use_channel+0x158/0x210 [mac80211]
++   ieee80211_set_monitor_channel+0xa4/0x860 [mac80211]
++   cfg80211_set_monitor_channel+0x3c/0x60 [cfg80211]
++   nl80211_set_wiphy+0x2cc/0x7d8 [cfg80211]
++
++Recovery resets the vif afterwards, but without a crash the vif would
++refuse every later channel context, with a warning each time.
++
++Clear is_started even when the stop fails, as the non-monitor path in
++the same function does.
++
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++
++Fixes: 689a5e6fff75 ("ath11k: monitor mode clean up to use separate APIs")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -8574,12 +8574,10 @@ ath11k_mac_op_unassign_vif_chanctx(struc
++ 
++ 	if (arvif->vdev_type == WMI_VDEV_TYPE_MONITOR) {
++ 		ret = ath11k_mac_monitor_stop(ar);
++-		if (ret) {
+++		if (ret)
+++			/* continue: mac80211 has unassigned the context anyway */
++ 			ath11k_warn(ar->ab, "failed to stop monitor during vif channel context unassignment: %d",
++ 				    ret);
++-			mutex_unlock(&ar->conf_mutex);
++-			return;
++-		}
++ 
++ 		arvif->is_started = false;
++ 		mutex_unlock(&ar->conf_mutex);
+-- 
+2.43.0
+

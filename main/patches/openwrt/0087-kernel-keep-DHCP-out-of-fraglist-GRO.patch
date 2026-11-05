@@ -1,0 +1,69 @@
+From 711acb5dcef5ae892429c9ad07f66a8da3046ea2 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 04:38:40 -0600
+Subject: [PATCH] kernel: keep DHCP out of fraglist GRO
+
+B149: with fraglist GRO on by default (generic hack 600), two identical
+DHCP replies that arrive back to back are merged into one datagram, and
+udhcpc, which reads from a packet socket until it has a lease, gets the
+merged packet with a bad UDP checksum and ignores it. An AP that
+delivers each broadcast twice (the house's R7800 Pumphouse: hairpin and
+multicast-to-unicast) made every DHCP attempt of an ath11k station
+fail; with rx-gro-list off on the station it finished in 0.1 s.
+
+Add hack 601: no fraglist GRO for UDP ports 67 and 68.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ ...et-udp-keep-DHCP-out-of-fraglist-GRO.patch | 38 +++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+ create mode 100644 target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-fraglist-GRO.patch
+
+diff --git a/target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-fraglist-GRO.patch b/target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-fraglist-GRO.patch
+new file mode 100644
+index 0000000..60d959e
+--- /dev/null
++++ b/target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-fraglist-GRO.patch
+@@ -0,0 +1,38 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] net: udp: keep DHCP out of fraglist GRO
++
++With fraglist GRO on by default (600-net-enable-fraglist-GRO-by-default),
++UDP datagrams of one flow that arrive in the same NAPI poll are merged
++even when no socket wants GRO. Before it has a lease, busybox udhcpc
++reads DHCP replies from a packet socket, and packet sockets get the
++merged skb as it is: one IP/UDP header, both DHCP messages behind it,
++and a UDP checksum that holds for neither. udhcpc drops it ("bad UDP
++checksum"), so a DHCP server or AP that delivers each reply twice,
++back to back, makes DHCP fail.
++
++Seen on an ath11k station: every OFFER arrived as two identical
++messages merged into one 656-byte datagram and was ignored, 20 s,
++no lease. With rx-gro-list off the same exchange finished in 0.1 s.
++
++DHCP gains nothing from GRO; leave UDP ports 67 and 68 out of the
++fraglist path.
++
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/net/ipv4/udp_offload.c
+++++ b/net/ipv4/udp_offload.c
++@@ -806,7 +806,13 @@ struct sk_buff *udp_gro_receive(struct l
++ 		if (skb->encapsulation)
++ 			goto out;
++ 
++-		if (skb->dev->features & NETIF_F_GRO_FRAGLIST)
+++		/* DHCP clients, and some servers, receive through packet
+++		 * sockets, which get a fraglist GRO packet unsegmented: two
+++		 * DHCP messages behind one header, with a UDP checksum valid
+++		 * for neither. DHCP gains nothing from GRO, so keep it out.
+++		 */
+++		if ((skb->dev->features & NETIF_F_GRO_FRAGLIST) &&
+++		    uh->dest != htons(67) && uh->dest != htons(68))
++ 			NAPI_GRO_CB(skb)->is_flist = sk ? !udp_test_bit(GRO_ENABLED, sk) : 1;
++ 
++ 		if ((!sk && (skb->dev->features & NETIF_F_GRO_UDP_FWD)) ||
+-- 
+2.43.0
+
