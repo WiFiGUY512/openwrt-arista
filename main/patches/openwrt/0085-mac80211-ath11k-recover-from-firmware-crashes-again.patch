@@ -1,0 +1,150 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 5 Nov 2026 01:54:43 -0600
+Subject: [PATCH] mac80211: ath11k: recover from firmware crashes again
+
+B17: a QCN9074 firmware crash (C-360 scan radio) was never recovered:
+ath11k_mac_op_start() waits 10 s for the restart work with conf_mutex
+held, and the restart work takes conf_mutex in ath11k_spectral_deinit()
+(spectral is built in), so every recovery timed out and mac80211 gave
+the radio up ("Hardware became unavailable during restart") until
+airscan bound its driver again. The same crash left a failed scan's
+timeout armed, and it fired on freed memory after that rebind.
+
+Add ath11k 119 and 120, sent to ath-next: drop conf_mutex across the
+wait, and don't arm the scan timeout for a scan that did not start.
+Tested in RAM on the Garage C-360 (with 0083, 0084): two simulated
+asserts of the scan radio's firmware each recovered in about 3 s, the
+radio scanning again within a minute, without airscan. Bump
+PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...onf_mutex-while-waiting-for-recovery.patch | 56 +++++++++++++++++++
+ ...imeout-for-a-scan-that-did-not-start.patch | 36 ++++++++++++
+ 3 files changed, 93 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index f4024cd..9917a5d 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=28
++PKG_RELEASE:=29
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch b/package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch
+new file mode 100644
+index 0000000..2ce2585
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch
+@@ -0,0 +1,56 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH ath-next] wifi: ath11k: don't hold conf_mutex while waiting for recovery
++
++After a firmware crash, mac80211's restart calls ath11k_mac_op_start(),
++which waits in ath11k_mac_wait_reconfigure(), for up to
++ATH11K_RECONFIGURE_TIMEOUT_HZ (10 s), for the restart work to finish
++ath11k_core_reconfigure_on_crash(). It waits with ar->conf_mutex held.
++But ath11k_core_reconfigure_on_crash() calls ath11k_spectral_deinit(),
++which takes ar->conf_mutex on each radio where spectral scan is
++enabled.
++
++The wait came with commit 38194f3a605e ("ath11k: add synchronization
++operation between reconfigure of mac80211 and ath11k_base"), the lock
++in ath11k_spectral_deinit() a month later with the commit in the Fixes
++tag.
++
++So with CONFIG_ATH11K_SPECTRAL the restart work blocks until the wait
++times out. op_start() then sends WMI commands while
++ATH11K_FLAG_CRASH_FLUSH is still set, they fail with -ESHUTDOWN, and
++mac80211 gives up on the radio. Recovery never succeeds.
++
++Seen on a QCN9074 after simulate_fw_crash (debug_mask 0x1060). Firmware
++start, the restart work's first step after the deinit, ran only once
++op_start() had timed out and dropped the mutex:
++
++  [  146.881170] ath11k_pci 0001:01:00.0: qmi firmware init done
++  [  156.651121] ath11k_pci 0001:01:00.0: failed to send WMI_PDEV_SET_PARAM cmd
++  [  156.651173] ath11k_pci 0001:01:00.0: failed to enable PMF QOS: (-108
++  [  156.658853] ath11k_pci 0001:01:00.0: qmi firmware start
++  [  156.663443] Hardware became unavailable during restart.
++
++Drop conf_mutex across the wait. During the restart, op_start() runs
++with the wiphy mutex held, so no other mac80211 callback can come in
++meanwhile.
++
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++
++Fixes: 161c64de239c ("ath11k: disable spectral scan during spectral deinit")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -6638,7 +6638,12 @@ static int ath11k_mac_op_start(struct ie
++ 		break;
++ 	case ATH11K_STATE_RESTARTING:
++ 		ar->state = ATH11K_STATE_RESTARTED;
+++		/* The restart work takes conf_mutex (spectral deinit), so
+++		 * don't hold it while waiting for that work to finish.
+++		 */
+++		mutex_unlock(&ar->conf_mutex);
++ 		ath11k_mac_wait_reconfigure(ab);
+++		mutex_lock(&ar->conf_mutex);
++ 		break;
++ 	case ATH11K_STATE_RESTARTED:
++ 	case ATH11K_STATE_WEDGED:
+diff --git a/package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch b/package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch
+new file mode 100644
+index 0000000..d0bef81
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch
+@@ -0,0 +1,36 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH ath-next] wifi: ath11k: don't arm the scan timeout for a scan that did not start
++
++When ath11k_start_scan() fails, ath11k_mac_op_hw_scan() sets the scan
++state back to idle and returns the error to mac80211, but first still
++queues ar->scan.timeout. The timeout then stays pending for the full
++scan time (20 s by default) although no scan is running. A scan started
++within that time gets no timeout of its own, as the work is already
++pending, and the stale one aborts it early.
++
++The stale timeout can also outlive the radio. On a QCN9074 whose
++firmware crashed during a scan, recovery failed and the driver was
++unbound and bound again; the failed scan's timeout then fired from the
++freed ath11k:
++
++  [  145.937344] ath11k_pci 0001:01:00.0: failed to start hw scan: -110
++  [  166.251148] workqueue: cannot queue ath11k_scan_timeout_work [ath11k] on wq D@\x7f\xff \x05\xb6...
++  [  166.254814] WARNING: CPU: 2 PID: 0 at kernel/workqueue.c:2292 __queue_work+0x3c4/0x4d8
++
++Don't queue the timeout when the scan did not start, as
++ath11k_mac_op_remain_on_channel() and ath12k already do.
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -4337,6 +4337,7 @@ static int ath11k_mac_op_hw_scan(struct
++ 		spin_lock_bh(&ar->data_lock);
++ 		ar->scan.state = ATH11K_SCAN_IDLE;
++ 		spin_unlock_bh(&ar->data_lock);
+++		goto exit;
++ 	}
++ 
++ 	ieee80211_queue_delayed_work(ar->hw, &ar->scan.timeout,
+-- 
+2.43.0
+
