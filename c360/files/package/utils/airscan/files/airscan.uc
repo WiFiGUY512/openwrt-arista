@@ -46,6 +46,7 @@ import * as ubus from 'ubus';
 import * as uci from 'uci';
 import * as struct from 'struct';
 import * as socket from 'socket';
+import * as nl80211 from 'nl80211';
 
 const BOARDS = { "arista,c-230": "0000:01:00.0", "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0" };
 // boards with a BLE controller and no scan radio: the BLE survey alone
@@ -1143,13 +1144,148 @@ run_ble = function() {
 
 // ---------------------------------------------------------------- scheduler
 
-// loan_end takes the radio back: what the borrower left on it is removed.
+// ---------------------------------------------------------------- DFS pre-check
+//
+// precheck: a radar check (CAC) on the scan radio for a 5 GHz chandef a serving
+// radio wants, so that it can move there by an announced channel switch (CSA)
+// instead of going silent for its own 60 s check. cfg80211 hands a finished
+// check to every radio of the same DFS region (regulatory_propagate_dfs_state),
+// and the serving radio's hostapd marks the channels available. Under FCC a
+// checked channel no radio is beaconing on lapses back to "usable" 2 s later
+// (REG_PRE_CAC_EXPIRY_GRACE_MS), so once the check is done the scan radio holds
+// the block with a hidden beacon: zero-length SSID, no hostapd behind it, so
+// nothing can join. The hold ends after `hold` s, on precheck_done, or when the
+// serving radio has moved (it then keeps the block available by beaconing).
+// A radar during the check marks the channels unavailable for 30 min on every
+// radio, the same way. Each step is a ubus event "airscan.precheck" with the
+// caller's id and the chandef: cac, available, radar, ended. The radio is taken
+// through the loan machinery, so the jobs pause and resume as for a lend.
+// Proven on C360-AP (QCN9072, 80 and 160 MHz) and C-260 (QCA988x, 80 MHz),
+// 2026-11-06: build/dfs-precheck/FINDINGS.md.
+const PRE = "as-pre0";
+const PRE_HOLD_MOST = 120;
+const NL_WIDTH = { "20": 1, "40": 2, "80": 3, "160": 5 };  // nl80211_chan_width
+let pre = null;
+
+// loan_end takes the radio back: what the borrower left on it is removed. (Here,
+// above the pre-check's functions: ucode does not hoist function declarations.)
 function loan_end(why) {
+	if (pre) {
+		// a reclaim or a loan that ran out during a pre-check ends it first
+		let p = pre;
+		pre = null;
+		if (p.timer) p.timer.cancel();
+		if (p.held) nl80211.request(nl80211.const.NL80211_CMD_STOP_AP ?? 16, 0, { dev: PRE });
+		conn.event("airscan.precheck", { id: p.id, state: "ended", why, freq: p.freq,
+			center_freq1: p.center_freq1, width: p.width, phy: radio.phy, time: time() });
+	}
 	for (let i in own_ifaces())
 		if (i != MON && i != STA) iface_del(i);
 	log(`the scan radio is back from ${loan.to}: ${why}`);
 	loan.until = 0;
 	loan.to = null;
+}
+
+function pre_freqs(p) {
+	let out = [];
+	for (let f = p.center_freq1 - p.width / 2 + 10; f < p.center_freq1 + p.width / 2; f += 20)
+		push(out, f);
+	return out;
+}
+
+// the DFS state of each 20 MHz channel of the chandef on this radio (only the
+// DFS channels have one), and the longest CAC time among them in p.cac_ms
+function pre_states(p) {
+	let st = {}, f = 0, want = {};
+	for (let c in pre_freqs(p)) want[c] = true;
+	let pp = fs.popen(`iw phy ${radio.phy} channels 2>/dev/null`);
+	if (!pp) return st;
+	for (let line in split(pp.read("all") || "", "\n")) {
+		let m = match(line, /^[ \t]*\* ([0-9]+) MHz/);
+		if (m) { f = +m[1]; continue; }
+		if (!want[f]) continue;
+		m = match(line, /DFS state: ([a-z]+)/);
+		if (m) st[f] = m[1];
+		m = match(line, /DFS CAC time: ([0-9]+) ms/);
+		if (m && +m[1] > (p.cac_ms || 0)) p.cac_ms = +m[1];
+	}
+	pp.close();
+	return st;
+}
+
+function pre_event(state, extra) {
+	let ev = { id: pre.id, state, freq: pre.freq, center_freq1: pre.center_freq1, width: pre.width,
+		   phy: radio.phy, time: time(), ...(extra || {}) };
+	pre.state = state;
+	conn.event("airscan.precheck", ev);
+	log(`DFS pre-check ${pre.id}: ${state} (${pre.freq} MHz, ${pre.width} MHz at ${pre.center_freq1})` +
+	    (extra?.why ? `: ${extra.why}` : ""));
+}
+
+function pre_hold_start() {
+	let mac = replace(trim(fs.readfile(`/sys/class/net/${PRE}/address`) || ""), /:/g, "");
+	// beacon: frame control 0x0080, duration 0, broadcast DA, SA = BSSID = the
+	// scan radio, sequence 0, TSF 0, interval 100 TU, capability ESS, SSID element
+	// of length 0, supported rates 6*, 9, 12*, 18, 24*, 36, 48, 54. ucode's nl80211
+	// has no "ssid" key and rejects an empty beacon_tail: both are left out.
+	let head = hexdec("80000000ffffffffffff" + mac + mac + "0000" + "0000000000000000" +
+			  "6400" + "0100" + "0000" + "01088c129824b048606c");
+	let r = nl80211.request(nl80211.const.NL80211_CMD_START_AP ?? 15, 0, {
+		dev: PRE, beacon_head: head, beacon_interval: 100, dtim_period: 2, hidden_ssid: 1,
+		wiphy_freq: pre.freq, channel_width: NL_WIDTH[pre.width], center_freq1: pre.center_freq1 });
+	if (r === null) return nl80211.error() || "START_AP failed";
+	pre.held = true;
+	return null;
+}
+
+function pre_end(why, state) {
+	if (!pre) return;
+	if (pre.timer) { pre.timer.cancel(); pre.timer = null; }
+	if (pre.held) nl80211.request(nl80211.const.NL80211_CMD_STOP_AP ?? 16, 0, { dev: PRE });
+	iface_del(PRE);
+	pre_event(state || "ended", { why });
+	pre = null;
+	if (loan.until) loan_end(`a DFS pre-check ended: ${why}`);
+}
+
+// one step of a pre-check: wait for the radio, start the check, follow it
+function pre_step() {
+	if (!pre) return;
+	let p = pre;
+	p.timer = null;
+	let again = (ms) => { if (pre === p) p.timer = later(ms, pre_step); };
+	if (p.phase == "wait") {
+		if (state != "lent") {
+			if (time() > p.asked + 10) return pre_end("the scan radio was not free within 10 s");
+			return again(200);
+		}
+		if (!iface_up(PRE, "__ap")) return pre_end("cannot add the check interface");
+		let r = nl80211.request(nl80211.const.NL80211_CMD_RADAR_DETECT ?? 94, 0, {
+			dev: PRE, wiphy_freq: p.freq, channel_width: NL_WIDTH[p.width], center_freq1: p.center_freq1 });
+		if (r === null) return pre_end(`the radar check did not start: ${nl80211.error()}`);
+		p.phase = "cac"; p.cac_start = time();
+		pre_event("cac", { cac_ms: p.cac_ms });
+		return again(2000);
+	}
+	if (p.phase == "cac") {
+		let st = pre_states(p), vals = values(st);
+		if (length(filter(vals, (s) => s == "unavailable")))
+			return pre_end("radar detected", "radar");
+		if (length(vals) && length(filter(vals, (s) => s == "available")) == length(vals)) {
+			let err = pre_hold_start();
+			p.phase = "hold"; p.hold_until = time() + p.hold;
+			pre_event("available", { held: !err, ...(err ? { hold_error: err } : {}) });
+			return again(1000);
+		}
+		if (time() > p.cac_start + p.cac_ms / 1000 + 15)
+			return pre_end(`no result ${p.cac_ms / 1000 + 15} s after the check started (states ${sprintf("%J", st)})`);
+		// near the end, every second: the hold must start well inside FCC's 2 s
+		return again(time() >= p.cac_start + p.cac_ms / 1000 - 3 ? 250 : 2000);
+	}
+	if (p.phase == "hold") {
+		if (time() >= p.hold_until) return pre_end("the hold ran out");
+		return again(1000);
+	}
 }
 
 // probe_driver asks the kernel to bind a driver to a scan radio that has
@@ -1235,6 +1371,8 @@ function cleanup() {
 	if (wp.sock) { wp.sock.close(); wp.sock = null; }
 	if (ble.timer) ble.timer.cancel();
 	if (radio.spectral) spectral_write("spectral_scan_ctl", "disable");
+	if (pre?.held) nl80211.request(nl80211.const.NL80211_CMD_STOP_AP ?? 16, 0, { dev: PRE });
+	iface_del(PRE);
 	iface_del(MON);
 	iface_del(STA);
 	if (+trim(fs.readfile(PIDFILE) || "") == MYPID) fs.unlink(PIDFILE);
@@ -1260,8 +1398,10 @@ const methods = {
 			spectral_supported: radio.spectral, state,
 			// what a borrower can count on: "lend", and a deaf radio healed;
 			// with no scan radio, the BLE survey only
-			features: radio.pci ? [ "lend", "heal" ] : [ "ble" ],
+			features: radio.pci ? [ "lend", "heal", "precheck" ] : [ "ble" ],
 			loan: loan.until ? { to: loan.to, until: loan.until } : null,
+			precheck: pre ? { id: pre.id, state: pre.state, freq: pre.freq, center_freq1: pre.center_freq1,
+					  width: pre.width, hold: pre.hold, held: pre.held } : null,
 			heal: { count: heal.count, failed: heal.failed, last: heal.last },
 			last, next, config: cfg,
 			counts: { bss: results.bss?.count || 0, clients: length(results.clients), windows: length(results.spectrum?.windows || []), events: length(events), ble: length(results.ble) },
@@ -1323,6 +1463,49 @@ const methods = {
 			return { lent: false };
 		},
 	},
+	// precheck: a DFS radar check of a 5 GHz chandef on the scan radio, then a
+	// hold of `hold` s (default 30, at most 120) in which a serving radio can
+	// move there by CSA (see "DFS pre-check" above). freq is the primary
+	// channel's, center_freq1 the chandef's centre, width 20/40/80/160 MHz; id is
+	// the caller's, echoed in every "airscan.precheck" event. Like lend, only
+	// between jobs: otherwise the answer is no, with the state.
+	precheck: {
+		args: { ...SESSION, freq: 0, center_freq1: 0, width: 0, hold: 0, id: "" },
+		call: (req) => {
+			let a = req.args, width = +a.width || 80, freq = +a.freq, cf = +a.center_freq1 || freq;
+			let hold = +a.hold || 30;
+			if (!NL_WIDTH[width]) return { error: "width must be 20, 40, 80 or 160" };
+			if (freq < 5160 || freq > 5900 || cf < 5160 || cf > 5900) return { error: "freq and center_freq1 must be 5 GHz" };
+			if (freq < cf - width / 2 || freq > cf + width / 2) return { error: "freq is outside the chandef" };
+			if (hold < 1 || hold > PRE_HOLD_MOST) return { error: `hold must be 1 to ${PRE_HOLD_MOST}` };
+			if (pre) return { started: false, state, id: pre.id, precheck: pre.state };
+			if (loan.until) return { started: false, state, to: loan.to };
+			if (!(state in [ "clients", "idle" ]) || !radio.phy) return { started: false, state };
+			let p = { id: a.id || sprintf("pc%d", time()), freq, center_freq1: cf, width, hold, cac_ms: 0 };
+			let st = pre_states(p), vals = values(st);
+			if (!length(vals)) return { error: "no DFS channel in that chandef on the scan radio", states: st };
+			if (length(filter(vals, (s) => s == "unavailable"))) return { started: false, error: "a channel of it is unavailable (radar in the last 30 min)", states: st };
+			// the regulatory CAC time iw shows (60 s in the US, 10 min on ETSI's weather channels)
+			if (!p.cac_ms) p.cac_ms = 60000;
+			p.phase = "wait"; p.asked = time(); p.state = "asked"; p.held = false;
+			pre = p;
+			loan.until = time() + p.cac_ms / 1000 + 15 + hold + 10;
+			loan.to = `a DFS pre-check (${p.id})`;
+			p.timer = later(200, pre_step);
+			return { started: true, id: p.id, phy: radio.phy, cac_ms: p.cac_ms, hold, states: st };
+		},
+	},
+	// precheck_done: the caller has moved (or given up); the hold ends now.
+	precheck_done: {
+		args: { ...SESSION, id: "" },
+		call: (req) => {
+			if (!pre) return { ended: false, error: "no pre-check running" };
+			if (req.args.id && req.args.id != pre.id) return { ended: false, error: `the running pre-check is ${pre.id}` };
+			let id = pre.id;
+			pre_end("done");
+			return { ended: true, id };
+		},
+	},
 	ble: {
 		args: SESSION,
 		call: () => ble_report(),
@@ -1347,7 +1530,7 @@ if (!pci && !BLE_ONLY) { log(`no dedicated scan radio on board "${board_name()}"
 radio.pci = pci;
 if (BLE_ONLY) {
 	state = "ble only";
-	for (let m in [ "spectrum", "bss", "clients", "sweep", "scan", "lend" ])
+	for (let m in [ "spectrum", "bss", "clients", "sweep", "scan", "lend", "precheck", "precheck_done" ])
 		methods[m].call = () => ({ error: "no scan radio on this board" });
 }
 // One airscan at a time. On a restart procd can start us while the previous
