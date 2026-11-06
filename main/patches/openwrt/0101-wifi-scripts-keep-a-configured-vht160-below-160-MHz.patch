@@ -1,0 +1,73 @@
+From b31abf62b87d6d163e042f248a88df750279c85d Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Fri, 6 Nov 2026 11:19:32 -0600
+Subject: [PATCH] wifi-scripts: keep a configured vht160 below 160 MHz
+
+hostapd.uc drops [VHT160] and [SHORT-GI-160] from vht_capab whenever the
+radio is set up narrower than 160 MHz, whatever the vht160 option says.
+hostapd then refuses any switch to 160 MHz on that radio: a CSA (ubus
+switch_chan, CHAN_SWITCH) and its restart fallback both end in "160 MHz
+channel width is not supported!" (hostapd_set_freq_params checks the
+configured vht_capab). So a radio that starts at 80 MHz can never be
+widened to 160 without a reconfiguration and restart.
+
+The 160 MHz capability is not the operating width: an AP can advertise it
+while it runs at 80 MHz. When vht160 is set in the wifi-device section,
+keep it, and short_gi_160, below 160 MHz; mac80211.sh notes whether it was
+set before the schema fills in its default (2), so a radio without the
+option is set up as before.
+
+Asked for by Aeolus (decision 0329: start a 160 MHz radio at 80 MHz and
+widen it later by CSA, after a DFS pre-check on the scan radio); the
+marker "vht160 kept below 160" in hostapd.uc tells it the scripts have it.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/wifi-scripts/Makefile                 | 2 +-
+ .../wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh | 2 ++
+ .../wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc | 5 ++++-
+ 3 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index f41a4f2..e6ff204 100644
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
+index c100ec1..92f0801 100755
+--- a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
+@@ -209,6 +209,8 @@ function setup() {
+ 	}
+ 	delete config.hwmode;
+ 
++	/* whether vht160 was set, before validate() fills in its default */
++	config['.vht160_set'] = config.vht160 != null;
+ 	validate('device', config);
+ 	setup_phy(data.phy, data.config, data.data);
+ 
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+index 843232e..40d8ca5 100644
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+@@ -341,7 +341,10 @@ function device_htmode_append(config) {
+ 
+ 	if (config.ieee80211ac && config.hw_mode == 'a') {
+ 		/* VHT capab */
+-		if (config.vht_oper_chwidth < 2) {
++		/* vht160 kept below 160 MHz when the wifi-device sets it: it is
++		 * the capability, not the operating width, and without it hostapd
++		 * refuses a later switch (CSA) to 160 MHz */
++		if (config.vht_oper_chwidth < 2 && !config['.vht160_set']) {
+ 			config.vht160 = 0;
+ 			config.short_gi_160 = 0;
+ 		}
