@@ -1,0 +1,113 @@
+From 4a0ed9c019851041ac58c16ac3534f4b45e5edb3 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Fri, 6 Nov 2026 10:30:23 -0600
+Subject: [PATCH] ubox: logd: don't hand out stale entries after the ring wraps
+
+B162: logread crashed now and then in pipelines run every 300 s on the
+C-360s (Aeolus agent state reports, 2026-10-28 and 2026-11-06). That is
+FS#4118 / openwrt#9100: when logd's ring wraps, log_add() walks the
+oldest entry past the end marker into stale data, and readers get
+entries with random sizes and timestamps.
+
+Add openwrt/ubox#9 (Pierre-Yves Le Borgne, open upstream) as a package
+patch. W-318 (IPQ6018, -128), FS#4118 reproducer (logger 100..1
+characters in a loop next to two `logread -l 2` loops and a full-read
+loop, 128 KiB ring): stock logd, 6 logread SIGSEGVs in 150 s; patched
+logd, 0 in 300 s (79,598 `logread -l 2` and 4,772 full reads, 51,900
+messages).
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/system/ubox/Makefile                  |  2 +-
+ ...t-stale-entries-after-the-ring-wraps.patch | 68 +++++++++++++++++++
+ 2 files changed, 69 insertions(+), 1 deletion(-)
+ create mode 100644 package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch
+
+diff --git a/package/system/ubox/Makefile b/package/system/ubox/Makefile
+index 0ba418c..cccbf33 100644
+--- a/package/system/ubox/Makefile
++++ b/package/system/ubox/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=ubox
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/ubox.git
+diff --git a/package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch b/package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch
+new file mode 100644
+index 0000000..f388ecc
+--- /dev/null
++++ b/package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch
+@@ -0,0 +1,68 @@
++From cddf6c54ccd39b9f39e72d17b3e4ce1ff13aea33 Mon Sep 17 00:00:00 2001
++From: Pierre-Yves Le Borgne <pylaterreur@gmail.com>
++Date: Wed, 7 Oct 2026 15:09:03 +0100
++Subject: [PATCH] logd: don't hand out stale entries after the ring wraps
++
++logd keeps the messages in a ring buffer. When a message does not fit
++before the end of the buffer, log_add() writes an end marker (an entry
++of size 0) where the current round ends and starts over at the
++beginning, and "oldest" then points into the entries of the previous
++round. As the new round grows, log_add() pushes "oldest" forward
++through those entries, but nothing stops it at the end marker: the
++entry after a zero-sized one is its header's own end, which is stale
++data of an earlier round. From then on log_list() starts from garbage,
++so "logread" gets entries with random sizes and timestamps, and logd
++can read past the end of the buffer. musl's asctime_r() aborts on such
++a timestamp, which shows up as
++
++  traps: logread[...] general protection fault ... in libc.so
++
++Messages of varying length make it likely, e.g. "logger" with 1 to 100
++characters in a loop next to "logread -l 1" in a loop (FS#4118).
++
++Stop at the end marker: when "oldest" reaches it, the oldest entry is
++the first one of the new round, at the start of the buffer.
++
++Also start over at the beginning when the header of the next entry does
++not fit before the end of the buffer, not only when its first byte does
++not: an entry that starts in the last bytes of the buffer has its header
++cut, and log_list() reads past the end of the buffer there.
++
++Assisted-by: Claude Code (Claude Opus 5.5)
++Signed-off-by: Pierre-Yves Le Borgne <pylaterreur@gmail.com>
++---
++ log/syslog.c | 13 +++++++++++--
++ 1 file changed, 11 insertions(+), 2 deletions(-)
++
++diff --git a/log/syslog.c b/log/syslog.c
++index 7854523..17b7a6d 100644
++--- a/log/syslog.c
+++++ b/log/syslog.c
++@@ -89,7 +89,8 @@ log_next(struct log_head *h, int size)
++ {
++ 	struct log_head *n = (struct log_head *) &h->data[PAD(size)];
++ 
++-	return (n >= log_end) ? (log) : (n);
+++	/* an entry starts at log when its header doesn't fit before log_end */
+++	return (n + 1 > log_end) ? (log) : (n);
++ }
++ 
++ static uint64_t
++@@ -194,8 +195,16 @@ log_add(char *buf, int size, int source)
++ 	/* find new oldest entry */
++ 	next = log_next(newest, size);
++ 	if (next > newest) {
++-		while ((oldest > newest) && (oldest <= next) && (oldest != log))
+++		while ((oldest > newest) && (oldest <= next) && (oldest != log)) {
++ 			oldest = log_next(oldest, oldest->size);
+++
+++			/*
+++			 * past the last entry of the previous round, what is left
+++			 * is stale data: the oldest entry is at the start
+++			 */
+++			if ((oldest > newest) && !oldest->size)
+++				oldest = log;
+++		}
++ 	} else {
++ 		//fprintf(stderr, "Log wrap\n");
++ 		newest->size = 0;
