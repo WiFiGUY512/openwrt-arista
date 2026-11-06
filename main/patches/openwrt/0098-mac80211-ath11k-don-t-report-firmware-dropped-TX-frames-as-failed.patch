@@ -1,0 +1,132 @@
+From 11e7c2dc9595d5c579054156acbea3753c91579f Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Fri, 6 Nov 2026 00:53:06 -0600
+Subject: [PATCH] mac80211: ath11k: don't report firmware-dropped TX frames as
+ failed
+
+B159: ath11k reported every TX completion the firmware released without
+an ACK to mac80211 as a failed transmission, so frames the firmware
+dropped from a full queue (TQM release reason CMD_REMOVE_MPDU) counted
+in tx_failed. On C360-AP (IPQ8074) 650 Mbit/s UDP floods into a 40 MHz
+link raised tx_failed 1:1 with iperf's lost datagrams (659146, 826963,
+1020775); with the change it stayed at 0 over three runs, throughput
+unchanged. Same handling as ath12k 50971dc6694c; going upstream.
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...firmware-dropped-TX-frames-as-failed.patch | 87 +++++++++++++++++++
+ 2 files changed, 88 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/124-wifi-ath11k-don-t-report-firmware-dropped-TX-frames-as-failed.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 1f609e8..b578938 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=33
++PKG_RELEASE:=34
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/124-wifi-ath11k-don-t-report-firmware-dropped-TX-frames-as-failed.patch b/package/kernel/mac80211/patches/ath11k/124-wifi-ath11k-don-t-report-firmware-dropped-TX-frames-as-failed.patch
+new file mode 100644
+index 0000000..ee8d5cc
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/124-wifi-ath11k-don-t-report-firmware-dropped-TX-frames-as-failed.patch
+@@ -0,0 +1,87 @@
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Subject: [PATCH] wifi: ath11k: don't report firmware-dropped TX frames as failed
++
++When the firmware drops a frame from its TX queue without sending it,
++the TX completion carries a TQM release reason other than FRAME_ACKED,
++and ath11k_dp_tx_complete_msdu() reports it to mac80211 as an unacked
++frame. mac80211 then counts it as a failed transmission: the station's
++tx_failed and the mesh path metric's failure average go up although
++nothing was lost on the air. With extended TX stats enabled, such a
++completion also overwrites the station's TX rate with the empty rate
++fields of the completion.
++
++On an IPQ8074 AP, three 30 s UDP downloads offered at 650 Mbit/s into a
++40 MHz HE link that carries about 400 Mbit/s raised the station's
++tx_failed by 659146, 826963 and 1020775, matching the datagrams iperf
++lost, while the firmware's PPDU statistics counted no failed MPDU. Every
++one of those completions carried HAL_WBM_TQM_REL_REASON_CMD_REMOVE_MPDU.
++
++Handle the release reasons the way ath12k does since
++commit 50971dc6694c ("wifi: ath12k: drop failed transmitted frames from metric calculation.")
++and free the frames the firmware removed itself (CMD_REMOVE_MPDU,
++CMD_REMOVE_AGED_FRAMES, and CMD_REMOVE_TX of a frame that expected an
++ACK) with ieee80211_free_txskb() instead of reporting a TX status,
++before the extended TX stats are updated. With the change, three runs
++of the same download left tx_failed unchanged; TCP and UDP throughput
++stayed within the run-to-run spread of the runs without it.
++
++Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.9.0.1-02146-QCAHKSWPL_SILICONZ-1
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath11k/dp_tx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
++@@ -586,22 +586,39 @@ static void ath11k_dp_tx_complete_msdu(s
++ 	/* skip tx rate update from ieee80211_status*/
++ 	info->status.rates[0].idx = -1;
++ 
++-	if (ts->status == HAL_WBM_TQM_REL_REASON_FRAME_ACKED &&
++-	    !(info->flags & IEEE80211_TX_CTL_NO_ACK)) {
++-		info->flags |= IEEE80211_TX_STAT_ACK;
++-		info->status.ack_signal = ts->ack_rssi;
+++	switch (ts->status) {
+++	case HAL_WBM_TQM_REL_REASON_FRAME_ACKED:
+++		if (!(info->flags & IEEE80211_TX_CTL_NO_ACK)) {
+++			info->flags |= IEEE80211_TX_STAT_ACK;
+++			info->status.ack_signal = ts->ack_rssi;
++ 
++-		if (!test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
++-			      ab->wmi_ab.svc_map))
++-			info->status.ack_signal += ath11k_noise_floor(ar, 0);
+++			if (!test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
+++				      ab->wmi_ab.svc_map))
+++				info->status.ack_signal += ath11k_noise_floor(ar, 0);
++ 
++-		info->status.flags |= IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
+++			info->status.flags |= IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
+++		}
+++		break;
+++	case HAL_WBM_TQM_REL_REASON_CMD_REMOVE_TX:
+++		if (info->flags & IEEE80211_TX_CTL_NO_ACK) {
+++			info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
+++			break;
+++		}
+++		fallthrough;
+++	case HAL_WBM_TQM_REL_REASON_CMD_REMOVE_MPDU:
+++	case HAL_WBM_TQM_REL_REASON_CMD_REMOVE_AGED_FRAMES:
+++		/* The firmware dropped the frame itself (for example when the
+++		 * peer's queue was full); it was not lost on the air, so do
+++		 * not report it to mac80211 as a failed transmission.
+++		 */
+++		ieee80211_free_txskb(ar->hw, msdu);
+++		return;
+++	default:
+++		ath11k_dbg(ab, ATH11K_DBG_DP_TX, "tx frame is not acked status %d\n",
+++			   ts->status);
+++		break;
++ 	}
++ 
++-	if (ts->status == HAL_WBM_TQM_REL_REASON_CMD_REMOVE_TX &&
++-	    (info->flags & IEEE80211_TX_CTL_NO_ACK))
++-		info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
++-
++ 	if (unlikely(ath11k_debugfs_is_extd_tx_stats_enabled(ar)) ||
++ 	    ab->hw_params.single_pdev_only) {
++ 		if (ts->flags & HAL_TX_STATUS_FLAGS_FIRST_MSDU) {
+-- 
+2.43.0
+
