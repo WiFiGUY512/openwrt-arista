@@ -19,7 +19,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/kernel/mac80211/Makefile              |   2 +-
  ...35-byte-A-MSDUs-on-2-GHz-only-radios.patch | 104 ++++++++++++++++++
  2 files changed, 105 insertions(+), 1 deletion(-)
- create mode 100644 package/kernel/mac80211/patches/ath11k/126-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
 index 1b54db9..1618383 100644
@@ -34,11 +34,11 @@ index 1b54db9..1618383 100644
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
-diff --git a/package/kernel/mac80211/patches/ath11k/126-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch b/package/kernel/mac80211/patches/ath11k/126-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
+diff --git a/package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch b/package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
 new file mode 100644
 index 0000000..821e02f
 --- /dev/null
-+++ b/package/kernel/mac80211/patches/ath11k/126-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
++++ b/package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
 @@ -0,0 +1,104 @@
 +From 2efef4aa1d1f5cf08a9978802b8b432055bdb364 Mon Sep 17 00:00:00 2001
 +From: Christopher Griffin <christophergriffin05@gmail.com>

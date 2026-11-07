@@ -19,7 +19,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/kernel/mac80211/Makefile              |   2 +-
  ...CE-interrupt-enable-register-updates.patch | 107 ++++++++++++++++++
  2 files changed, 108 insertions(+), 1 deletion(-)
- create mode 100644 package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
 index 1618383..9cfc2d1 100644
@@ -34,11 +34,11 @@ index 1618383..9cfc2d1 100644
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
-diff --git a/package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch b/package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
+diff --git a/package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch b/package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
 new file mode 100644
 index 0000000..6dab604
 --- /dev/null
-+++ b/package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
++++ b/package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
 @@ -0,0 +1,107 @@
 +From 9543ffb114c7f1744268198118c05d6cc87184e6 Mon Sep 17 00:00:00 2001
 +From: Christopher Griffin <christophergriffin05@gmail.com>
