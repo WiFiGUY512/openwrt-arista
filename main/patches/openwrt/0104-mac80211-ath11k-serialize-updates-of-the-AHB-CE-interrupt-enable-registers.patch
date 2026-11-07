@@ -1,0 +1,149 @@
+From e9739e46ef4672a65cfa6f0026fb9b1a05bb0cf5 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 7 Nov 2026 01:01:21 -0600
+Subject: [PATCH] mac80211: ath11k: serialize updates of the AHB CE interrupt
+ enable registers
+
+B166: ath11k_ahb_ce_irq_enable/disable update the CE interrupt enable
+registers, which all CEs share, with an unlocked read-modify-write from
+each CE's interrupt handler and tasklet. With the CE interrupts on more
+than one CPU (irqbalance, or by hand) one CE's enable bit gets lost and
+that CE never interrupts again: on a C-360 with CE1 moved to CPU3, WMI
+timed out 14 s later, the Q6 firmware asserted in hif_ce.c three times
+and the third recovery ended in an oops and a reboot. Take a spinlock
+around the updates. Going upstream. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |   2 +-
+ ...CE-interrupt-enable-register-updates.patch | 107 ++++++++++++++++++
+ 2 files changed, 108 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 1618383..9cfc2d1 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=36
++PKG_RELEASE:=37
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch b/package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
+new file mode 100644
+index 0000000..6dab604
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/127-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
+@@ -0,0 +1,107 @@
++From 9543ffb114c7f1744268198118c05d6cc87184e6 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 7 Nov 2026 00:57:22 -0600
++Subject: [PATCH] wifi: ath11k: serialize updates of the AHB CE interrupt
++ enable registers
++
++ath11k_ahb_ce_irq_enable() and ath11k_ahb_ce_irq_disable() set or clear
++a CE's bits in the CE interrupt enable registers with a read-modify-
++write. All CEs share these registers, and the updates run without a
++lock from each CE's interrupt handler (disable) and tasklet (enable).
++
++While all CE interrupts are handled on one CPU, this does no harm: a
++handler that runs in the middle of a tasklet's update only clears a
++bit, and the tasklet's write can at worst enable that CE again early.
++Once the CE interrupts are spread over CPUs, by irqbalance or by hand,
++two CPUs can update a register at the same time and one CE's enable
++bit is lost. That CE never interrupts again.
++
++On an IPQ8074 AP, moving the CE1 interrupt to another CPU under load
++made WMI commands time out 14 seconds later ("failed to request fw
++stats: -110"). The firmware then asserted in hif_ce.c, and after each
++recovery the same happened again; the third recovery ended in a kernel
++oops.
++
++Take a spinlock around the updates.
++
++Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.9.0.1-02146-QCAHKSWPL_SILICONZ-1
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/ahb.c | 9 +++++++++
++ drivers/net/wireless/ath/ath11k/ahb.h | 2 ++
++ 2 files changed, 11 insertions(+)
++
++--- a/drivers/net/wireless/ath/ath11k/ahb.c
+++++ b/drivers/net/wireless/ath/ath11k/ahb.c
++@@ -283,15 +283,18 @@ static void ath11k_ahb_clearbit32(struct
++ 
++ static void ath11k_ahb_ce_irq_enable(struct ath11k_base *ab, u16 ce_id)
++ {
+++	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
++ 	const struct ce_attr *ce_attr;
++ 	const struct ce_ie_addr *ce_ie_addr = ab->hw_params.ce_ie_addr;
++ 	u32 ie1_reg_addr, ie2_reg_addr, ie3_reg_addr;
+++	unsigned long flags;
++ 
++ 	ie1_reg_addr = ce_ie_addr->ie1_reg_addr;
++ 	ie2_reg_addr = ce_ie_addr->ie2_reg_addr;
++ 	ie3_reg_addr = ce_ie_addr->ie3_reg_addr;
++ 
++ 	ce_attr = &ab->hw_params.host_ce_config[ce_id];
+++	spin_lock_irqsave(&ab_ahb->ce_ie_lock, flags);
++ 	if (ce_attr->src_nentries)
++ 		ath11k_ahb_setbit32(ab, ce_id, ie1_reg_addr);
++ 
++@@ -300,19 +303,23 @@ static void ath11k_ahb_ce_irq_enable(str
++ 		ath11k_ahb_setbit32(ab, ce_id + CE_HOST_IE_3_SHIFT,
++ 				    ie3_reg_addr);
++ 	}
+++	spin_unlock_irqrestore(&ab_ahb->ce_ie_lock, flags);
++ }
++ 
++ static void ath11k_ahb_ce_irq_disable(struct ath11k_base *ab, u16 ce_id)
++ {
+++	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
++ 	const struct ce_attr *ce_attr;
++ 	const struct ce_ie_addr *ce_ie_addr = ab->hw_params.ce_ie_addr;
++ 	u32 ie1_reg_addr, ie2_reg_addr, ie3_reg_addr;
+++	unsigned long flags;
++ 
++ 	ie1_reg_addr = ce_ie_addr->ie1_reg_addr;
++ 	ie2_reg_addr = ce_ie_addr->ie2_reg_addr;
++ 	ie3_reg_addr = ce_ie_addr->ie3_reg_addr;
++ 
++ 	ce_attr = &ab->hw_params.host_ce_config[ce_id];
+++	spin_lock_irqsave(&ab_ahb->ce_ie_lock, flags);
++ 	if (ce_attr->src_nentries)
++ 		ath11k_ahb_clearbit32(ab, ce_id, ie1_reg_addr);
++ 
++@@ -321,6 +328,7 @@ static void ath11k_ahb_ce_irq_disable(st
++ 		ath11k_ahb_clearbit32(ab, ce_id + CE_HOST_IE_3_SHIFT,
++ 				      ie3_reg_addr);
++ 	}
+++	spin_unlock_irqrestore(&ab_ahb->ce_ie_lock, flags);
++ }
++ 
++ static void ath11k_ahb_sync_ce_irqs(struct ath11k_base *ab)
++@@ -1222,6 +1230,7 @@ static int ath11k_ahb_probe(struct platf
++ 	}
++ 
++ 	ab->hif.ops = hif_ops;
+++	spin_lock_init(&ath11k_ahb_priv(ab)->ce_ie_lock);
++ 	ab->pdev = pdev;
++ 	ab->hw_rev = hw_rev;
++ 	ab->userpd_id = userpd_id;
++--- a/drivers/net/wireless/ath/ath11k/ahb.h
+++++ b/drivers/net/wireless/ath/ath11k/ahb.h
++@@ -23,6 +23,8 @@ struct ath11k_base;
++ 
++ struct ath11k_ahb {
++ 	struct rproc *tgt_rproc;
+++	/* protects the CE interrupt enable registers, shared by all CEs */
+++	spinlock_t ce_ie_lock;
++ 	struct {
++ 		struct device *dev;
++ 		struct iommu_domain *iommu_domain;
