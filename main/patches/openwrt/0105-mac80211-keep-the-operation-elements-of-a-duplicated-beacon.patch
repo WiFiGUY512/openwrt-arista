@@ -1,0 +1,118 @@
+From 3c22fa2b43f85b1f934680cc5f9a8a8f0238b60a Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 7 Nov 2026 02:17:18 -0600
+Subject: [PATCH] mac80211: keep the operation elements of a duplicated beacon
+
+B165: since c9b62ab79133 mac80211 derives the AP's HE-and-lower
+bandwidth from the beacon's operation elements, but cfg80211_beacon_dup()
+drops the pointers to them, so the beacon installed when a channel
+switch (or a BSS color change) completes made every station 20 MHz until
+hostapd's next beacon update. ath11k passed each transient on to its
+firmware; once (C-360, CSA 80 -> 40) a client stayed at 20 MHz until it
+reassociated. Every RRM channel move did it. Point the copy's operation
+element pointers into its tail. Tested on C360-AP: no update on a
+same-width CSA, one per station on 40 -> 80 -> 40. Going upstream.
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...operation-elements-of-a-duplicated-b.patch | 75 +++++++++++++++++++
+ 2 files changed, 76 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 9cfc2d1..d9c1b09 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=37
++PKG_RELEASE:=38
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch b/package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch
+new file mode 100644
+index 0000000..c082841
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch
+@@ -0,0 +1,75 @@
++From 9bde0464ffe73f3ceb37cadbfbb318f984c91366 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 7 Nov 2026 02:17:18 -0600
++Subject: [PATCH] wifi: mac80211: keep the operation elements of a duplicated
++ beacon
++
++Since commit c9b62ab79133 ("wifi: mac80211: fix per-station PHY
++capability bandwidth"), ieee80211_assign_beacon() derives the AP's HE
++and lower bandwidth from the HT, VHT and HE operation elements of the
++beacon, and updates every station when it changes. nl80211 finds those
++elements in the beacon tail and passes pointers to them, but
++cfg80211_beacon_dup() doesn't set them in the copy.
++
++mac80211 installs such a copy when a channel switch or a BSS color
++change completes. With no operation elements, the bandwidth comes out
++as 20 MHz and every station is set to 20 MHz, until hostapd's next
++beacon update sets it back.
++
++On an IPQ8074 AP with ath11k, every channel switch, also one to the
++same width, made ath11k send the firmware a 20 MHz peer bandwidth and
++phymode for each station and the right ones about 10 ms later. Once,
++after a switch from 80 to 40 MHz, the AP kept sending to a client at
++20 MHz until it reassociated.
++
++Point the operation element pointers of the copy into its tail.
++
++With the change, on the same AP, a channel switch at the same width
++left the stations' bandwidth alone, and a switch from 40 to 80 MHz and
++back updated each station once, to 80 and then to 40 MHz.
++
++Fixes: c9b62ab79133 ("wifi: mac80211: fix per-station PHY capability bandwidth")
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ net/mac80211/cfg.c | 22 ++++++++++++++++++++++
++ 1 file changed, 22 insertions(+)
++
++--- a/net/mac80211/cfg.c
+++++ b/net/mac80211/cfg.c
++@@ -4301,6 +4301,18 @@ static void ieee80211_end_cac(struct wip
++ 	}
++ }
++ 
+++static const void *
+++ieee80211_dup_tail_elem(const struct cfg80211_beacon_data *old,
+++			const struct cfg80211_beacon_data *new, const void *elem)
+++{
+++	const u8 *pos = elem;
+++
+++	if (!pos || pos < old->tail || pos >= old->tail + old->tail_len)
+++		return NULL;
+++
+++	return new->tail + (pos - old->tail);
+++}
+++
++ static struct cfg80211_beacon_data *
++ cfg80211_beacon_dup(struct cfg80211_beacon_data *beacon)
++ {
++@@ -4354,6 +4366,16 @@ cfg80211_beacon_dup(struct cfg80211_beac
++ 		new_beacon->tail = pos;
++ 		memcpy(pos, beacon->tail, beacon->tail_len);
++ 		pos += beacon->tail_len;
+++
+++		/* nl80211 found the operation elements in the tail */
+++		new_beacon->ht_oper = ieee80211_dup_tail_elem(beacon, new_beacon,
+++							      beacon->ht_oper);
+++		new_beacon->vht_oper = ieee80211_dup_tail_elem(beacon, new_beacon,
+++							       beacon->vht_oper);
+++		new_beacon->he_oper = ieee80211_dup_tail_elem(beacon, new_beacon,
+++							      beacon->he_oper);
+++		new_beacon->eht_oper = ieee80211_dup_tail_elem(beacon, new_beacon,
+++							       beacon->eht_oper);
++ 	}
++ 	if (beacon->beacon_ies_len) {
++ 		new_beacon->beacon_ies_len = beacon->beacon_ies_len;
