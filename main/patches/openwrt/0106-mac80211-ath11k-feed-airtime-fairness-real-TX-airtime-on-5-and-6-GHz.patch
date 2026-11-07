@@ -1,0 +1,232 @@
+From 8cdc8583e345834a8fa19d4a4692481520bfc736 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 7 Nov 2026 17:48:41 -0600
+Subject: [PATCH] mac80211: ath11k: feed airtime fairness real TX airtime on 5
+ and 6 GHz
+
+B167: ath11k never reported airtime to mac80211, so airtime fairness
+was a no-op on every ath11k radio. ath11k/983 registers each PPDU's TX
+airtime from the HTT PPDU stats, 984 hands frames ath11k freed on
+REINJ/INSPECT completions and in crash recovery back to mac80211, and
+985 (port policy) feeds the airtime on 5 and 6 GHz only: no airtime
+fairness on 2.4 GHz, Griff 2026-11-07. AQL (NL80211_EXT_FEATURE_AQL)
+stays off: on the C-360's 6 GHz radio at 160 MHz it cost 22-44% and
+decayed under load. C360-AP test of 983+984 (2026-11-07): one client
+1777 vs 1672 Mbit/s, two clients 1540/1524 vs 1569/1566, ping p95
+under two-client load 42-50 / 31-44 vs 61 / 56-77 ms. 983 and 984 go
+upstream. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...ath11k-report-TX-airtime-to-mac80211.patch | 69 +++++++++++++++++++
+ ...and-freed-TX-frames-back-to-mac80211.patch | 69 +++++++++++++++++++
+ ...airtime-fairness-on-5-and-6-GHz-only.patch | 33 +++++++++
+ 4 files changed, 172 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
+ create mode 100644 package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index d9c1b09..844fad6 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=38
++PKG_RELEASE:=39
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch b/package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch
+new file mode 100644
+index 0000000..a1c386d
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch
+@@ -0,0 +1,69 @@
++From be71a4abf45eb1352862721d9e854c0c52031b28 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 7 Nov 2026 17:45:26 -0600
++Subject: [PATCH] wifi: ath11k: report TX airtime to mac80211
++
++mac80211's airtime fairness schedules a station's TX queues by the
++airtime the driver reports with ieee80211_sta_register_airtime().
++ath11k never reports any, so on every ath11k radio each station's
++deficit stays where it started and the scheduler falls back to round
++robin: the station's airtime file in debugfs reads "TX: 0 us" however
++much it sends, though airtime_flags has TX and RX set.
++
++The firmware reports each PPDU's frame exchange duration in the HTT
++PPDU stats (fes_duration_us), and ath11k_update_per_peer_tx_stats()
++already adds it to arsta->tx_duration for the station dump. Register it
++with mac80211 as well, as the station's TX airtime on the PPDU's TID,
++split evenly among the users of an MU PPDU. PPDUs without a QoS TID
++are skipped, as the peer stats skip them, and the call is made after
++base_lock is dropped, since mac80211 takes its own active_txq_lock.
++ath10k (htt_rx.c) and mt76 feed mac80211 the same way.
++
++On an IPQ8074 AP with a QCN9074 6 GHz radio at 160 MHz, with this and
++the next patch: each station's airtime now accrues (50 s and 20 s of TX
++for two clients under load, deficits moving), one client's TCP download
++ran 1777 Mbit/s against 1672 before (means of 6 and 12 runs of 30 s),
++two clients together 1540 and 1524 against 1569 and 1566, and the 95th
++percentile ping under the two-client load fell from 61 to 42-50 ms for
++one client and from 56-77 to 31-44 ms for the other.
++
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.9.0.1-02146-QCAHKSWPL_SILICONZ-1
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/dp_rx.c | 9 ++++++++-
++ 1 file changed, 8 insertions(+), 1 deletion(-)
++
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -1380,7 +1380,7 @@ ath11k_update_per_peer_tx_stats(struct a
++ 	u8 flags, mcs, nss, bw, sgi, dcm, rate_idx = 0;
++ 	u32 succ_bytes = 0;
++ 	u16 rate = 0, succ_pkts = 0;
++-	u32 tx_duration = 0;
+++	u32 tx_duration = 0, airtime = 0;
++ 	u8 tid = HTT_PPDU_STATS_NON_QOS_TID;
++ 	bool is_ampdu = false;
++ 
++@@ -1496,6 +1496,9 @@ ath11k_update_per_peer_tx_stats(struct a
++ 	 * So skip peer stats update for mgmt packets.
++ 	 */
++ 	if (tid < HTT_PPDU_STATS_NON_QOS_TID) {
+++		/* the users of an MU PPDU share its frame exchange */
+++		airtime = tx_duration / max_t(u8, common->num_users, 1);
+++
++ 		memset(peer_stats, 0, sizeof(*peer_stats));
++ 		peer_stats->succ_pkts = succ_pkts;
++ 		peer_stats->succ_bytes = succ_bytes;
++@@ -1510,6 +1513,10 @@ ath11k_update_per_peer_tx_stats(struct a
++ 	}
++ 
++ 	spin_unlock_bh(&ab->base_lock);
+++
+++	if (airtime)
+++		ieee80211_sta_register_airtime(sta, tid, airtime, 0);
+++
++ 	rcu_read_unlock();
++ }
++ 
+diff --git a/package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch b/package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
+new file mode 100644
+index 0000000..524574a
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
+@@ -0,0 +1,69 @@
++From c436e0daf9c2a549cb7d3d6679700379abbf701a Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 7 Nov 2026 17:45:26 -0600
++Subject: [PATCH] wifi: ath11k: hand freed TX frames back to mac80211
++
++Two paths free frames that mac80211 handed to ath11k with
++dev_kfree_skb_any(): ath11k_dp_tx_free_txbuf(), for TX completions the
++firmware releases with REINJ or INSPECT status, and
++ath11k_dp_tx_pending_cleanup(), which frees every frame still in flight
++when the datapath is torn down, also during firmware crash recovery,
++when mac80211 keeps its stations. mac80211 never learns what became of
++those frames: one that asked for a TX status (a control port or
++management frame with an ACK cookie) gets no report, and accounting
++mac80211 keeps per frame, such as the pending airtime of AQL, is never
++returned.
++
++Free them with ieee80211_free_txskb(), which reports each as dropped.
++In the pending cleanup do so only while ATH11K_FLAG_CRASH_FLUSH is set;
++outside a recovery the hw may already be unregistered, so those frames
++are freed as before.
++
++Tested-on: QCN9074 hw1.0 PCI WLAN.HK.2.5.r4-00683-QCAHKSWPL_SILICONZ-1
++Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.9.0.1-02146-QCAHKSWPL_SILICONZ-1
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/dp.c    | 12 +++++++++---
++ drivers/net/wireless/ath/ath11k/dp_tx.c |  4 ++--
++ 2 files changed, 11 insertions(+), 5 deletions(-)
++
++--- a/drivers/net/wireless/ath/ath11k/dp.c
+++++ b/drivers/net/wireless/ath/ath11k/dp.c
++@@ -1013,11 +1013,17 @@ static int ath11k_dp_tx_pending_cleanup(
++ {
++ 	struct ath11k_base *ab = ctx;
++ 	struct sk_buff *msdu = skb;
+++	struct ath11k_skb_cb *skb_cb = ATH11K_SKB_CB(msdu);
++ 
++-	dma_unmap_single(ab->dev, ATH11K_SKB_CB(msdu)->paddr, msdu->len,
++-			 DMA_TO_DEVICE);
+++	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
++ 
++-	dev_kfree_skb_any(msdu);
+++	/* In a crash recovery mac80211 keeps its stations: hand the frames
+++	 * back, so that their TX status and pending airtime are reported.
+++	 */
+++	if (skb_cb->ar && test_bit(ATH11K_FLAG_CRASH_FLUSH, &ab->dev_flags))
+++		ieee80211_free_txskb(skb_cb->ar->hw, msdu);
+++	else
+++		dev_kfree_skb_any(msdu);
++ 
++ 	return 0;
++ }
++--- a/drivers/net/wireless/ath/ath11k/dp_tx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
++@@ -303,11 +303,11 @@ static void ath11k_dp_tx_free_txbuf(stru
++ 	}
++ 
++ 	skb_cb = ATH11K_SKB_CB(msdu);
+++	ar = ab->pdevs[mac_id].ar;
++ 
++ 	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
++-	dev_kfree_skb_any(msdu);
+++	ieee80211_free_txskb(ar->hw, msdu);
++ 
++-	ar = ab->pdevs[mac_id].ar;
++ 	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
++ 		wake_up(&ar->dp.tx_empty_waitq);
++ }
+diff --git a/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch b/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch
+new file mode 100644
+index 0000000..f957329
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch
+@@ -0,0 +1,33 @@
++From db86ee05fa45858de0b53b3b8caa983181eef083 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 7 Nov 2026 17:45:26 -0600
++Subject: [PATCH] wifi: ath11k: feed airtime fairness on 5 and 6 GHz only
++
++Arista port policy, not for upstream: register TX airtime with mac80211
++(previous patch) only for stations on a 5 or 6 GHz vdev. Without
++registered airtime a station's deficit never falls, so mac80211 keeps
++scheduling 2.4 GHz stations round robin, as before airtime was fed at
++all. The owner of these APs wants no airtime fairness on 2.4 GHz, where
++slow clients make it lag.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/dp_rx.c | 6 +++++-
++ 1 file changed, 5 insertions(+), 1 deletion(-)
++
++--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
+++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
++@@ -1514,7 +1514,11 @@ ath11k_update_per_peer_tx_stats(struct a
++ 
++ 	spin_unlock_bh(&ab->base_lock);
++ 
++-	if (airtime)
+++	/* Arista port policy: airtime fairness on 5 and 6 GHz only; 2.4 GHz
+++	 * stations stay on plain round robin.
+++	 */
+++	if (airtime && arsta->arvif->chanctx.def.chan &&
+++	    arsta->arvif->chanctx.def.chan->band != NL80211_BAND_2GHZ)
++ 		ieee80211_sta_register_airtime(sta, tid, airtime, 0);
++ 
++ 	rcu_read_unlock();
