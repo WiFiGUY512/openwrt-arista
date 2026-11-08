@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 64fdfcf86e1f34fbf5ae2814e8041ccfdbb297cf Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:34:49 -0500
-Subject: [PATCH 48/66] hostapd: keep the channel of a forced ubus channel
- switch on an ACS radio
+Subject: [PATCH] hostapd: keep the channel of a forced ubus channel switch on
+ an ACS radio
 
 switch_chan with force falls back to restarting the interface on the
 new channel when the CSA fails (e.g. a DFS target). On a radio with an
@@ -22,7 +22,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 4 insertions(+), 1 deletion(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index 532fd5239b..de7d4ce1ac 100644
+index 5246248abf..ce8ceb25b8 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@

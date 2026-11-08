@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From bd9515b8b7a0d3a026001906adc1b3c52fa14273 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 19 Oct 2026 14:19:01 -0500
-Subject: [PATCH 15/66] ipq40xx: w-118: light the radio LEDs
+Subject: [PATCH] ipq40xx: w-118: light the radio LEDs
 
 The 2.4 GHz, 5 GHz and scanning-radio LEDs had no trigger. Phy numbers
 follow the order the radios were first found in, so board.d cannot

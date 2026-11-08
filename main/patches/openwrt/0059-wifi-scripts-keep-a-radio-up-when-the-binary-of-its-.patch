@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e587d857258101b99c7447ef59b7041b2c0d8f0c Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 02:11:38 -0600
-Subject: [PATCH 55/66] wifi-scripts: keep a radio up when the binary of its
- process is replaced
+Subject: [PATCH] wifi-scripts: keep a radio up when the binary of its process
+ is replaced
 
 netifd checks every second that each process a radio's setup registered
 (hostapd, wpa_supplicant) is still running, by comparing /proc/<pid>/exe

@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 4a4978a432a24f9b542737d292442d48427758c5 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Tue, 27 Oct 2026 10:00:00 -0500
-Subject: [PATCH 28/66] procd, base-files: keep the watchdog armed through a
+Subject: [PATCH] procd, base-files: keep the watchdog armed through a
  sysupgrade's reboot
 
 During a sysupgrade, upgraded (PID 1) feeds the watchdog while the
@@ -64,7 +64,7 @@ index a768abfb27..26d007ccc8 100644
  }
  
 diff --git a/package/system/procd/Makefile b/package/system/procd/Makefile
-index 4e56576c7f..d9256e376f 100644
+index 1a6754b48a..53a2a59d5a 100644
 --- a/package/system/procd/Makefile
 +++ b/package/system/procd/Makefile
 @@ -8,7 +8,7 @@

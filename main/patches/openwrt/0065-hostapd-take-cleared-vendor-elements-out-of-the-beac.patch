@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From af30d648bae0e792794fa75091db464f8a594b2a Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 04:30:30 -0600
-Subject: [PATCH 61/66] hostapd: take cleared vendor elements out of the
- beacons
+Subject: [PATCH] hostapd: take cleared vendor elements out of the beacons
 
 ubus set_vendor_elements updates the beacons after it sets new
 elements, but clearing them (an empty string) only freed the stored
@@ -24,7 +23,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index 6cdf9134ab..fde88c1da4 100644
+index b46d451ffc..b54dfa99b8 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@

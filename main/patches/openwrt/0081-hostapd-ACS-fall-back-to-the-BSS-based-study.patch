@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b0963e3e13487357cf06e34769c60df5f19f64f3 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 4 Nov 2026 02:25:00 -0600
 Subject: [PATCH] hostapd: ACS: fall back to the BSS-based study
@@ -19,9 +19,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/network/services/hostapd/Makefile     |  2 +-
  ...based-study-when-the-survey-finds-no.patch | 67 +++++++++++++++++++
  2 files changed, 68 insertions(+), 1 deletion(-)
+ create mode 100644 package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index c14392e..ffaa096 100644
+index 835439bef4..0819538c1c 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
@@ -35,7 +36,7 @@ index c14392e..ffaa096 100644
  PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch b/package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch
 new file mode 100644
-index 0000000..8f1abe4
+index 0000000000..eb5c6dc63f
 --- /dev/null
 +++ b/package/network/services/hostapd/patches/889-ACS-fall-back-to-the-BSS-based-study-when-the-survey-finds-no.patch
 @@ -0,0 +1,67 @@
@@ -107,4 +108,5 @@ index 0000000..8f1abe4
 + 		wpa_printf(MSG_ERROR, "ACS: Failed to compute ideal channel");
 + 		err = -1;
 -- 
-2.52.0
+2.43.0
+

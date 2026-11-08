@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 50b1bf91eb9e8cd468f96f358c27e9b437364075 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 4 Nov 2026 11:43:40 -0600
 Subject: [PATCH] mac80211: ath11k: drop the full monitor state left from
@@ -28,21 +28,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index e9d165f..f4024cd 100644
+index ba14dee5d2..3866d3fb31 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=27
-+PKG_RELEASE:=28
+-PKG_RELEASE:=26
++PKG_RELEASE:=27
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch b/package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch
 new file mode 100644
-index 0000000..e5bba93
+index 0000000000..e5bba93ac0
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/118-wifi-ath11k-drop-full-monitor-state-left-from-before-a-stop.patch
 @@ -0,0 +1,172 @@

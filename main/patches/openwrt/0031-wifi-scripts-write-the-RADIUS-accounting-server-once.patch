@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 730d818f4dcc559b5a75f55d62cf299cf61e81a1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 01:20:00 -0500
-Subject: [PATCH 29/66] wifi-scripts: write the RADIUS accounting server once
+Subject: [PATCH] wifi-scripts: write the RADIUS accounting server once
 
 iface_accounting_server() ran twice for an 802.1X BSS without an
 internal EAP server: inside iface_auth_type()'s eap branch, next to

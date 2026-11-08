@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From bb5a5fd82966fed7d4fbb071d167ba064ac2f40e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 11:31:17 -0600
-Subject: [PATCH 63/66] hostapd: answer a repeated FT Authentication Request
- with the same response
+Subject: [PATCH] hostapd: answer a repeated FT Authentication Request with the
+ same response
 
 A STA that gets no FT Authentication Response within 100 ms sends its
 request again. hostapd took the repeat for a new exchange, with a new
@@ -28,7 +28,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/network/services/hostapd/patches/075-FT-answer-a-repeated-FT-Authentication-Request-with-the-same-response.patch
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index fde88c1da4..fc919bbbf3 100644
+index b54dfa99b8..827f6c2ca0 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@

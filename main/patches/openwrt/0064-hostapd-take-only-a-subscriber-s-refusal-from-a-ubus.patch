@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 4c2d9f10a6a42caf9663dc145d3744c9d9894194 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 03:57:17 -0600
-Subject: [PATCH 60/66] hostapd: take only a subscriber's refusal from a ubus
- notify response
+Subject: [PATCH] hostapd: take only a subscriber's refusal from a ubus notify
+ response
 
 With notify_response set (usteer sets it), hostapd sends each probe,
 authentication and association as a ubus notify, waits for the
@@ -31,7 +31,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index de7d4ce1ac..6cdf9134ab 100644
+index ce8ceb25b8..b46d451ffc 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@

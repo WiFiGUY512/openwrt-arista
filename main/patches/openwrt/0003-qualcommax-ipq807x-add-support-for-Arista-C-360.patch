@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b1c497a0802b6ea8fab0d2c0e5fef75ccce97f7c Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 03/66] qualcommax: ipq807x: add support for Arista C-360
+Subject: [PATCH] qualcommax: ipq807x: add support for Arista C-360
 
 Arista C-360 is a Wi-Fi 6E enterprise access point with four radios and
 two 10 GbE ports that both take PoE.
@@ -727,7 +727,7 @@ index 0000000000..62ee25aae2
 +	nvmem-cell-names = "calibration";
 +};
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 94d6e6bd2d..7c15e17e9e 100644
+index cd959ad4e6..842b8965f1 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
 @@ -78,6 +78,20 @@ define Device/arcadyan_aw1000

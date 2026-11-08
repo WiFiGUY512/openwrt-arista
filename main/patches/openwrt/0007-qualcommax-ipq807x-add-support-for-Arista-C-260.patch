@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 94e753a774a5769a08b1587632066f7ee9d33348 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 00:07:16 -0500
-Subject: [PATCH 07/66] qualcommax: ipq807x: add support for Arista C-260
+Subject: [PATCH] qualcommax: ipq807x: add support for Arista C-260
 
 Hardware specification:
 - SoC: Qualcomm IPQ8078A, 4x Cortex-A53 at 2.2 GHz (HK01 reference design)
@@ -619,7 +619,7 @@ index 0000000000..722d02c529
 +	nvmem-cell-names = "calibration";
 +};
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 5af3575700..4e63b2265f 100644
+index 5dcb72ad21..c914e3a863 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
 @@ -78,6 +78,20 @@ define Device/arcadyan_aw1000

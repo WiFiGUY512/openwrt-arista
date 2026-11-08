@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e732121b8076b2fed442345550ca47bb2c0f60a1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 24 Oct 2026 18:00:00 +0000
-Subject: [PATCH 22/66] mac80211: ath11k: the survey of the channel in use
+Subject: [PATCH] mac80211: ath11k: the survey of the channel in use
 
 Two ath11k patches for the survey of the channel a radio is using
 (meant for upstream):
@@ -30,15 +30,15 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/105-wifi-ath11k-report-the-measured-noise-floor-of-the-channel-in-use.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index c37c3be897..d19562b9fc 100644
+index 19e7c577e4..eb01ab45df 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=13
-+PKG_RELEASE:=14
+-PKG_RELEASE:=15
++PKG_RELEASE:=16
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  

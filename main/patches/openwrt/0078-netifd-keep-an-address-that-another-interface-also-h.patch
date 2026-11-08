@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From bfa51858bca654f4a482082da7513c6b7e3649f9 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Tue, 3 Nov 2026 09:00:00 -0600
 Subject: [PATCH] netifd: keep an address that another interface also holds
@@ -29,7 +29,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch
 
 diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
-index bf8c69d..42b6812 100644
+index bf8c69d0bf..42b6812ab5 100644
 --- a/package/network/config/netifd/Makefile
 +++ b/package/network/config/netifd/Makefile
 @@ -1,7 +1,7 @@
@@ -43,7 +43,7 @@ index bf8c69d..42b6812 100644
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
 diff --git a/package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch b/package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch
 new file mode 100644
-index 0000000..8268eee
+index 0000000000..8268eee4d8
 --- /dev/null
 +++ b/package/network/config/netifd/patches/004-interface-ip-keep-an-address-that-another-interface-also-holds.patch
 @@ -0,0 +1,194 @@
@@ -242,5 +242,5 @@ index 0000000..8268eee
 +2.52.0.windows.1
 +
 -- 
-2.52.0.windows.1
+2.43.0
 

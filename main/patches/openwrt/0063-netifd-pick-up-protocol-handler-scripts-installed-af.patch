@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From bbad54a6ace86ea7cec4145239c92dc2dcf71baa Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 03:26:56 -0600
-Subject: [PATCH 59/66] netifd: pick up protocol handler scripts installed
- after the start
+Subject: [PATCH] netifd: pick up protocol handler scripts installed after the
+ start
 
 netifd patch 001 (for upstream), B44: netifd read /lib/netifd/proto
 once at start, so a protocol package installed later (Aeolus installs

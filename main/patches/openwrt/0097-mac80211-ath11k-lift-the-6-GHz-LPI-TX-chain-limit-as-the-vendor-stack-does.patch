@@ -1,4 +1,4 @@
-From b1b03118d34916d37ca5d21a395cc3ddda86773a Mon Sep 17 00:00:00 2001
+From 1a98793e60e82bbbea51d712d85cfe40512b50c3 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 14:38:04 -0600
 Subject: [PATCH] mac80211: ath11k: lift the 6 GHz LPI TX-chain limit as the
@@ -21,21 +21,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/980-wifi-ath11k-lift-the-6-GHz-LPI-TX-chain-limit-as-the-vendor-stack-does.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 019cf51..1f609e8 100644
+index f15deb20d7..d457f82e22 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=32
-+PKG_RELEASE:=33
+-PKG_RELEASE:=31
++PKG_RELEASE:=32
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/980-wifi-ath11k-lift-the-6-GHz-LPI-TX-chain-limit-as-the-vendor-stack-does.patch b/package/kernel/mac80211/patches/ath11k/980-wifi-ath11k-lift-the-6-GHz-LPI-TX-chain-limit-as-the-vendor-stack-does.patch
 new file mode 100644
-index 0000000..0ec2024
+index 0000000000..0ec2024a86
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/980-wifi-ath11k-lift-the-6-GHz-LPI-TX-chain-limit-as-the-vendor-stack-does.patch
 @@ -0,0 +1,89 @@

@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 6d3943993a21e17ab90048e82ff119b8b249fdd8 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 10:08:15 -0500
-Subject: [PATCH 53/66] ucode: update to OpenWrt main's ucode (2026-10-28,
- dfc64d41)
+Subject: [PATCH] ucode: update to OpenWrt main's ucode (2026-10-28, dfc64d41)
 
 Take OpenWrt main's ucode package as of 3e6064bb (ucode dfc64d41, ABI
 20261009, up from b885dd0f of 2026-07-09 and ABI 20230711). It brings

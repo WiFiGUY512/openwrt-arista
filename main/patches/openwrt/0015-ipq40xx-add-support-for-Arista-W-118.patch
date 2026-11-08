@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 7c10dd795ddf7df33ae5152ced7fd68e28b2485e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 19 Oct 2026 14:19:01 -0500
-Subject: [PATCH 13/66] ipq40xx: add support for Arista W-118
+Subject: [PATCH] ipq40xx: add support for Arista W-118
 
 Arista W-118 is a Wi-Fi 5 wall-plate access point with a third radio, a
 1 GbE PoE uplink and three 1 GbE LAN ports.

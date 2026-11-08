@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a79f4058cb1d8924b284f4d977d04bca038bbb16 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:23:09 -0500
-Subject: [PATCH 46/66] ucode: backport two fixes Aeolus works around
+Subject: [PATCH] ucode: backport two fixes Aeolus works around
 
 Both reproduce on the images' ucode (b885dd0f) and are fixed upstream:
 

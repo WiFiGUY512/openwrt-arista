@@ -1,4 +1,4 @@
-From b73ad2f55b152ac51f8a38f0de9e891b68eb7047 Mon Sep 17 00:00:00 2001
+From d715832ec95522aedf7b3a8fb0372455f663ea7c Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 7 Nov 2026 18:01:53 -0600
 Subject: [PATCH] mac80211: ath11k: feed airtime fairness real TX airtime
@@ -27,21 +27,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index d9c1b09..844fad6 100644
+index 63da0da4c1..2e8a406f3e 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=38
-+PKG_RELEASE:=39
+-PKG_RELEASE:=37
++PKG_RELEASE:=38
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch b/package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch
 new file mode 100644
-index 0000000..a1c386d
+index 0000000000..a1c386dd5b
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch
 @@ -0,0 +1,69 @@
@@ -116,7 +116,7 @@ index 0000000..a1c386d
 + 
 diff --git a/package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch b/package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
 new file mode 100644
-index 0000000..524574a
+index 0000000000..524574a95d
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
 @@ -0,0 +1,69 @@
@@ -189,3 +189,6 @@ index 0000000..524574a
 + 	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
 + 		wake_up(&ar->dp.tx_empty_waitq);
 + }
+-- 
+2.43.0
+

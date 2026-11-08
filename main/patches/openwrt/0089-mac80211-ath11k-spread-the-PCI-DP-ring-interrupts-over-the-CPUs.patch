@@ -1,4 +1,4 @@
-From 20a7447558b1afee02a73d03bd4a3dc1bac3db0b Mon Sep 17 00:00:00 2001
+From 875d068fe40b8d53d0494cf66a69bec6ff99bdc9 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 09:45:43 -0600
 Subject: [PATCH] mac80211: ath11k: spread the PCI DP ring interrupts over the
@@ -24,21 +24,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/959-wifi-ath11k-spread-the-PCI-DP-ring-interrupts-over-the-CPUs.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1465dc8..65d092d 100644
+index d63c6d9332..59d532cff8 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=30
-+PKG_RELEASE:=31
+-PKG_RELEASE:=29
++PKG_RELEASE:=30
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/959-wifi-ath11k-spread-the-PCI-DP-ring-interrupts-over-the-CPUs.patch b/package/kernel/mac80211/patches/ath11k/959-wifi-ath11k-spread-the-PCI-DP-ring-interrupts-over-the-CPUs.patch
 new file mode 100644
-index 0000000..5878671
+index 0000000000..5878671df5
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/959-wifi-ath11k-spread-the-PCI-DP-ring-interrupts-over-the-CPUs.patch
 @@ -0,0 +1,75 @@

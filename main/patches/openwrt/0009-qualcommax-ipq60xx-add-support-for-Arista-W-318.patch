@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 827a168876c1c38126850c418a7abc637573a391 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 17 Oct 2026 05:11:50 +0000
-Subject: [PATCH 09/66] qualcommax: ipq60xx: add support for Arista W-318
+Subject: [PATCH] qualcommax: ipq60xx: add support for Arista W-318
 
 Arista W-318 is a Wi-Fi 6E wall-plate access point with a 2.5 GbE PoE
 uplink and three 1 GbE LAN ports.

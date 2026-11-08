@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 83eda167b4122c506ccc1ec8d52d503bc5412458 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 05/66] qualcommax: ipq807x: c-360: copy the vendor QCN9074
- firmware
+Subject: [PATCH] qualcommax: ipq807x: c-360: copy the vendor QCN9074 firmware
 
 The C-360's QCN9074 and QCN9072 cards start only with Arista's own build
 of the QCN9074 firmware (WLAN.HK.2.5.r4). With every public
@@ -29,7 +28,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/12-ath11k-vendor-firmware
 
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index faef12bdf2..5af3575700 100644
+index 6420a495c0..5dcb72ad21 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
 @@ -87,8 +87,9 @@ define Device/arista_c-360

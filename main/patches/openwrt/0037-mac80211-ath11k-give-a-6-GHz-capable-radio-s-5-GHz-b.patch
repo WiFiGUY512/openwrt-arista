@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From db1ff4c54460093924dc3d2203d3284b9c95d767 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 12:05:00 -0500
-Subject: [PATCH 35/66] mac80211: ath11k: give a 6 GHz capable radio's 5 GHz
- band HT and VHT
+Subject: [PATCH] mac80211: ath11k: give a 6 GHz capable radio's 5 GHz band HT
+ and VHT
 
 ath11k patch 108 (for upstream): a QCN9074-family radio covering 5 and
 6 GHz had its 5 GHz band registered with HE but without HT and VHT
@@ -22,7 +22,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/108-wifi-ath11k-give-a-6-GHz-capable-radio-s-5-GHz-band-HT-and-VHT.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 5f323c3ba1..4226722a83 100644
+index 27d1dd7d26..4141d37301 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211

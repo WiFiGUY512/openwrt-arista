@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 97c3863629d9b8d0de648dd69338ad66e490167e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:00:47 -0500
-Subject: [PATCH 43/66] mac80211: ath11k: don't warn when a country leaves a
- radio without channels
+Subject: [PATCH] mac80211: ath11k: don't warn when a country leaves a radio
+ without channels
 
 ath11k patch 112 (for upstream), B107: on a C-360, "iw reg set CA" left
 the 6 GHz-only QCN9074 with no enabled channel, and ath11k's channel
@@ -23,7 +23,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/kernel/mac80211/patches/ath11k/112-wifi-ath11k-don-t-warn-when-a-country-leaves-a-pdev-without-channels.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index ca360f55f4..1c78350dce 100644
+index 89c6e626dd..053348b279 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211

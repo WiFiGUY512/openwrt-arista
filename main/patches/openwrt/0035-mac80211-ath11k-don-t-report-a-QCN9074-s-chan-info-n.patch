@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 5f7deeb2852ec572f485186f79f2ab1f9d2f8bd1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 05:10:00 -0500
-Subject: [PATCH 33/66] mac80211: ath11k: don't report a QCN9074's chan-info
- noise floor
+Subject: [PATCH] mac80211: ath11k: don't report a QCN9074's chan-info noise
+ floor
 
 ath11k patch 107 (for upstream): on the QCN9074 family the noise floor
 in a chan-info START_RESP is a fixed value, about -107 dBm on every
@@ -21,24 +21,10 @@ Bump PKG_RELEASE.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- package/kernel/mac80211/Makefile              |  2 +-
  ...rt-a-QCN9074-s-chan-info-noise-floor.patch | 59 +++++++++++++++++++
- 2 files changed, 60 insertions(+), 1 deletion(-)
+ 1 file changed, 59 insertions(+)
  create mode 100644 package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch
 
-diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 5de442146f..5f323c3ba1 100644
---- a/package/kernel/mac80211/Makefile
-+++ b/package/kernel/mac80211/Makefile
-@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
- 
- PKG_SOURCE_VERSION:=7.2
- PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=17
-+PKG_RELEASE:=18
- PKG_LICENSE:=GPL-2.0-only
- PKG_LICENSE_FILES:=COPYING
- 
 diff --git a/package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch b/package/kernel/mac80211/patches/ath11k/107-wifi-ath11k-don-t-report-a-QCN9074-s-chan-info-noise-floor.patch
 new file mode 100644
 index 0000000000..cd37d78840

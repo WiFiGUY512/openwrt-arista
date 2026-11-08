@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 8ff75d4d6bfe958b0938bb325ed8bdff1bef915e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 04:55:22 -0600
-Subject: [PATCH 62/66] uci: keep packages loaded between batch commands
+Subject: [PATCH] uci: keep packages loaded between batch commands
 
 uci patch 001 (for upstream), B81: uci batch unloaded every package
 after each command, so each command reloaded its package and replayed

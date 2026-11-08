@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 2436c88c3b360bca195aca7a4606b71e1c085dae Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 13:35:00 -0500
-Subject: [PATCH 36/66] mac80211: ath11k: advertise a spatial stream for every
- chain
+Subject: [PATCH] mac80211: ath11k: advertise a spatial stream for every chain
 
 ath11k patch 109 (for upstream): ath11k counted stream i only when bit
 i of the radio's chainmask was set, so a radio whose chainmask is not
@@ -22,7 +21,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/109-wifi-ath11k-advertise-a-spatial-stream-for-every-chain.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 4226722a83..18542ebff3 100644
+index 4141d37301..a14061a91a 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211

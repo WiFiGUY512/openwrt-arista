@@ -1,4 +1,4 @@
-From b0d338214e72f6c4bebbe02a1806c785dc6b0989 Mon Sep 17 00:00:00 2001
+From 2fbab691b76e0d3b5440ca4637ebfa6ae207dcbf Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 04:37:53 -0600
 Subject: [PATCH] mac80211: ath11k: quiet firmware recovery of a monitor radio
@@ -26,21 +26,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 9917a5d..1465dc8 100644
+index 8f267ec551..d63c6d9332 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=29
-+PKG_RELEASE:=30
+-PKG_RELEASE:=28
++PKG_RELEASE:=29
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch b/package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch
 new file mode 100644
-index 0000000..1466a59
+index 0000000000..10d951555f
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/121-wifi-ath11k-don-t-report-a-regulatory-event-skipped-in-recovery.patch
 @@ -0,0 +1,41 @@
@@ -87,7 +87,7 @@ index 0000000..1466a59
 + 
 diff --git a/package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch b/package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch
 new file mode 100644
-index 0000000..7eb664c
+index 0000000000..8645d27452
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/122-wifi-ath11k-don-t-leave-a-monitor-vif-started-when-its-stop-fails.patch
 @@ -0,0 +1,55 @@

@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 2cb89452ecd916f4e422a1294b414fe88a2d9ba1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 15:03:38 -0600
-Subject: [PATCH 65/66] qualcommax: keep a vendor firmware file that is already
- there
+Subject: [PATCH] qualcommax: keep a vendor firmware file that is already there
 
 12-ath11k-vendor-firmware extracts the vendor's amss.bin and m3.bin
 from its system whenever the driver asks for either and finds it

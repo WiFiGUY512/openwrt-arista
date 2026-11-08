@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 9ec0fdd7804c8b02e571be4fd2045284e88e8ba9 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 26 Oct 2026 22:00:00 -0500
-Subject: [PATCH 25/66] treewide: reconnect to ubus when ubusd restarts
+Subject: [PATCH] treewide: reconnect to ubus when ubusd restarts
 
 When ubusd restarts, most of its clients stay off ubus until they are
 restarted themselves: libubus' default connection_lost does nothing
@@ -27,17 +27,16 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  package/network/services/odhcpd/Makefile      |  2 +-
  ...nect-when-ubusd-drops-the-connection.patch | 71 ++++++++++++++++
- package/system/procd/Makefile                 |  2 +-
  ...nd-the-ubus-directory-not-the-socket.patch | 49 +++++++++++
  package/system/rpcd/Makefile                  |  2 +-
  ...nect-when-ubusd-drops-the-connection.patch | 84 +++++++++++++++++++
- 6 files changed, 207 insertions(+), 3 deletions(-)
+ 5 files changed, 206 insertions(+), 2 deletions(-)
  create mode 100644 package/network/services/odhcpd/patches/100-ubus-reconnect-when-ubusd-drops-the-connection.patch
  create mode 100644 package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch
  create mode 100644 package/system/rpcd/patches/100-main-reconnect-when-ubusd-drops-the-connection.patch
 
 diff --git a/package/network/services/odhcpd/Makefile b/package/network/services/odhcpd/Makefile
-index fa382ee440..63393fecd9 100644
+index a02e84a661..e1151894d2 100644
 --- a/package/network/services/odhcpd/Makefile
 +++ b/package/network/services/odhcpd/Makefile
 @@ -8,7 +8,7 @@
@@ -126,19 +125,6 @@ index 0000000000..b5f6047344
 + 
 +-- 
 +2.43.0
-diff --git a/package/system/procd/Makefile b/package/system/procd/Makefile
-index bcbe35d81d..4e56576c7f 100644
---- a/package/system/procd/Makefile
-+++ b/package/system/procd/Makefile
-@@ -8,7 +8,7 @@
- include $(TOPDIR)/rules.mk
- 
- PKG_NAME:=procd
--PKG_RELEASE:=1
-+PKG_RELEASE:=2
- 
- PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL=$(PROJECT_GIT)/project/procd.git
 diff --git a/package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch b/package/system/procd/patches/100-jail-bind-the-ubus-directory-not-the-socket.patch
 new file mode 100644
 index 0000000000..5bb7363e88

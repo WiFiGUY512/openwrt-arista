@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a2bdb88209357d01fdf976c6e6db262f7a3e472c Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 4 Nov 2026 01:25:00 -0600
 Subject: [PATCH] ath10k-ct: quiet a pdev param the firmware does not have
@@ -19,9 +19,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/kernel/ath10k-ct/Makefile             |  2 +-
  ...k-ct-quiet-an-unsupported-pdev-param.patch | 52 +++++++++++++++++++
  2 files changed, 53 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch
 
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
-index 90215eb..5a3a1e1 100644
+index 90215eb5c1..5a3a1e19d5 100644
 --- a/package/kernel/ath10k-ct/Makefile
 +++ b/package/kernel/ath10k-ct/Makefile
 @@ -1,7 +1,7 @@
@@ -35,7 +36,7 @@ index 90215eb..5a3a1e1 100644
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch b/package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch
 new file mode 100644
-index 0000000..fc0c5c4
+index 0000000000..fc0c5c45eb
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/994-ath10k-ct-quiet-an-unsupported-pdev-param.patch
 @@ -0,0 +1,52 @@
@@ -92,4 +93,5 @@ index 0000000..fc0c5c4
 + 
 + 	ret = ath10k_wmi_vdev_up(ar, arvif->vdev_id, arvif->aid, arvif->bssid);
 -- 
-2.52.0
+2.43.0
+

@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e7afc8298a3bc85627eaa2c3f141d973346638ec Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 04/66] qualcommax: ipq807x: c-360: attach the BLE controller
+Subject: [PATCH] qualcommax: ipq807x: c-360: attach the BLE controller
 
 The C-360's Nordic nRF52833 runs a Zephyr HCI UART controller (H:4,
 115200 baud, no flow control) on blsp1_uart3 (/dev/ttyMSM1); its reset
@@ -23,7 +23,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 target/linux/qualcommax/ipq807x/base-files/etc/uci-defaults/03_bluetooth
 
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 7c15e17e9e..faef12bdf2 100644
+index 842b8965f1..6420a495c0 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
 @@ -88,7 +88,7 @@ define Device/arista_c-360

@@ -1,4 +1,4 @@
-From a2672dc1dd0b631614fdfdda2c86895b0e4b7e2b Mon Sep 17 00:00:00 2001
+From 0db542a58c6a68d66c55cd9ad6a8ea029fe10944 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 6 Nov 2026 09:15:06 -0600
 Subject: [PATCH] kernel: keep DHCP out of UDP GRO
@@ -26,7 +26,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 
 diff --git a/target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-GRO.patch b/target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-GRO.patch
 new file mode 100644
-index 0000000..80823c2
+index 0000000000..80823c2d7b
 --- /dev/null
 +++ b/target/linux/generic/hack-6.18/601-net-udp-keep-DHCP-out-of-GRO.patch
 @@ -0,0 +1,44 @@
@@ -74,3 +74,6 @@ index 0000000..80823c2
 + 		if (skb->dev->features & NETIF_F_GRO_FRAGLIST)
 + 			NAPI_GRO_CB(skb)->is_flist = sk ? !udp_test_bit(GRO_ENABLED, sk) : 1;
 + 
+-- 
+2.43.0
+

@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From edf597584130036ee4d1c2a84cd3e5df0c37c64e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 18:00:00 -0600
-Subject: [PATCH 67/67] hostapd: set RSNXE Used in an FT Reassociation Response
- only with an RSNXE
+Subject: [PATCH] hostapd: set RSNXE Used in an FT Reassociation Response only
+ with an RSNXE
 
 hostapd set RSNXE Used in the FTE of an FT Reassociation Response
 whenever sae_pwe was 1 or 2, for any AKM, while the MIC covers an RSNXE
@@ -26,7 +26,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/network/services/hostapd/patches/076-FT-set-RSNXE-Used-in-Reassociation-Response-only-with-an-RSNXE.patch
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index b28ef891c9..c14392e9b7 100644
+index 45be25fee3..835439bef4 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@

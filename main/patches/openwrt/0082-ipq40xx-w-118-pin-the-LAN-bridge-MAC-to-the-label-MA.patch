@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 459d766885e59442f4242bf85474721ea43b58ae Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 4 Nov 2026 03:45:00 -0600
 Subject: [PATCH] ipq40xx: w-118: pin the LAN bridge MAC to the label MAC
@@ -26,7 +26,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  1 file changed, 3 insertions(+)
 
 diff --git a/target/linux/ipq40xx/base-files/etc/board.d/02_network b/target/linux/ipq40xx/base-files/etc/board.d/02_network
-index f0f0566..95aa83d 100644
+index f0f0566f3f..95aa83d689 100644
 --- a/target/linux/ipq40xx/base-files/etc/board.d/02_network
 +++ b/target/linux/ipq40xx/base-files/etc/board.d/02_network
 @@ -192,6 +192,9 @@ ipq40xx_setup_macs()
@@ -40,4 +40,5 @@ index f0f0566..95aa83d 100644
  		local tffsdev=$(find_mtd_chardev "nand-tffs")
  		wan_mac=$(/usr/bin/fritz_tffs_nand -b -d $tffsdev -n macdsl)
 -- 
-2.52.0
+2.43.0
+

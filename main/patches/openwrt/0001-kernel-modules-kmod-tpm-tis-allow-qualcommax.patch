@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From ab80c995d585b1ab44e6fd6300b0a9b7dbd19f97 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 16 Oct 2026 11:51:59 -0500
-Subject: [PATCH 01/66] kernel: modules: kmod-tpm-tis: allow qualcommax
+Subject: [PATCH] kernel: modules: kmod-tpm-tis: allow qualcommax
 
 Some qualcommax boards carry a TPM 2.0 on SPI, as the Arista C-360 (an
 Infineon SLB 9670). tpm_tis_spi needs tpm_tis_core from kmod-tpm-tis.
@@ -13,10 +13,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/package/kernel/linux/modules/other.mk b/package/kernel/linux/modules/other.mk
-index 45f7428706..81eeb6c48f 100644
+index 5f9962f0fc..241c438484 100644
 --- a/package/kernel/linux/modules/other.mk
 +++ b/package/kernel/linux/modules/other.mk
-@@ -1128,7 +1128,7 @@ $(eval $(call KernelPackage,tpm-ftpm-tee))
+@@ -1146,7 +1146,7 @@ $(eval $(call KernelPackage,tpm-ftpm-tee))
  define KernelPackage/tpm-tis
    SUBMENU:=$(OTHER_MENU)
    TITLE:=TPM TIS 1.2 Interface / TPM 2.0 FIFO Interface

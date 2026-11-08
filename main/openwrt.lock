@@ -3,7 +3,7 @@
 # Arista devices were merged (they come from patches/openwrt, the upstream
 # pull requests as they stand).
 OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
-OPENWRT_COMMIT=a5e96c837ead549820867bb83c1ad471e39f5ace
+OPENWRT_COMMIT=7edc67adadb1e2d21ca53b0377086f80224a6cba
 FEED_packages=https://git.openwrt.org/feed/packages.git^50a97173cfafdbb037330f59da753b21a9a0fe59
 FEED_luci=https://git.openwrt.org/project/luci.git^5599f42b0eb861cd0414391fb412b0947b1e4e13
 FEED_routing=https://git.openwrt.org/feed/routing.git^ea8633da9c461a9bdc62a0323439d31180762e03

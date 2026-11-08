@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e8b71c41c521cca77527ac34c1879879a9a72afa Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Tue, 3 Nov 2026 00:47:35 -0600
 Subject: [PATCH] qualcommax: ipq60xx: w-318: stop 5 GHz at channel 165
@@ -14,7 +14,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  1 file changed, 6 insertions(+)
 
 diff --git a/target/linux/qualcommax/dts/ipq6010-w-318.dts b/target/linux/qualcommax/dts/ipq6010-w-318.dts
-index ebed39869fd..9c92dc95062 100644
+index 8a8d75666d..ea5fe30a8f 100644
 --- a/target/linux/qualcommax/dts/ipq6010-w-318.dts
 +++ b/target/linux/qualcommax/dts/ipq6010-w-318.dts
 @@ -542,4 +542,10 @@
@@ -29,5 +29,5 @@ index ebed39869fd..9c92dc95062 100644
 +	ieee80211-freq-limit = <2402000 2482000>, <5170000 5835000>;
  };
 -- 
-2.52.0.windows.1
+2.43.0
 

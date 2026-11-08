@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From db70d7f0d57c9dc0098926e0453f1ec7ab2bddc7 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 30 Oct 2026 17:03:01 -0500
-Subject: [PATCH 39/66] wifi-scripts: forbid spatial reuse when BSS colour is
+Subject: [PATCH] wifi-scripts: forbid spatial reuse when BSS colour is
  disabled
 
 With he_bss_color_enabled off, hostapd.uc and mac80211.sh leave out

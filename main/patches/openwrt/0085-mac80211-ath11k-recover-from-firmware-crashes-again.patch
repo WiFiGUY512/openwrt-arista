@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b580b06651b1a38cc803f93fdd9dd9f2a76baee0 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 01:54:43 -0600
 Subject: [PATCH] mac80211: ath11k: recover from firmware crashes again
@@ -29,21 +29,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index f4024cd..9917a5d 100644
+index 3866d3fb31..8f267ec551 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=28
-+PKG_RELEASE:=29
+-PKG_RELEASE:=27
++PKG_RELEASE:=28
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch b/package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch
 new file mode 100644
-index 0000000..2ce2585
+index 0000000000..2ce2585d71
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/119-wifi-ath11k-don-t-hold-conf_mutex-while-waiting-for-recovery.patch
 @@ -0,0 +1,56 @@
@@ -105,7 +105,7 @@ index 0000000..2ce2585
 + 	case ATH11K_STATE_WEDGED:
 diff --git a/package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch b/package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch
 new file mode 100644
-index 0000000..d0bef81
+index 0000000000..d0bef81748
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/120-wifi-ath11k-don-t-arm-the-scan-timeout-for-a-scan-that-did-not-start.patch
 @@ -0,0 +1,36 @@

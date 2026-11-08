@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 43c4669785a37eebada98e924b15a6e3e999414e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 00:53:34 -0500
-Subject: [PATCH 41/66] ucode: backport the per-call ubus request prototype fix
+Subject: [PATCH] ucode: backport the per-call ubus request prototype fix
 
 Every ubus method call a ucode script serves (hostapd.uc,
 wpa_supplicant.uc, netifd's wireless handlers) set the call's

@@ -1,4 +1,4 @@
-From bb6aad439935f66b6836100af217c629aaf83eb3 Mon Sep 17 00:00:00 2001
+From 6e396f2698fcfa31b377c05020cfa78ef0e61134 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 13:24:35 -0600
 Subject: [PATCH] base-files: leave the service cgroup before stopping it
@@ -38,7 +38,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  1 file changed, 10 insertions(+)
 
 diff --git a/package/base-files/files/etc/rc.common b/package/base-files/files/etc/rc.common
-index abf72ea3372..1a4a9fea6b1 100755
+index abf72ea337..1a4a9fea6b 100755
 --- a/package/base-files/files/etc/rc.common
 +++ b/package/base-files/files/etc/rc.common
 @@ -153,9 +153,19 @@ extra_command "enabled" "Check if service is started on boot"

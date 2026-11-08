@@ -1,4 +1,4 @@
-From 7419ee87be75eb9e68575bd5881a372500276bf4 Mon Sep 17 00:00:00 2001
+From d2bd01d3486e942b17fe0cb257c186f8aef4c2b8 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 12:53:53 -0600
 Subject: [PATCH] mac80211: ath11k: keep the PPDU status for the full monitor
@@ -24,21 +24,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 65d092d..019cf51 100644
+index 59d532cff8..f15deb20d7 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=31
-+PKG_RELEASE:=32
+-PKG_RELEASE:=30
++PKG_RELEASE:=31
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch b/package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch
 new file mode 100644
-index 0000000..59418fb
+index 0000000000..59418fbb6f
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/123-wifi-ath11k-keep-the-PPDU-status-for-the-full-monitor-delivery.patch
 @@ -0,0 +1,63 @@

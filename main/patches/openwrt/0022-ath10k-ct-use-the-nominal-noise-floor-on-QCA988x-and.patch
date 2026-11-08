@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 13baf0ed3de64503432c1544aff019acf1a3e88e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 23 Oct 2026 19:30:00 -0500
-Subject: [PATCH 20/66] ath10k-ct: use the nominal noise floor on QCA988x and
- QCA9887
+Subject: [PATCH] ath10k-ct: use the nominal noise floor on QCA988x and QCA9887
 
 ath10k-ct anchors rx levels to the per-chain noise floor that CT
 firmware reports. On a QCA9882 that floor is not dBm: chain 0 reads

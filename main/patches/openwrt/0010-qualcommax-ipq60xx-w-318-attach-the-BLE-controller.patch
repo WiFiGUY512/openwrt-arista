@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From c0c464822720c8e3c2cfca85be9b8fffe539f19e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 17 Oct 2026 05:11:50 +0000
-Subject: [PATCH 10/66] qualcommax: ipq60xx: w-318: attach the BLE controller
+Subject: [PATCH] qualcommax: ipq60xx: w-318: attach the BLE controller
 
 The W-318's Nordic nRF52833 runs a Zephyr HCI UART controller (H:4,
 115200 baud, no flow control) on blsp1_uart2 (/dev/ttyMSM1); its reset

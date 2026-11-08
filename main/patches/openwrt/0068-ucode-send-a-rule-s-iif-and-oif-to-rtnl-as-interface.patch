@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From ee1dbf3f88813ece5283a4b88cf0b787a047fef8 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 14:54:57 -0600
-Subject: [PATCH 64/66] ucode: send a rule's iif and oif to rtnl as interface
- names
+Subject: [PATCH] ucode: send a rule's iif and oif to rtnl as interface names
 
 ucode's rtnl declared a fib rule's iif and oif (FRA_IFNAME and
 FRA_OIFNAME) as DT_NETDEV and sent the interface index, where the

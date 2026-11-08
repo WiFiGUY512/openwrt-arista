@@ -1,4 +1,4 @@
-From 5982f8d79ab9e63e70a221d55e74a862c1a47b64 Mon Sep 17 00:00:00 2001
+From 704e4c0d4ea4ae2d736494df8b4e10d3e97393f3 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 10:35:52 -0600
 Subject: [PATCH] fstools: format the f2fs overlay without a mkfs discard
@@ -17,7 +17,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch
 
 diff --git a/package/system/fstools/Makefile b/package/system/fstools/Makefile
-index 18ff62f..24e5e8e 100644
+index 18ff62faa0..24e5e8ecd6 100644
 --- a/package/system/fstools/Makefile
 +++ b/package/system/fstools/Makefile
 @@ -8,7 +8,7 @@
@@ -31,7 +31,7 @@ index 18ff62f..24e5e8e 100644
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/fstools.git
 diff --git a/package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch b/package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch
 new file mode 100644
-index 0000000..630ac9c
+index 0000000000..630ac9c63b
 --- /dev/null
 +++ b/package/system/fstools/patches/100-libfstools-format-the-f2fs-overlay-without-a-discard.patch
 @@ -0,0 +1,29 @@

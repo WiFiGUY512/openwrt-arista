@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 70a8860a4be3f1bf397f99eb98d8e8bfbc8be892 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:35:42 -0500
-Subject: [PATCH 49/66] ucode: decode SO_TIMESTAMPNS on musl
+Subject: [PATCH] ucode: decode SO_TIMESTAMPNS on musl
 
 ucode-mod-socket maps SO_TIMESTAMPNS_OLD to SO_TIMESTAMP when the libc
 does not define it, as musl does, so its control message table had two

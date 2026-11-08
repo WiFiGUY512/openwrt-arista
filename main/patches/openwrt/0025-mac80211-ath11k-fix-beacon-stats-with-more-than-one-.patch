@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 55b21d4408a3bbb3a1344779fffcc8f61b960178 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 25 Oct 2026 15:00:00 +0000
-Subject: [PATCH 23/66] mac80211: ath11k: fix beacon stats with more than one
- started vdev
+Subject: [PATCH] mac80211: ath11k: fix beacon stats with more than one started
+ vdev
 
 ath11k patch 106 (sent upstream): reading fw_stats/beacon_stats timed
 out on a radio with more than one started vdev, as every Arista AP has
@@ -23,15 +23,15 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/kernel/mac80211/patches/ath11k/106-wifi-ath11k-fix-beacon-stats-with-more-than-one-started-vdev.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index d19562b9fc..b287351772 100644
+index eb01ab45df..8fbe002df5 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=14
-+PKG_RELEASE:=15
+-PKG_RELEASE:=16
++PKG_RELEASE:=17
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  

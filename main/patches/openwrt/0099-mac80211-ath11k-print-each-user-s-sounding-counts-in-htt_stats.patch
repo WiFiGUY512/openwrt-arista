@@ -1,4 +1,4 @@
-From a580d70da33d4eeb8b4ef61fd0ee6481d0f3b718 Mon Sep 17 00:00:00 2001
+From dc77625f8f2cacbdc87398ce14291c697ac2eb1f Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 6 Nov 2026 00:53:06 -0600
 Subject: [PATCH] mac80211: ath11k: print each user's sounding counts in
@@ -17,21 +17,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/125-wifi-ath11k-print-each-user-s-sounding-counts-in-htt_stats.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index b578938..1b54db9 100644
+index 0d1cbfdecc..f979523b4d 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=34
-+PKG_RELEASE:=35
+-PKG_RELEASE:=33
++PKG_RELEASE:=34
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/125-wifi-ath11k-print-each-user-s-sounding-counts-in-htt_stats.patch b/package/kernel/mac80211/patches/ath11k/125-wifi-ath11k-print-each-user-s-sounding-counts-in-htt_stats.patch
 new file mode 100644
-index 0000000..fde3ce2
+index 0000000000..fde3ce2eb0
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/125-wifi-ath11k-print-each-user-s-sounding-counts-in-htt_stats.patch
 @@ -0,0 +1,54 @@

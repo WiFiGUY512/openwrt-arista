@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a43586b115c8a361cabfad4a24e26a80f95bec06 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 11:15:00 -0500
-Subject: [PATCH 34/66] wifi-scripts: a disabled radio doesn't set the
- regulatory domain
+Subject: [PATCH] wifi-scripts: a disabled radio doesn't set the regulatory
+ domain
 
 The regulatory domain is the whole system's, but setup_phy() ran
 "iw reg set" with each radio's own country, disabled radios included,

@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 5c9a84d5c324b6863f7a6b88bfc059fd1f016ead Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 10:38:06 -0500
-Subject: [PATCH 54/66] ucode: decode the new timestamp messages on 32-bit
+Subject: [PATCH] ucode: decode the new timestamp messages on 32-bit
 
 ucode patch 016 (for upstream), B74: on a 32-bit system with a 64-bit
 time_t (the W-118's armv7 musl), ucode-mod-socket decoded every

@@ -1,4 +1,4 @@
-From 8f396426d7ed0075061e3a95282f3ae11a729479 Mon Sep 17 00:00:00 2001
+From ea35cfe4f5953a81d99565dd712932362b067b6f Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 7 Nov 2026 00:33:34 -0600
 Subject: [PATCH] mac80211: ath11k: advertise 7935-byte A-MSDUs on 2 GHz-only
@@ -22,21 +22,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1b54db9..1618383 100644
+index f979523b4d..d0410b5bc3 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=35
-+PKG_RELEASE:=36
+-PKG_RELEASE:=34
++PKG_RELEASE:=35
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch b/package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
 new file mode 100644
-index 0000000..821e02f
+index 0000000000..821e02f42f
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/981-wifi-ath11k-advertise-7935-byte-A-MSDUs-on-2-GHz-only-radios.patch
 @@ -0,0 +1,104 @@
@@ -144,3 +144,6 @@ index 0000000..821e02f
 + 		cap_band->he_cap_info[0] = mac_phy_caps->he_cap_info_2g;
 + 		cap_band->he_cap_info[1] = mac_phy_caps->he_cap_info_2g_ext;
 + 		cap_band->he_mcs = mac_phy_caps->he_supp_mcs_2g;
+-- 
+2.43.0
+

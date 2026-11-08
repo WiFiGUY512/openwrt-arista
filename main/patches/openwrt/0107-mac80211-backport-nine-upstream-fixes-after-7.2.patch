@@ -1,4 +1,4 @@
-From bd1a308bc367949f3a7926cad40dbafc3ea91c64 Mon Sep 17 00:00:00 2001
+From 3d8e8db55fda6e6942551f1562865555d053a7c6 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 8 Nov 2026 13:11:49 -0600
 Subject: [PATCH] mac80211: backport nine upstream fixes after 7.2
@@ -56,15 +56,15 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100755 package/kernel/mac80211/patches/subsys/490-wifi-cfg80211-fix-RTS-threshold-setting-for-single-radio-PHY.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 844fad6661..ff3ab918ab 100644
+index 2e8a406f3e..360d2a56c1 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=39
-+PKG_RELEASE:=40
+-PKG_RELEASE:=38
++PKG_RELEASE:=39
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
@@ -955,3 +955,4 @@ index 0000000000..531753c75c
 +
 -- 
 2.43.0
+

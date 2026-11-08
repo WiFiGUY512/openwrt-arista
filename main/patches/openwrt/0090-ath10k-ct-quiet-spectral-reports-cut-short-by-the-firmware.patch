@@ -1,4 +1,4 @@
-From 9660d4fd89f942a030ac7ca899fc25864b4fb452 Mon Sep 17 00:00:00 2001
+From 77f01ab95ffd00717f137ad2374ed13fa9f198bd Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 09:49:08 -0600
 Subject: [PATCH] ath10k-ct: quiet spectral reports cut short by the firmware
@@ -18,7 +18,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch
 
 diff --git a/package/kernel/ath10k-ct/Makefile b/package/kernel/ath10k-ct/Makefile
-index 5a3a1e1..fad6e4e 100644
+index 5a3a1e19d5..fad6e4e901 100644
 --- a/package/kernel/ath10k-ct/Makefile
 +++ b/package/kernel/ath10k-ct/Makefile
 @@ -1,7 +1,7 @@
@@ -32,7 +32,7 @@ index 5a3a1e1..fad6e4e 100644
  PKG_LICENSE_FILES:=
 diff --git a/package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch b/package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch
 new file mode 100644
-index 0000000..43f4b4b
+index 0000000000..43f4b4b199
 --- /dev/null
 +++ b/package/kernel/ath10k-ct/patches/995-ath10k-ct-quiet-spectral-reports-cut-short-by-firmware.patch
 @@ -0,0 +1,44 @@

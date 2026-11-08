@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 6448c8393e2e1aa912247ce32df35cfb234b2578 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 24 Oct 2026 00:40:00 +0000
-Subject: [PATCH 19/66] mac80211: ath11k: don't free a monitor buffer the
- device still holds
+Subject: [PATCH] mac80211: ath11k: don't free a monitor buffer the device
+ still holds
 
 ath11k finds a monitor MSDU's buffer by the buf_id in the cookie of the
 MSDU link descriptor alone. The device sometimes lists a buffer it handed
@@ -29,15 +29,15 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/102-wifi-ath11k-don-t-free-a-monitor-buffer-the-device-still-holds.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1efdf91b7a..87e0f65f1b 100644
+index 40aac6fd26..04af0748d9 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=11
-+PKG_RELEASE:=12
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  

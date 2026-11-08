@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 99f56e8b135679bd1626d0b51f3c930f6bc68e80 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 2 Nov 2026 08:21:47 -0600
 Subject: [PATCH] qualcommax: ipq60xx: add support for Arista C-200

@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e0c82ea4b32bdb385fdc9047f8d4858626256bf6 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 29 Oct 2026 15:00:00 -0500
-Subject: [PATCH 38/66] mac80211: ath11k: add the measured noise floor, not
- -95, to a received signal
+Subject: [PATCH] mac80211: ath11k: add the measured noise floor, not -95, to a
+ received signal
 
 ath11k patch 111 (for upstream), B110: ath11k reported every received
 signal as the firmware's level in dB plus a fixed -95 dBm, but the
@@ -26,7 +26,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/111-wifi-ath11k-add-the-measured-noise-floor-to-a-received-signal.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 89eab8721a..ca360f55f4 100644
+index 13afab0f5a..89c6e626dd 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211

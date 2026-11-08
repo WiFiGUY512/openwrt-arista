@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 8c3721f377d5147e427711c4997c61a837c384e5 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 10:06:44 -0500
-Subject: [PATCH 51/66] mac80211: ath11k: fix the monitor path's frame length,
- FCS filter and rates
+Subject: [PATCH] mac80211: ath11k: fix the monitor path's frame length, FCS
+ filter and rates
 
 Three ath11k monitor-path fixes (for upstream), as ath11k 113-115, and
 the removal of OpenWrt's 949, which the first replaces:
@@ -37,7 +37,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  delete mode 100644 package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1c78350dce..fc14ba4716 100644
+index 053348b279..49064b6d36 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
@@ -384,7 +384,7 @@ index 0000000000..a5476996e5
 + 
 diff --git a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch b/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
 deleted file mode 100644
-index 6d349f6c8f..0000000000
+index 366740863b..0000000000
 --- a/package/kernel/mac80211/patches/ath11k/949-wifi-ath11k-fix-monitor-rx-pktlen.patch
 +++ /dev/null
 @@ -1,89 +0,0 @@
@@ -414,7 +414,7 @@ index 6d349f6c8f..0000000000
 -
 ---- a/drivers/net/wireless/ath/ath11k/dp_rx.c
 -+++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
--@@ -4941,8 +4941,13 @@ ath11k_dp_rx_mon_merg_msdus(struct ath11
+-@@ -4946,8 +4946,13 @@ ath11k_dp_rx_mon_merg_msdus(struct ath11
 - 		}
 - 
 - 		prev_buf->next = NULL;
@@ -429,7 +429,7 @@ index 6d349f6c8f..0000000000
 - 	} else if (decap_format == DP_RX_DECAP_TYPE_NATIVE_WIFI) {
 - 		u8 qos_pkt = 0;
 - 
--@@ -4968,10 +4973,13 @@ ath11k_dp_rx_mon_merg_msdus(struct ath11
+-@@ -4973,10 +4978,13 @@ ath11k_dp_rx_mon_merg_msdus(struct ath11
 - 			prev_buf = msdu;
 - 			msdu = msdu->next;
 - 		}
@@ -447,7 +447,7 @@ index 6d349f6c8f..0000000000
 - 		ath11k_dbg(ab, ATH11K_DBG_DATA,
 - 			   "mpdu_buf %p mpdu_buf->len %u",
 - 			   prev_buf, prev_buf->len);
--@@ -5096,12 +5104,27 @@ static int ath11k_dp_rx_mon_deliver(stru
+-@@ -5101,12 +5109,27 @@ static int ath11k_dp_rx_mon_deliver(stru
 - 
 - 	header = mon_skb;
 - 

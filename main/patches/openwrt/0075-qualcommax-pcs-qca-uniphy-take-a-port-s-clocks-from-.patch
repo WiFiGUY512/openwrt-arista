@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a74fbd9eb7c5faf3aee52414f67f65a8cd57a9a1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 2 Nov 2026 09:57:07 -0600
 Subject: [PATCH] qualcommax: pcs-qca-uniphy: take a port's clocks from its
@@ -34,7 +34,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  1 file changed, 30 insertions(+)
 
 diff --git a/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c b/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c
-index 5615ef68eff..e5220ad7f7c 100644
+index 5615ef68ef..e5220ad7f7 100644
 --- a/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c
 +++ b/target/linux/qualcommax/files/drivers/net/pcs/pcs-qca-uniphy.c
 @@ -874,6 +874,31 @@ static int uniphy_link_up_usxgmii(struct phylink_pcs *pcs, int speed)

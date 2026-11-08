@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b11316577d41991efc587d4f23c4bf79552cda64 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 28 Oct 2026 09:00:00 -0500
-Subject: [PATCH 30/66] wifi-scripts: start an automatic 5 GHz channel outside
- DFS
+Subject: [PATCH] wifi-scripts: start an automatic 5 GHz channel outside DFS
 
 With channel auto, hostapd's ACS may pick a DFS channel, and the radio
 then sends nothing for its radar check, 60 s in the US and up to 10

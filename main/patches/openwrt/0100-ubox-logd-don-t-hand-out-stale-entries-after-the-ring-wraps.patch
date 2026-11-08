@@ -1,4 +1,4 @@
-From 4a0ed9c019851041ac58c16ac3534f4b45e5edb3 Mon Sep 17 00:00:00 2001
+From 483d45c4fbaf876408470e897debe9583e4d51ee Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 6 Nov 2026 10:30:23 -0600
 Subject: [PATCH] ubox: logd: don't hand out stale entries after the ring wraps
@@ -25,7 +25,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch
 
 diff --git a/package/system/ubox/Makefile b/package/system/ubox/Makefile
-index 0ba418c..cccbf33 100644
+index 0ba418c99c..cccbf33ff5 100644
 --- a/package/system/ubox/Makefile
 +++ b/package/system/ubox/Makefile
 @@ -1,7 +1,7 @@
@@ -39,7 +39,7 @@ index 0ba418c..cccbf33 100644
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/ubox.git
 diff --git a/package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch b/package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch
 new file mode 100644
-index 0000000..f388ecc
+index 0000000000..f388ecc93f
 --- /dev/null
 +++ b/package/system/ubox/patches/100-logd-don-t-hand-out-stale-entries-after-the-ring-wraps.patch
 @@ -0,0 +1,68 @@
@@ -111,3 +111,6 @@ index 0000000..f388ecc
 + 	} else {
 + 		//fprintf(stderr, "Log wrap\n");
 + 		newest->size = 0;
+-- 
+2.43.0
+

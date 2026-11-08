@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From fd3ff41a7870df2d6c0254549ae9fee542d3f7a9 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Mon, 19 Oct 2026 14:19:01 -0500
-Subject: [PATCH 14/66] ipq40xx: w-118: attach the BLE controller
+Subject: [PATCH] ipq40xx: w-118: attach the BLE controller
 
 The W-118's NXP Bluetooth LE controller runs NXP's HCI firmware (H:4,
 115200 baud, no flow control) on blsp1_uart2 (/dev/ttyMSM1); its reset

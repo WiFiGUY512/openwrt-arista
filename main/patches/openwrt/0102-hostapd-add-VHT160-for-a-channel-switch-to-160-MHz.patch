@@ -1,4 +1,4 @@
-From c80d59c90e47b020be03a7172a6f0bce659bd398 Mon Sep 17 00:00:00 2001
+From a9ce0ad01f2a720d511d6d79edb5a5d00cb28309 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Fri, 6 Nov 2026 15:14:26 -0600
 Subject: [PATCH] hostapd: add [VHT160] for a channel switch to 160 MHz
@@ -36,7 +36,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/network/services/hostapd/patches/895-hostapd-add-VHT160-for-a-channel-switch-to-160-MHz.patch
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index 22fe5fa..45aa9db 100644
+index 7fe56107e7..608ccdfbe8 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
@@ -50,7 +50,7 @@ index 22fe5fa..45aa9db 100644
  PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/patches/895-hostapd-add-VHT160-for-a-channel-switch-to-160-MHz.patch b/package/network/services/hostapd/patches/895-hostapd-add-VHT160-for-a-channel-switch-to-160-MHz.patch
 new file mode 100644
-index 0000000..7f5e66f
+index 0000000000..7f5e66f2a9
 --- /dev/null
 +++ b/package/network/services/hostapd/patches/895-hostapd-add-VHT160-for-a-channel-switch-to-160-MHz.patch
 @@ -0,0 +1,118 @@
@@ -173,7 +173,7 @@ index 0000000..7f5e66f
 + 	void *owner;
 + 	char *config_fname;
 diff --git a/package/network/services/hostapd/src/src/ap/ubus.c b/package/network/services/hostapd/src/src/ap/ubus.c
-index 72d9202..d873d37 100644
+index 72d92027d8..d873d37f4d 100644
 --- a/package/network/services/hostapd/src/src/ap/ubus.c
 +++ b/package/network/services/hostapd/src/src/ap/ubus.c
 @@ -525,6 +525,9 @@ hostapd_bss_get_features(struct ubus_context *ctx, struct ubus_object *obj,
@@ -218,3 +218,6 @@ index 72d9202..d873d37 100644
  				mode ? &mode->he_capab[IEEE80211_MODE_AP] :
  				NULL,
  				mode ? &mode->eht_capab[IEEE80211_MODE_AP] :
+-- 
+2.43.0
+

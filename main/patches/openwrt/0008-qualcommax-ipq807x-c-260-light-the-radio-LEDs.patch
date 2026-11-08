@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a37d54c0e4fed24b0102e1588dfcbe2173b76018 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 08:54:37 -0500
-Subject: [PATCH 08/66] qualcommax: ipq807x: c-260: light the radio LEDs
+Subject: [PATCH] qualcommax: ipq807x: c-260: light the radio LEDs
 
 The 2.4, 5 and WLAN LEDs had no trigger. Phy numbers follow the order
 the radios were first found in, and they differ between units: on one

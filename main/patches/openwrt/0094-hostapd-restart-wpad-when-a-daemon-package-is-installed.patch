@@ -1,4 +1,4 @@
-From 7a82fd6ec15a3b10f843a5217d9c1d75f0a6d534 Mon Sep 17 00:00:00 2001
+From 108fba3634de5f41e2e89a4b99537e682f55e630 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 13:24:30 -0600
 Subject: [PATCH] hostapd: restart wpad when a daemon package is installed
@@ -43,7 +43,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  1 file changed, 43 insertions(+), 1 deletion(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index dcf5d61df2c..8e31027bbc5 100644
+index 1871dc85c7..261be19335 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
@@ -55,7 +55,7 @@ index dcf5d61df2c..8e31027bbc5 100644
  
  PKG_SOURCE_URL:=https://w1.fi/hostap.git
  PKG_SOURCE_PROTO:=git
-@@ -807,6 +807,48 @@ Package/wpa-supplicant-mesh-openssl/install = $(Package/wpa-supplicant/install)
+@@ -802,6 +802,48 @@ Package/wpa-supplicant-mesh-openssl/install = $(Package/wpa-supplicant/install)
  Package/wpa-supplicant-mesh-wolfssl/install = $(Package/wpa-supplicant/install)
  Package/wpa-supplicant-mesh-mbedtls/install = $(Package/wpa-supplicant/install)
  

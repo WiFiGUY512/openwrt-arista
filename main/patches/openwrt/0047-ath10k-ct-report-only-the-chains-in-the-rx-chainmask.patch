@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a7c29ffa45dff258d941ce3b10088249c4b59aed Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:02:32 -0500
-Subject: [PATCH 45/66] ath10k-ct: report only the chains in the rx chainmask
+Subject: [PATCH] ath10k-ct: report only the chains in the rx chainmask
 
 ath10k-ct patch 992 (for upstream), B112: the W-118's IPQ4019 radios
 (2x2) reported four chain signals per client, two of them filler from

@@ -1,4 +1,4 @@
-From faa91872b51e3aa91068ed6e788c8d3e79a94b5e Mon Sep 17 00:00:00 2001
+From 9be1fce8e99d6ca08ecf0126494d1c74a236eea1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 5 Nov 2026 13:24:27 -0600
 Subject: [PATCH] wifi-scripts: refuse only the BSS with an unsupported option
@@ -44,7 +44,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/network/services/hostapd/patches/886-build_features-indicate-WNM-MBO-and-proxy-ARP.patch
 
 diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
-index 4821c2ff18e..f41a4f2d5bf 100644
+index 4821c2ff18..f41a4f2d5b 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -57,7 +57,7 @@ index 4821c2ff18e..f41a4f2d5bf 100644
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
-index c82c1e3044d..8d2ef45c8d0 100644
+index c82c1e3044..8d2ef45c8d 100644
 --- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
 +++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/ap.uc
 @@ -54,6 +54,44 @@ function sae_password_available(config) {
@@ -117,7 +117,7 @@ index c82c1e3044d..8d2ef45c8d0 100644
  
  	config.start_disabled = data.ap_start_disabled;
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index ffaa0965d59..dcf5d61df2c 100644
+index 0819538c1c..1871dc85c7 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
@@ -131,7 +131,7 @@ index ffaa0965d59..dcf5d61df2c 100644
  PKG_SOURCE_PROTO:=git
 diff --git a/package/network/services/hostapd/patches/886-build_features-indicate-WNM-MBO-and-proxy-ARP.patch b/package/network/services/hostapd/patches/886-build_features-indicate-WNM-MBO-and-proxy-ARP.patch
 new file mode 100644
-index 00000000000..256059d894e
+index 0000000000..256059d894
 --- /dev/null
 +++ b/package/network/services/hostapd/patches/886-build_features-indicate-WNM-MBO-and-proxy-ARP.patch
 @@ -0,0 +1,38 @@

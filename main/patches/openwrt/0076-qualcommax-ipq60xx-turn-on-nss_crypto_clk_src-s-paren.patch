@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a069fc67a5e6b8d029b3a96d339e69928aeb25d0 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Tue, 3 Nov 2026 01:30:00 -0600
 Subject: [PATCH] qualcommax: ipq60xx: turn on nss_crypto_clk_src's parents
@@ -26,7 +26,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 
 diff --git a/target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch b/target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch
 new file mode 100644
-index 0000000..4f17bb2
+index 0000000000..4f17bb2549
 --- /dev/null
 +++ b/target/linux/qualcommax/patches-6.18/0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_clk_src-s-parents-to-switch.patch
 @@ -0,0 +1,44 @@
@@ -75,5 +75,5 @@ index 0000000..4f17bb2
 + 	},
 + };
 -- 
-2.52.0.windows.1
+2.43.0
 

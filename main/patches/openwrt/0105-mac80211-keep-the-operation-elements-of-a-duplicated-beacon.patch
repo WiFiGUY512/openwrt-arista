@@ -1,4 +1,4 @@
-From 3c22fa2b43f85b1f934680cc5f9a8a8f0238b60a Mon Sep 17 00:00:00 2001
+From e716357d5d4deb85f2e870cf0035dc8d154fbc6c Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 7 Nov 2026 02:17:18 -0600
 Subject: [PATCH] mac80211: keep the operation elements of a duplicated beacon
@@ -23,21 +23,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 9cfc2d1..d9c1b09 100644
+index bcbd4066a2..63da0da4c1 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=37
-+PKG_RELEASE:=38
+-PKG_RELEASE:=36
++PKG_RELEASE:=37
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch b/package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch
 new file mode 100644
-index 0000000..c082841
+index 0000000000..c082841804
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/subsys/484-wifi-mac80211-keep-the-operation-elements-of-a-duplicated-b.patch
 @@ -0,0 +1,75 @@
@@ -116,3 +116,6 @@ index 0000000..c082841
 + 	}
 + 	if (beacon->beacon_ies_len) {
 + 		new_beacon->beacon_ies_len = beacon->beacon_ies_len;
+-- 
+2.43.0
+

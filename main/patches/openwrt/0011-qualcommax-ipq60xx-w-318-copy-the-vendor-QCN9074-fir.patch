@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b96f4a919b2eb2e025d5adec3c8a11e358e4c04e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 17 Oct 2026 05:11:50 +0000
-Subject: [PATCH 11/66] qualcommax: ipq60xx: w-318: copy the vendor QCN9074
- firmware
+Subject: [PATCH] qualcommax: ipq60xx: w-318: copy the vendor QCN9074 firmware
 
 The W-318's QCN9072 card starts only with Arista's own build of the
 QCN9074 firmware (WLAN.HK.2.5.r4), as the Arista C-360's cards do. That

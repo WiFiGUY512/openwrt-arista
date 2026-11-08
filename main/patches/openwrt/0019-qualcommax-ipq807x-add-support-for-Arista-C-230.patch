@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From be02a4929940ffb15585b8a68881ce0e29d23e71 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 22 Oct 2026 20:45:53 -0500
-Subject: [PATCH 17/66] qualcommax: ipq807x: add support for Arista C-230
+Subject: [PATCH] qualcommax: ipq807x: add support for Arista C-230
 
 Hardware specification:
 - SoC: Qualcomm IPQ8071A, 4x Cortex-A53 (AC02 reference design)
@@ -674,7 +674,7 @@ index 0000000000..36cc1c9039
 +	nvmem-cell-names = "calibration";
 +};
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 279e368d5f..4adf5f6b2f 100644
+index 69a236905f..ba6a29bed1 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
 @@ -78,6 +78,20 @@ define Device/arcadyan_aw1000

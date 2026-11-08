@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b17ae37ee5598b2e65d90b240dd022d84ea9604d Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 03:22:24 -0600
-Subject: [PATCH 57/66] ath10k-ct: report the TX power the firmware applies
+Subject: [PATCH] ath10k-ct: report the TX power the firmware applies
 
 ath10k-ct patch 993 (for upstream), B117: ath10k-ct has no get_txpower,
 so iw showed mac80211's limit (the regulatory maximum with power auto)

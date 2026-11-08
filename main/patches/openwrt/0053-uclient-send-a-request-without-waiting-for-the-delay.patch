@@ -1,8 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From d977a0432d2a5b0698d02decf552ce96a1b394e1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:40:33 -0500
-Subject: [PATCH 50/66] uclient: send a request without waiting for the delayed
- ACK
+Subject: [PATCH] uclient: send a request without waiting for the delayed ACK
 
 uclient-http writes a request as several small writes (request line,
 each header, the body), and with Nagle every write after the first

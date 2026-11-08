@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 5483145bbd05f958c0c24c07320be143eb072473 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Thu, 22 Oct 2026 20:45:53 -0500
-Subject: [PATCH 18/66] qualcommax: ipq807x: c-230: light the radio LEDs
+Subject: [PATCH] qualcommax: ipq807x: c-230: light the radio LEDs
 
 The 2.4, 5 and WLAN LEDs had no trigger. Phy numbers follow the order the
 radios were first found in, and they differ between units, as on the Arista

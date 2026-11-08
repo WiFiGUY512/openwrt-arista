@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From c4de0ced2541a6a854a29a1b878ab05bd398834f Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Wed, 4 Nov 2026 01:20:00 -0600
 Subject: [PATCH] ipq40xx: w-118: keep 5 GHz off channel 144
@@ -12,7 +12,11 @@ left as it is: it listens there and does not serve.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
 diff --git a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+index a05eb0fd3e..baa15b66a1 100644
 --- a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
 +++ b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
 @@ -420,6 +420,13 @@
@@ -30,4 +34,5 @@ diff --git a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts b/target/linux/ipq4
  };
  
 -- 
-2.52.0
+2.43.0
+

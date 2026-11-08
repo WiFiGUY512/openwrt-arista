@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From f73fefd5e7dc3d3d5155465aacb57209b3c20f0e Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 14:07:09 -0500
-Subject: [PATCH 16/66] LOCAL: openwrt-arista: sysupgrade from the port's 25.12
+Subject: [PATCH] LOCAL: openwrt-arista: sysupgrade from the port's 25.12
  images
 
 The port's OpenWrt 25.12 images named the boards arista,c360, arista,c260
@@ -27,7 +27,7 @@ index a076d9245b..9d67bd2895 100644
  TARGET_DEVICES += arista_w-318
  
 diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
-index 4e63b2265f..279e368d5f 100644
+index c914e3a863..69a236905f 100644
 --- a/target/linux/qualcommax/image/ipq807x.mk
 +++ b/target/linux/qualcommax/image/ipq807x.mk
 @@ -89,6 +89,7 @@ define Device/arista_c-260

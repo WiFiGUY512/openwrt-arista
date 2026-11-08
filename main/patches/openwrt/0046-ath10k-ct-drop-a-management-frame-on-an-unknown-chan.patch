@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From f64a5e359da998fb8e5c702663084d116bb4e27a Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 01:02:41 -0500
-Subject: [PATCH 44/66] ath10k-ct: drop a management frame on an unknown
- channel without a WARN
+Subject: [PATCH] ath10k-ct: drop a management frame on an unknown channel
+ without a WARN
 
 ath10k-ct patch 991 (for upstream), B104: the QCA9882 scan radios of
 the C-260 and the W-118 hit WARN_ON_ONCE() in ath10k_wmi_event_mgmt_rx()

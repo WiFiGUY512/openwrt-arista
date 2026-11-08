@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From ea162603ce8c1af00a7543d06a5b4695b38cac9f Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 18 Oct 2026 08:54:36 -0500
-Subject: [PATCH 06/66] qualcommax: ipq807x: c-360: light the radio LEDs
+Subject: [PATCH] qualcommax: ipq807x: c-360: light the radio LEDs
 
 The 2.4, 5 and 5/6 LEDs had no trigger. Phy numbers follow the order
 the radios were first found in, and they differ between units: one

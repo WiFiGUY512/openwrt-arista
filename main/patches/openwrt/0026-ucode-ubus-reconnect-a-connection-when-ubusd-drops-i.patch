@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 634254d211c90950efc251943c59276a2e382e86 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 25 Oct 2026 15:00:00 +0000
-Subject: [PATCH 24/66] ucode: ubus: reconnect a connection when ubusd drops it
+Subject: [PATCH] ucode: ubus: reconnect a connection when ubusd drops it
 
 Two patches to ucode's ubus module (for upstream ucode):
 

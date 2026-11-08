@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 3abfb0faec36976b631ad15962c328c710a79cc1 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 31 Oct 2026 12:30:04 -0500
-Subject: [PATCH 52/66] wifi-scripts: start outside DFS with one channel listed
- per block
+Subject: [PATCH] wifi-scripts: start outside DFS with one channel listed per
+ block
 
 dfs_look_first (port 0032) sets acs_exclude_dfs only where a block
 outside DFS lies wholly in the radio's channel list. hostapd's ACS asks

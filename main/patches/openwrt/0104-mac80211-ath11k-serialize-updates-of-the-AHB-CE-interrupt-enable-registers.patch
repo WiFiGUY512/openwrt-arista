@@ -1,4 +1,4 @@
-From e9739e46ef4672a65cfa6f0026fb9b1a05bb0cf5 Mon Sep 17 00:00:00 2001
+From 0f5bdbff45e5eab021fff7b0fcd525136b560872 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sat, 7 Nov 2026 01:01:21 -0600
 Subject: [PATCH] mac80211: ath11k: serialize updates of the AHB CE interrupt
@@ -22,21 +22,21 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  create mode 100644 package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
-index 1618383..9cfc2d1 100644
+index d0410b5bc3..bcbd4066a2 100644
 --- a/package/kernel/mac80211/Makefile
 +++ b/package/kernel/mac80211/Makefile
 @@ -12,7 +12,7 @@ PKG_NAME:=mac80211
  
  PKG_SOURCE_VERSION:=7.2
  PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
--PKG_RELEASE:=36
-+PKG_RELEASE:=37
+-PKG_RELEASE:=35
++PKG_RELEASE:=36
  PKG_LICENSE:=GPL-2.0-only
  PKG_LICENSE_FILES:=COPYING
  
 diff --git a/package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch b/package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
 new file mode 100644
-index 0000000..6dab604
+index 0000000000..6dab604a5d
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/982-wifi-ath11k-serialize-the-AHB-CE-interrupt-enable-register-updates.patch
 @@ -0,0 +1,107 @@
@@ -147,3 +147,6 @@ index 0000000..6dab604
 + 	struct {
 + 		struct device *dev;
 + 		struct iommu_domain *iommu_domain;
+-- 
+2.43.0
+

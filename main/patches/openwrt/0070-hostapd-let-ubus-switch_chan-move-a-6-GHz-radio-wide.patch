@@ -1,8 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a7a0f5080b00b0ed3310857d2917123f4632f55b Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
 Date: Sun, 1 Nov 2026 15:11:55 -0600
-Subject: [PATCH 66/66] hostapd: let ubus switch_chan move a 6 GHz radio wider
- than 20 MHz
+Subject: [PATCH] hostapd: let ubus switch_chan move a 6 GHz radio wider than
+ 20 MHz
 
 hostapd_switch_chan() passed no segment indexes to
 hostapd_set_freq_params(), which then sets center_freq1 to the 40 MHz
@@ -28,7 +28,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  2 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index fc919bbbf3..b28ef891c9 100644
+index 827f6c2ca0..45be25fee3 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
 @@ -5,7 +5,7 @@
