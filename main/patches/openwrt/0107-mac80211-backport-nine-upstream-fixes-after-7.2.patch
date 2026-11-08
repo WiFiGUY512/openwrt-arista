@@ -1,0 +1,957 @@
+From bd1a308bc367949f3a7926cad40dbafc3ea91c64 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sun, 8 Nov 2026 13:11:49 -0600
+Subject: [PATCH] mac80211: backport nine upstream fixes after 7.2
+
+Fixes from mainline and ath-next that the backports-7.2 tree and
+OpenWrt main do not carry yet, for the radios of the Arista APs:
+
+mac80211 and cfg80211 (patches/subsys):
+ 485 3412e9a80078 keep paired old chanctx alive
+ 486 437f3727b4fd count only matching reservations in reserved switch
+     (both: use-after-free when an in-place channel context
+     reservation with several BSSes on a radio, a CSA, frees the old
+     context early)
+ 487 67a9e80c3ca2 drain PS delivery work during station teardown
+ 488 e588e83e5c7a shut down RX BA session timer on teardown
+     (both: use-after-free while an AP removes a station)
+ 489 5e4f3509793b drop oversized fragments to avoid extra_len overflow
+     (a peer can panic the kernel where mac80211 defragments, the
+     ath10k-ct radios)
+ 490 9eda41e32263 fix RTS threshold setting for single-radio PHY
+     (the RTS threshold was never written on ath11k and ath10k phys)
+
+ath11k (patches/ath11k):
+ 985 e56c9d429ba0 fix unbalanced IRQ enable/disable during
+     suspend/resume (fixes f7a74e131d3f, OpenWrt's 951; base for the
+     AHB recovery series pending on the list)
+ 986 9e15ccad0877 reject short management RX frames
+ 987 8ab38bbac022 fix resource leak on error in ext IRQ setup
+
+All nine apply after the port's inner patches (a mac80211 prepare
+with 0001-0106). Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |   2 +-
+ ...enable-disable-during-suspend-resume.patch |  92 ++++++++
+ ...1k-reject-short-management-RX-frames.patch |  43 ++++
+ ...ource-leak-on-error-in-ext-IRQ-setup.patch | 204 ++++++++++++++++++
+ ...c80211-keep-paired-old-chanctx-alive.patch | 101 +++++++++
+ ...hing-reservations-in-reserved-switch.patch | 131 +++++++++++
+ ...elivery-work-during-station-teardown.patch |  76 +++++++
+ ...down-RX-BA-session-timer-on-teardown.patch |  46 ++++
+ ...ragments-to-avoid-extra_len-overflow.patch |  93 ++++++++
+ ...reshold-setting-for-single-radio-PHY.patch |  45 ++++
+ 10 files changed, 832 insertions(+), 1 deletion(-)
+ create mode 100755 package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-fix-unbalanced-IRQ-enable-disable-during-suspend-resume.patch
+ create mode 100755 package/kernel/mac80211/patches/ath11k/986-wifi-ath11k-reject-short-management-RX-frames.patch
+ create mode 100755 package/kernel/mac80211/patches/ath11k/987-wifi-ath11k-fix-resource-leak-on-error-in-ext-IRQ-setup.patch
+ create mode 100755 package/kernel/mac80211/patches/subsys/485-wifi-mac80211-keep-paired-old-chanctx-alive.patch
+ create mode 100755 package/kernel/mac80211/patches/subsys/486-wifi-mac80211-count-only-matching-reservations-in-reserved-switch.patch
+ create mode 100755 package/kernel/mac80211/patches/subsys/487-wifi-mac80211-drain-PS-delivery-work-during-station-teardown.patch
+ create mode 100755 package/kernel/mac80211/patches/subsys/488-wifi-mac80211-shut-down-RX-BA-session-timer-on-teardown.patch
+ create mode 100755 package/kernel/mac80211/patches/subsys/489-wifi-mac80211-drop-oversized-fragments-to-avoid-extra_len-overflow.patch
+ create mode 100755 package/kernel/mac80211/patches/subsys/490-wifi-cfg80211-fix-RTS-threshold-setting-for-single-radio-PHY.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 844fad6661..ff3ab918ab 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=39
++PKG_RELEASE:=40
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-fix-unbalanced-IRQ-enable-disable-during-suspend-resume.patch b/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-fix-unbalanced-IRQ-enable-disable-during-suspend-resume.patch
+new file mode 100755
+index 0000000000..399d912bec
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-fix-unbalanced-IRQ-enable-disable-during-suspend-resume.patch
+@@ -0,0 +1,92 @@
++From e56c9d429ba004d5416b03091fd7656187cdcaf1 Mon Sep 17 00:00:00 2001
++From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
++Date: Mon, 28 Sep 2026 18:45:25 +0800
++Subject: [PATCH] wifi: ath11k: fix unbalanced IRQ enable/disable during
++ suspend/resume
++
++Commit f7a74e131d3f ("wifi: ath11k: disable interrupts during firmware
++crash recovery") added an unconditional ath11k_hif_irq_disable()/
++ath11k_hif_ce_irq_disable() pair inside
++ath11k_core_reconfigure_on_crash(), guarded by "if (!ab->is_reset)", to
++stop the DP NAPI from touching rings that have just been torn down. That
++fixes AHB device recovery, but breaks PCI device suspend/resume. During
++suspend, IRQs are disabled once in ath11k_core_suspend_late(). Then during
++resume, ath11k_core_reconfigure_on_crash() sees ab->is_reset clear and
++disables them a second time. Those IRQs are enabled only once during
++the following reinitialization, leaving the IRQ lines masked. As a result,
++HTC control responses never arrive, and resume fails:
++
++  failed to receive control response completion, polling..
++  failed to connect to HTT: -110
++  failed to reconfigure driver on crash recovery
++  failed to resume core: -110
++
++Fix this by disabling the IRQs unconditionally at the top of
++ath11k_core_reconfigure_on_crash(), and instead drop the disable
++calls from the two places that already disable IRQs before this
++function can run: ath11k_core_suspend_late() and ath11k_core_reset().
++This keeps a single disable per recovery/suspend cycle regardless of
++which path (recovery or suspend) triggers it, so the refcount on
++PCI parts stays balanced while AHB parts keep getting the disable
++that the original commit needed.
++
++Fixes: f7a74e131d3f ("wifi: ath11k: disable interrupts during firmware crash recovery")
++Reported-by: Marek Szyprowski <m.szyprowski@samsung.com>
++Closes: https://lore.kernel.org/linux-wireless/a068a857-a549-4cc2-ae0f-3ef119d3a859@samsung.com/
++Tested-by: Marek Szyprowski <m.szyprowski@samsung.com>
++Tested-by: Julius Bairaktaris <julius@bairaktaris.de>
++Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
++Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
++Link: https://patch.msgid.link/20260928-ath11k-unbalanced-irq-enable-disable-v1-1-75166f534763@oss.qualcomm.com
++Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
++---
++ drivers/net/wireless/ath/ath11k/core.c | 18 ++----------------
++ 1 file changed, 2 insertions(+), 16 deletions(-)
++
++diff --git a/drivers/net/wireless/ath/ath11k/core.c b/drivers/net/wireless/ath/ath11k/core.c
++index d2ed6a0ea7e36..1ad0a47653dec 100644
++--- a/drivers/net/wireless/ath/ath11k/core.c
+++++ b/drivers/net/wireless/ath/ath11k/core.c
++@@ -1275,9 +1275,6 @@ int ath11k_core_suspend_late(struct ath11k_base *ab)
++ 	if (ab->actual_pm_policy == ATH11K_PM_WOW)
++ 		return 0;
++ 
++-	ath11k_hif_irq_disable(ab);
++-	ath11k_hif_ce_irq_disable(ab);
++-
++ 	ath11k_hif_power_down(ab, true);
++ 
++ 	return 0;
++@@ -2333,17 +2330,9 @@ static int ath11k_core_reconfigure_on_crash(struct ath11k_base *ab)
++ 	int ret;
++ 
++ 	mutex_lock(&ab->core_lock);
+++	ath11k_hif_irq_disable(ab);
+++	ath11k_hif_ce_irq_disable(ab);
++ 	ath11k_thermal_unregister(ab);
++-
++-	/*
++-	 * ath11k_core_reset() already disabled the interrupts on the reset
++-	 * path; only the firmware crash path reaches here with them live.
++-	 */
++-	if (!ab->is_reset) {
++-		ath11k_hif_irq_disable(ab);
++-		ath11k_hif_ce_irq_disable(ab);
++-	}
++-
++ 	ath11k_dp_pdev_free(ab);
++ 	ath11k_cfr_deinit(ab);
++ 	ath11k_spectral_deinit(ab);
++@@ -2605,9 +2594,6 @@ static void ath11k_core_reset(struct work_struct *work)
++ 	time_left = wait_for_completion_timeout(&ab->recovery_start,
++ 						ATH11K_RECOVER_START_TIMEOUT_HZ);
++ 
++-	ath11k_hif_irq_disable(ab);
++-	ath11k_hif_ce_irq_disable(ab);
++-
++ 	ath11k_hif_power_down(ab, false);
++ 	ath11k_hif_power_up(ab);
++ 
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/ath11k/986-wifi-ath11k-reject-short-management-RX-frames.patch b/package/kernel/mac80211/patches/ath11k/986-wifi-ath11k-reject-short-management-RX-frames.patch
+new file mode 100755
+index 0000000000..a9915dca37
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/986-wifi-ath11k-reject-short-management-RX-frames.patch
+@@ -0,0 +1,43 @@
++From 9e15ccad0877c4a748bf2b817811a23f2d71bd92 Mon Sep 17 00:00:00 2001
++From: Jiale Yao <yaojiale02@163.com>
++Date: Sat, 26 Sep 2026 19:40:37 +0800
++Subject: [PATCH] wifi: ath11k: Reject short management RX frames
++
++ath11k_pull_mgmt_rx_params_tlv() verifies that the firmware-reported frame
++length fits in the WMI event, but does not ensure that it can hold an IEEE
++802.11 management header. It then sets skb->len to that reported length.
++
++ath11k_mgmt_rx_event() subsequently reads frame_control and other header
++fields without another length check. A firmware event with a short buf_len
++can therefore cause an out-of-bounds read.
++
++Reject frames shorter than a three-address IEEE 802.11 header before
++adjusting the skb to expose the frame.
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++Signed-off-by: Jiale Yao <yaojiale02@163.com>
++Reviewed-by: Vasanthakumar Thiagarajan <vasanthakumar.thiagarajan@oss.qualcomm.com>
++Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
++Link: https://patch.msgid.link/20260926114037.3231795-1-yaojiale02@163.com
++Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
++---
++ drivers/net/wireless/ath/ath11k/wmi.c | 3 ++-
++ 1 file changed, 2 insertions(+), 1 deletion(-)
++
++diff --git a/drivers/net/wireless/ath/ath11k/wmi.c b/drivers/net/wireless/ath/ath11k/wmi.c
++index 08fd6795ed9e7..82f85df481cbf 100644
++--- a/drivers/net/wireless/ath/ath11k/wmi.c
+++++ b/drivers/net/wireless/ath/ath11k/wmi.c
++@@ -6004,7 +6004,8 @@ static int ath11k_pull_mgmt_rx_params_tlv(struct ath11k_base *ab,
++ 	hdr->tsf_delta =  ev->tsf_delta;
++ 	memcpy(hdr->rssi_ctl, ev->rssi_ctl, sizeof(hdr->rssi_ctl));
++ 
++-	if (skb->len < (frame - skb->data) + hdr->buf_len) {
+++	if (hdr->buf_len < sizeof(struct ieee80211_hdr_3addr) ||
+++	    skb->len < (frame - skb->data) + hdr->buf_len) {
++ 		ath11k_warn(ab, "invalid length in mgmt rx hdr ev");
++ 		return -EPROTO;
++ 	}
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/ath11k/987-wifi-ath11k-fix-resource-leak-on-error-in-ext-IRQ-setup.patch b/package/kernel/mac80211/patches/ath11k/987-wifi-ath11k-fix-resource-leak-on-error-in-ext-IRQ-setup.patch
+new file mode 100755
+index 0000000000..f114370f9f
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/987-wifi-ath11k-fix-resource-leak-on-error-in-ext-IRQ-setup.patch
+@@ -0,0 +1,204 @@
++From 8ab38bbac02298e3fb03008ed4a0227485c0fd62 Mon Sep 17 00:00:00 2001
++From: ZhaoJinming <zhaojinming@uniontech.com>
++Date: Wed, 29 Jul 2026 10:00:05 +0800
++Subject: [PATCH] wifi: ath11k: fix resource leak on error in ext IRQ setup
++
++In ath11k_ahb_config_irq(), when a CE request_irq() fails, the function
++returns the error immediately without freeing the CE IRQs that were
++successfully registered in previous loop iterations. The probe error
++path does not call ath11k_ahb_free_irq() either, so the previously
++registered CE IRQ handlers remain attached to the interrupt lines and
++are never released.
++
++In ath11k_ahb_config_ext_irq(), when an external request_irq() fails,
++the error is only logged and the loop continues. The function then
++returns 0 indicating success, leaving the device in a partially
++configured state where some external IRQs are not registered. This
++causes enable_irq()/disable_irq()/free_irq() to be called on
++unregistered IRQs during runtime and remove/shutdown, triggering
++WARN_ON(!desc->action), and missing interrupt handlers lead to data
++loss.
++
++Additionally, if alloc_netdev_dummy() fails for a later IRQ group, the
++function returns -ENOMEM without freeing the ext IRQs and napi_ndev
++that were successfully set up for earlier groups.
++
++Fix all three issues: propagate the error up to the caller and unwind
++all successfully registered IRQs and allocated resources on failure.
++Also move ab->irq_num[irq_idx] assignment after request_irq() succeeds
++in the ext IRQ path to match the CE IRQ path and avoid storing a stale
++IRQ number on failure.
++
++Signed-off-by: ZhaoJinming <zhaojinming@uniontech.com>
++Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
++Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
++Link: https://patch.msgid.link/20260729020005.219253-1-zhaojinming@uniontech.com
++Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
++---
++ drivers/net/wireless/ath/ath11k/ahb.c | 79 +++++++++++++++++++--------
++ 1 file changed, 55 insertions(+), 24 deletions(-)
++
++diff --git a/drivers/net/wireless/ath/ath11k/ahb.c b/drivers/net/wireless/ath/ath11k/ahb.c
++index 1e1dea485760b..ec5bf5c9fd792 100644
++--- a/drivers/net/wireless/ath/ath11k/ahb.c
+++++ b/drivers/net/wireless/ath/ath11k/ahb.c
++@@ -431,36 +431,44 @@ static void ath11k_ahb_init_qmi_ce_config(struct ath11k_base *ab)
++ 	ab->qmi.service_ins_id = ab->hw_params.qmi_service_ins_id;
++ }
++ 
++-static void ath11k_ahb_free_ext_irq(struct ath11k_base *ab)
+++static void ath11k_ahb_free_ext_irq_grp(struct ath11k_base *ab,
+++					struct ath11k_ext_irq_grp *irq_grp)
++ {
++-	int i, j;
++-
++-	for (i = 0; i < ATH11K_EXT_IRQ_GRP_NUM_MAX; i++) {
++-		struct ath11k_ext_irq_grp *irq_grp = &ab->ext_irq_grp[i];
+++	int j;
++ 
++-		for (j = 0; j < irq_grp->num_irq; j++)
++-			free_irq(ab->irq_num[irq_grp->irqs[j]], irq_grp);
+++	for (j = 0; j < irq_grp->num_irq; j++)
+++		free_irq(ab->irq_num[irq_grp->irqs[j]], irq_grp);
++ 
++-		netif_napi_del(&irq_grp->napi);
++-		free_netdev(irq_grp->napi_ndev);
++-	}
+++	netif_napi_del(&irq_grp->napi);
+++	free_netdev(irq_grp->napi_ndev);
++ }
++ 
++-static void ath11k_ahb_free_irq(struct ath11k_base *ab)
+++static void ath11k_ahb_free_ext_irq(struct ath11k_base *ab)
++ {
++-	int irq_idx;
++ 	int i;
++ 
++-	if (ab->hw_params.hybrid_bus_type)
++-		return ath11k_pcic_free_irq(ab);
+++	for (i = 0; i < ATH11K_EXT_IRQ_GRP_NUM_MAX; i++)
+++		ath11k_ahb_free_ext_irq_grp(ab, &ab->ext_irq_grp[i]);
+++}
++ 
++-	for (i = 0; i < ab->hw_params.ce_count; i++) {
+++static void ath11k_ahb_free_ce_irqs(struct ath11k_base *ab, int max_idx)
+++{
+++	int irq_idx, i;
+++
+++	for (i = 0; i < max_idx; i++) {
++ 		if (ath11k_ce_get_attr_flags(ab, i) & CE_ATTR_DIS_INTR)
++ 			continue;
++ 		irq_idx = ATH11K_IRQ_CE0_OFFSET + i;
++ 		free_irq(ab->irq_num[irq_idx], &ab->ce.ce_pipe[i]);
++ 	}
+++}
+++
+++static void ath11k_ahb_free_irq(struct ath11k_base *ab)
+++{
+++	if (ab->hw_params.hybrid_bus_type)
+++		return ath11k_pcic_free_irq(ab);
++ 
+++	ath11k_ahb_free_ce_irqs(ab, ab->hw_params.ce_count);
++ 	ath11k_ahb_free_ext_irq(ab);
++ }
++ 
++@@ -524,20 +532,25 @@ static irqreturn_t ath11k_ahb_ext_interrupt_handler(int irq, void *arg)
++ static int ath11k_ahb_config_ext_irq(struct ath11k_base *ab)
++ {
++ 	struct ath11k_hw_params *hw = &ab->hw_params;
+++	struct ath11k_ext_irq_grp *irq_grp;
++ 	int i, j;
++ 	int irq;
++ 	int ret;
++ 
++ 	for (i = 0; i < ATH11K_EXT_IRQ_GRP_NUM_MAX; i++) {
++-		struct ath11k_ext_irq_grp *irq_grp = &ab->ext_irq_grp[i];
++ 		u32 num_irq = 0;
++ 
+++		irq_grp = &ab->ext_irq_grp[i];
+++
++ 		irq_grp->ab = ab;
++ 		irq_grp->grp_id = i;
++ 
++ 		irq_grp->napi_ndev = alloc_netdev_dummy(0);
++-		if (!irq_grp->napi_ndev)
++-			return -ENOMEM;
+++		if (!irq_grp->napi_ndev) {
+++			ret = -ENOMEM;
+++			irq_grp->num_irq = 0;
+++			goto err_request_irq;
+++		}
++ 
++ 		netif_napi_add(irq_grp->napi_ndev, &irq_grp->napi,
++ 			       ath11k_ahb_ext_grp_napi_poll);
++@@ -585,14 +598,11 @@ static int ath11k_ahb_config_ext_irq(struct ath11k_base *ab)
++ 				}
++ 			}
++ 		}
++-		irq_grp->num_irq = num_irq;
++-
++-		for (j = 0; j < irq_grp->num_irq; j++) {
+++		for (j = 0; j < num_irq; j++) {
++ 			int irq_idx = irq_grp->irqs[j];
++ 
++ 			irq = platform_get_irq_byname(ab->pdev,
++ 						      irq_name[irq_idx]);
++-			ab->irq_num[irq_idx] = irq;
++ 			irq_set_status_flags(irq, IRQ_NOAUTOEN | IRQ_DISABLE_UNLAZY);
++ 			ret = request_irq(irq, ath11k_ahb_ext_interrupt_handler,
++ 					  IRQF_TRIGGER_RISING,
++@@ -600,11 +610,24 @@ static int ath11k_ahb_config_ext_irq(struct ath11k_base *ab)
++ 			if (ret) {
++ 				ath11k_err(ab, "failed request_irq for %d\n",
++ 					   irq);
+++				irq_grp->num_irq = j;
+++				ath11k_ahb_free_ext_irq_grp(ab, irq_grp);
+++				goto err_request_irq;
++ 			}
+++			ab->irq_num[irq_idx] = irq;
++ 		}
+++
+++		irq_grp->num_irq = num_irq;
++ 	}
++ 
++ 	return 0;
+++
+++err_request_irq:
+++	for (i--; i >= 0; i--) {
+++		irq_grp = &ab->ext_irq_grp[i];
+++		ath11k_ahb_free_ext_irq_grp(ab, irq_grp);
+++	}
+++	return ret;
++ }
++ 
++ static int ath11k_ahb_config_irq(struct ath11k_base *ab)
++@@ -629,16 +652,24 @@ static int ath11k_ahb_config_irq(struct ath11k_base *ab)
++ 		ret = request_irq(irq, ath11k_ahb_ce_interrupt_handler,
++ 				  IRQF_TRIGGER_RISING, irq_name[irq_idx],
++ 				  ce_pipe);
++-		if (ret)
+++		if (ret) {
+++			ath11k_err(ab, "failed request_irq for %d\n", irq);
+++			ath11k_ahb_free_ce_irqs(ab, i);
++ 			return ret;
+++		}
++ 
++ 		ab->irq_num[irq_idx] = irq;
++ 	}
++ 
++ 	/* Configure external interrupts */
++ 	ret = ath11k_ahb_config_ext_irq(ab);
+++	if (ret) {
+++		ath11k_err(ab, "failed to configure ext irq: %d\n", ret);
+++		ath11k_ahb_free_ce_irqs(ab, ab->hw_params.ce_count);
+++		return ret;
+++	}
++ 
++-	return ret;
+++	return 0;
++ }
++ 
++ static int ath11k_ahb_map_service_to_pipe(struct ath11k_base *ab, u16 service_id,
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/subsys/485-wifi-mac80211-keep-paired-old-chanctx-alive.patch b/package/kernel/mac80211/patches/subsys/485-wifi-mac80211-keep-paired-old-chanctx-alive.patch
+new file mode 100755
+index 0000000000..0275c39908
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/485-wifi-mac80211-keep-paired-old-chanctx-alive.patch
+@@ -0,0 +1,101 @@
++From 3412e9a800786d1dec4a58367db1cba275e7ef11 Mon Sep 17 00:00:00 2001
++From: Zhiling Zou <zhilinz@nebusec.ai>
++Date: Mon, 3 Aug 2026 12:35:10 +0800
++Subject: [PATCH] wifi: mac80211: keep paired old chanctx alive
++
++An in-place replacement keeps reciprocal replace_ctx pointers between
++the old WILL_BE_REPLACED chanctx and the new REPLACES_OTHER chanctx.
++However, the early free paths only consider assigned and reserved link
++users when deciding whether to free the old chanctx.
++
++That lets the old chanctx be freed too early while the replacement
++partner still points back to it, either when the last assigned link is
++released or when that link successfully reassigns to another existing
++context. Later unreserve and switch-finalization paths can then follow a
++stale replace_ctx pointer.
++
++Keep a paired old chanctx alive until the replacement pair has been torn
++down. Apply the same check to both __ieee80211_link_release_channel()
++and ieee80211_link_use_reserved_reassign(). If the replacement is later
++abandoned, ieee80211_link_unreserve_chanctx() already tears down the
++pairing before freeing the old chanctx once no users remain.
++
++Fixes: 5bcae31d9cb1 ("mac80211: implement multi-vif in-place reservations")
++Cc: stable@vger.kernel.org
++Reported-by: Vega <vega@nebusec.ai>
++Signed-off-by: Zhiling Zou <zhilinz@nebusec.ai>
++Link: https://patch.msgid.link/b9b582b0db3814f641648b8886bb50f9d68f93ac.1785730815.git.zhilinz@nebusec.ai
++Signed-off-by: Johannes Berg <johannes.berg@intel.com>
++---
++ net/mac80211/chan.c | 20 ++++++++++++++++++--
++ 1 file changed, 18 insertions(+), 2 deletions(-)
++
++diff --git a/net/mac80211/chan.c b/net/mac80211/chan.c
++index 17b935448f138..9cba795077673 100644
++--- a/net/mac80211/chan.c
+++++ b/net/mac80211/chan.c
++@@ -231,6 +231,13 @@ int ieee80211_chanctx_refcount(struct ieee80211_local *local,
++ 	return num;
++ }
++ 
+++static bool
+++ieee80211_chanctx_has_replace_partner(struct ieee80211_chanctx *ctx)
+++{
+++	return ctx->replace_state == IEEE80211_CHANCTX_WILL_BE_REPLACED &&
+++	       ctx->replace_ctx;
+++}
+++
++ static int ieee80211_num_chanctx(struct ieee80211_local *local, int radio_idx)
++ {
++ 	struct ieee80211_chanctx *ctx;
++@@ -1405,6 +1412,7 @@ void ieee80211_link_unreserve_chanctx(struct ieee80211_link_data *link)
++ {
++ 	struct ieee80211_sub_if_data *sdata = link->sdata;
++ 	struct ieee80211_chanctx *ctx = link->reserved_chanctx;
+++	struct ieee80211_chanctx *old_ctx = NULL;
++ 
++ 	lockdep_assert_wiphy(sdata->local->hw.wiphy);
++ 
++@@ -1418,6 +1426,7 @@ void ieee80211_link_unreserve_chanctx(struct ieee80211_link_data *link)
++ 			if (WARN_ON(!ctx->replace_ctx))
++ 				return;
++ 
+++			old_ctx = ctx->replace_ctx;
++ 			WARN_ON(ctx->replace_ctx->replace_state !=
++ 			        IEEE80211_CHANCTX_WILL_BE_REPLACED);
++ 			WARN_ON(ctx->replace_ctx->replace_ctx != ctx);
++@@ -1428,6 +1437,11 @@ void ieee80211_link_unreserve_chanctx(struct ieee80211_link_data *link)
++ 
++ 			list_del_rcu(&ctx->list);
++ 			kfree_rcu(ctx, rcu_head);
+++
+++			if (ieee80211_chanctx_refcount(sdata->local,
+++						       old_ctx) == 0)
+++				ieee80211_free_chanctx(sdata->local, old_ctx,
+++						       false);
++ 		} else {
++ 			ieee80211_free_chanctx(sdata->local, ctx, false);
++ 		}
++@@ -1707,7 +1721,8 @@ ieee80211_link_use_reserved_reassign(struct ieee80211_link_data *link)
++ 
++ 	ieee80211_check_fast_xmit_iface(sdata);
++ 
++-	if (ieee80211_chanctx_refcount(local, old_ctx) == 0)
+++	if (ieee80211_chanctx_refcount(local, old_ctx) == 0 &&
+++	    !ieee80211_chanctx_has_replace_partner(old_ctx))
++ 		ieee80211_free_chanctx(local, old_ctx, false);
++ 
++ 	ieee80211_recalc_chanctx_min_def(local, new_ctx);
++@@ -2192,7 +2207,8 @@ void __ieee80211_link_release_channel(struct ieee80211_link_data *link,
++ 	}
++ 
++ 	ieee80211_assign_link_chanctx(link, NULL, false);
++-	if (ieee80211_chanctx_refcount(local, ctx) == 0)
+++	if (ieee80211_chanctx_refcount(local, ctx) == 0 &&
+++	    !ieee80211_chanctx_has_replace_partner(ctx))
++ 		ieee80211_free_chanctx(local, ctx, skip_idle_recalc);
++ 
++ 	link->radar_required = false;
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/subsys/486-wifi-mac80211-count-only-matching-reservations-in-reserved-switch.patch b/package/kernel/mac80211/patches/subsys/486-wifi-mac80211-count-only-matching-reservations-in-reserved-switch.patch
+new file mode 100755
+index 0000000000..de3ec72fd0
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/486-wifi-mac80211-count-only-matching-reservations-in-reserved-switch.patch
+@@ -0,0 +1,131 @@
++From 437f3727b4fd715266c296435c116288f82666fd Mon Sep 17 00:00:00 2001
++From: Zhiling Zou <zhilinz@nebusec.ai>
++Date: Mon, 3 Aug 2026 11:28:22 +0800
++Subject: [PATCH] wifi: mac80211: count only matching reservations in reserved
++ switch
++
++ieee80211_vif_use_reserved_switch() validates a replacement by counting
++assigned links on ctx->replace_ctx and treating reservations too
++broadly. A link can still be assigned to the old channel context while
++holding a reservation that belongs to a different replacement
++operation.
++
++That can make the current replacement appear complete too early. If
++another link finalizes first, the function can free the
++WILL_BE_REPLACED chanctx while the unmatched link and driver still use
++it, leading to a use-after-free in later beacon generation.
++
++Require an in-place reservation to point at the current replacement
++context, and require the reserved and assigned contexts to be the
++matching replacement pair, before counting or moving the link.
++
++Fixes: 5bcae31d9cb1 ("mac80211: implement multi-vif in-place reservations")
++Cc: stable@vger.kernel.org
++Reported-by: Vega <vega@nebusec.ai>
++Signed-off-by: Zhiling Zou <zhilinz@nebusec.ai>
++Link: https://patch.msgid.link/4b6c4b8648ab1920c38a40be32c0b1a2797b4ac6.1785726007.git.zhilinz@nebusec.ai
++Signed-off-by: Johannes Berg <johannes.berg@intel.com>
++---
++ net/mac80211/chan.c | 30 +++++++++++++++++++++++-------
++ 1 file changed, 23 insertions(+), 7 deletions(-)
++
++diff --git a/net/mac80211/chan.c b/net/mac80211/chan.c
++index 75bb204ad7432..17b935448f138 100644
++--- a/net/mac80211/chan.c
+++++ b/net/mac80211/chan.c
++@@ -1772,7 +1772,8 @@ ieee80211_link_use_reserved_assign(struct ieee80211_link_data *link)
++ }
++ 
++ static bool
++-ieee80211_link_has_in_place_reservation(struct ieee80211_link_data *link)
+++ieee80211_link_has_in_place_reservation(struct ieee80211_link_data *link,
+++					struct ieee80211_chanctx *ctx)
++ {
++ 	struct ieee80211_sub_if_data *sdata = link->sdata;
++ 	struct ieee80211_chanctx *old_ctx, *new_ctx;
++@@ -1782,6 +1783,9 @@ ieee80211_link_has_in_place_reservation(struct ieee80211_link_data *link)
++ 	new_ctx = link->reserved_chanctx;
++ 	old_ctx = ieee80211_link_get_chanctx(link);
++ 
+++	if (new_ctx != ctx)
+++		return false;
+++
++ 	if (!old_ctx)
++ 		return false;
++ 
++@@ -1794,6 +1798,12 @@ ieee80211_link_has_in_place_reservation(struct ieee80211_link_data *link)
++ 	if (new_ctx->replace_state != IEEE80211_CHANCTX_REPLACES_OTHER)
++ 		return false;
++ 
+++	if (new_ctx->replace_ctx != old_ctx)
+++		return false;
+++
+++	if (old_ctx->replace_ctx != new_ctx)
+++		return false;
+++
++ 	return true;
++ }
++ 
++@@ -1823,7 +1833,8 @@ static int ieee80211_chsw_switch_vifs(struct ieee80211_local *local,
++ 		}
++ 
++ 		for_each_chanctx_user_reserved(local, ctx, &iter) {
++-			if (!ieee80211_link_has_in_place_reservation(iter.link))
+++			if (!ieee80211_link_has_in_place_reservation(iter.link,
+++								     ctx))
++ 				continue;
++ 
++ 			old_ctx = ieee80211_link_get_chanctx(iter.link);
++@@ -1925,7 +1936,9 @@ static int ieee80211_vif_use_reserved_switch(struct ieee80211_local *local)
++ 
++ 		for_each_chanctx_user_assigned(local, ctx->replace_ctx, &iter) {
++ 			n_assigned++;
++-			if (iter.link && iter.link->reserved_chanctx) {
+++			if (iter.link &&
+++			    ieee80211_link_has_in_place_reservation(iter.link,
+++								    ctx)) {
++ 				n_reserved++;
++ 				if (iter.link->reserved_ready)
++ 					n_ready++;
++@@ -1950,7 +1963,8 @@ static int ieee80211_vif_use_reserved_switch(struct ieee80211_local *local)
++ use_reserved:
++ 		ctx->conf.radar_enabled = false;
++ 		for_each_chanctx_user_reserved(local, ctx, &iter) {
++-			if (ieee80211_link_has_in_place_reservation(iter.link) &&
+++			if (ieee80211_link_has_in_place_reservation(iter.link,
+++								    ctx) &&
++ 			    !iter.link->reserved_ready)
++ 				return -EAGAIN;
++ 
++@@ -1991,7 +2005,8 @@ static int ieee80211_vif_use_reserved_switch(struct ieee80211_local *local)
++ 		}
++ 
++ 		for_each_chanctx_user_reserved(local, ctx, &iter) {
++-			if (!ieee80211_link_has_in_place_reservation(iter.link))
+++			if (!ieee80211_link_has_in_place_reservation(iter.link,
+++								     ctx))
++ 				continue;
++ 
++ 			ieee80211_chan_bw_change(local,
++@@ -2040,7 +2055,7 @@ static int ieee80211_vif_use_reserved_switch(struct ieee80211_local *local)
++ 			struct ieee80211_bss_conf *link_conf = link->conf;
++ 			u64 changed = 0;
++ 
++-			if (!ieee80211_link_has_in_place_reservation(link))
+++			if (!ieee80211_link_has_in_place_reservation(link, ctx))
++ 				continue;
++ 
++ 			rcu_assign_pointer(link_conf->chanctx_conf,
++@@ -2091,7 +2106,8 @@ static int ieee80211_vif_use_reserved_switch(struct ieee80211_local *local)
++ 		for_each_chanctx_user_reserved(local, ctx, &iter) {
++ 			struct ieee80211_link_data *link = iter.link;
++ 
++-			if (WARN_ON(ieee80211_link_has_in_place_reservation(link)))
+++			if (WARN_ON(ieee80211_link_has_in_place_reservation(link,
+++									    ctx)))
++ 				continue;
++ 
++ 			if (!link->reserved_ready)
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/subsys/487-wifi-mac80211-drain-PS-delivery-work-during-station-teardown.patch b/package/kernel/mac80211/patches/subsys/487-wifi-mac80211-drain-PS-delivery-work-during-station-teardown.patch
+new file mode 100755
+index 0000000000..f4e3f9bba1
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/487-wifi-mac80211-drain-PS-delivery-work-during-station-teardown.patch
+@@ -0,0 +1,76 @@
++From 67a9e80c3ca20c9044cd6ee72cd6278dd19b5023 Mon Sep 17 00:00:00 2001
++From: Zhao Li <enderaoelyther@gmail.com>
++Date: Wed, 16 Sep 2026 19:37:35 +0800
++Subject: [PATCH] wifi: mac80211: drain PS delivery work during station
++ teardown
++
++Removing an AP or mesh station can notify the driver and wake TXQs after
++the station has already been removed from the driver, and can update
++num_sta_ps and the power-save queues after station cleanup has purged
++them.
++
++sta_deliver_ps_frames() tests sta->dead only before it starts delivery. A
++worker that passes that test can be delayed while teardown sets sta->dead
++and removes the station from the driver; when it resumes it still runs the
++full delivery.
++
++The existing cancel_work_sync() sits near the end of
++__cleanup_single_sta(), after the final driver state transition and after
++PS accounting and queue purging, so it drains the worker only once the
++state it has to protect has already changed. Before commit d34ba2168a3c
++("mac80211: don't delay station destruction") cleanup was deferred
++through the same ordered workqueue as the delivery work, which kept the
++two ordered.
++
++Cancel the work after setting sta->dead and before moving the driver
++state, and move the existing cancellation to the start of
++__cleanup_single_sta(). The first drain closes the driver-lifetime window;
++driver callbacks during the remaining state transitions can still queue
++drv_deliver_wk through ieee80211_sta_block_awake(), so retain the second
++drain at the start of __cleanup_single_sta(). That drain also covers
++insertion failures, which reach cleanup without setting sta->dead.
++
++Fixes: d34ba2168a3c ("mac80211: don't delay station destruction")
++Cc: stable@vger.kernel.org
++Assisted-by: LLM sparse smatch coccinelle kasan
++Signed-off-by: Zhao Li <enderaoelyther@gmail.com>
++Link: https://patch.msgid.link/20260916113735.31029-1-enderaoelyther@gmail.com
++Signed-off-by: Johannes Berg <johannes.berg@intel.com>
++---
++ net/mac80211/sta_info.c | 6 ++++--
++ 1 file changed, 4 insertions(+), 2 deletions(-)
++
++diff --git a/net/mac80211/sta_info.c b/net/mac80211/sta_info.c
++index fdf00cbf49d8b..e81cd155197b9 100644
++--- a/net/mac80211/sta_info.c
+++++ b/net/mac80211/sta_info.c
++@@ -137,6 +137,8 @@ static void __cleanup_single_sta(struct sta_info *sta)
++ 	struct ieee80211_local *local = sdata->local;
++ 	struct ps_data *ps;
++ 
+++	cancel_work_sync(&sta->drv_deliver_wk);
+++
++ 	if (test_sta_flag(sta, WLAN_STA_PS_STA) ||
++ 	    test_sta_flag(sta, WLAN_STA_PS_DRIVER) ||
++ 	    test_sta_flag(sta, WLAN_STA_PS_DELIVER)) {
++@@ -166,8 +168,6 @@ static void __cleanup_single_sta(struct sta_info *sta)
++ 	if (ieee80211_vif_is_mesh(&sdata->vif))
++ 		mesh_sta_cleanup(sta);
++ 
++-	cancel_work_sync(&sta->drv_deliver_wk);
++-
++ 	/*
++ 	 * Destroy aggregation state here. It would be nice to wait for the
++ 	 * driver to finish aggregation stop and then clean up, but for now
++@@ -1582,6 +1582,8 @@ static void __sta_info_destroy_part2(struct sta_info *sta, bool recalc)
++ 
++ 	sta->dead = true;
++ 
+++	cancel_work_sync(&sta->drv_deliver_wk);
+++
++ 	local->num_sta--;
++ 	local->sta_generation++;
++ 
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/subsys/488-wifi-mac80211-shut-down-RX-BA-session-timer-on-teardown.patch b/package/kernel/mac80211/patches/subsys/488-wifi-mac80211-shut-down-RX-BA-session-timer-on-teardown.patch
+new file mode 100755
+index 0000000000..a0adb9514b
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/488-wifi-mac80211-shut-down-RX-BA-session-timer-on-teardown.patch
+@@ -0,0 +1,46 @@
++From e588e83e5c7a0f6d7a77dbbb58927c8c8cfd598e Mon Sep 17 00:00:00 2001
++From: Zhao Li <enderaoelyther@gmail.com>
++Date: Thu, 10 Sep 2026 14:54:02 +0800
++Subject: [PATCH] wifi: mac80211: shut down RX BA session timer on teardown
++
++Tearing down an RX BA session can leave the session timer queued on a
++freed tid_rx. Later timer-wheel processing and the timer callback itself
++then run against freed memory.
++
++An RX BAR handler can dereference tid_rx under RCU before teardown
++unpublishes it and stay in its read-side critical section while teardown
++deletes the session timer. The stale handler can then rearm the timer
++after timer_delete_sync() returns and before the RCU callback frees
++tid_rx.
++
++Use timer_shutdown_sync() so rearm attempts become ineffective once
++teardown starts. Keep reorder_timer unchanged: teardown marks the session
++removed under reorder_lock and its release path checks that state before
++rearming. session_timer has no equivalent guard because
++ieee80211_rx_h_ctrl() rearms it before taking reorder_lock.
++
++Fixes: a87f736d942c ("mac80211: use RCU for RX aggregation")
++Cc: stable@kernel.org # 5.15+
++Assisted-by: LLM sparse kasan
++Signed-off-by: Zhao Li <enderaoelyther@gmail.com>
++Signed-off-by: Johannes Berg <johannes.berg@intel.com>
++---
++ net/mac80211/agg-rx.c | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/net/mac80211/agg-rx.c b/net/mac80211/agg-rx.c
++index 9629e00069a1f..01d6703767c63 100644
++--- a/net/mac80211/agg-rx.c
+++++ b/net/mac80211/agg-rx.c
++@@ -102,7 +102,7 @@ void __ieee80211_stop_rx_ba_session(struct sta_info *sta, u16 tid,
++ 	if (!tid_rx)
++ 		return;
++ 
++-	timer_delete_sync(&tid_rx->session_timer);
+++	timer_shutdown_sync(&tid_rx->session_timer);
++ 
++ 	/* make sure ieee80211_sta_reorder_release() doesn't re-arm the timer */
++ 	spin_lock_bh(&tid_rx->reorder_lock);
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/subsys/489-wifi-mac80211-drop-oversized-fragments-to-avoid-extra_len-overflow.patch b/package/kernel/mac80211/patches/subsys/489-wifi-mac80211-drop-oversized-fragments-to-avoid-extra_len-overflow.patch
+new file mode 100755
+index 0000000000..e4392c3497
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/489-wifi-mac80211-drop-oversized-fragments-to-avoid-extra_len-overflow.patch
+@@ -0,0 +1,93 @@
++From 5e4f3509793b4db2c0835340224743db680e861f Mon Sep 17 00:00:00 2001
++From: Yuchao Zhang <ndaugoing@gmail.com>
++Date: Fri, 18 Sep 2026 11:40:04 +0800
++Subject: [PATCH] wifi: mac80211: drop oversized fragments to avoid extra_len
++ overflow
++
++In ieee80211_rx_h_defragment(), fragment payloads are accumulated into
++entry->extra_len as subsequent fragments arrive:
++
++        entry->extra_len += rx->skb->len;
++
++When the final fragment arrives, the head fragment is dequeued, and
++pskb_expand_head() is called with entry->extra_len to ensure sufficient
++tailroom for all queued fragments before copying:
++
++        if (skb_tailroom(rx->skb) < entry->extra_len) {
++                if (unlikely(pskb_expand_head(rx->skb, 0, entry->extra_len,
++                                              GFP_ATOMIC))) {
++                        ...
++                }
++        }
++        while ((skb = __skb_dequeue(&entry->skb_list))) {
++                skb_put_data(rx->skb, skb->data, skb->len);
++                dev_kfree_skb(skb);
++        }
++
++In commit 69f132236827 ("mac80211: shrink struct
++ieee80211_fragment_entry"), entry->extra_len was narrowed from unsigned
++int to u16 in order to reduce structure memory footprint.
++
++However, an IEEE 802.11 frame sequence can contain up to 16 fragments
++(frag numbers 0..15). If a sequence of large fragments arrives (e.g. from
++a malicious peer or rogue AP), the sum of fragment lengths can exceed
++65535 bytes (for example, 15 fragments of 4400 bytes total 66000 bytes).
++Because extra_len is a u16, this addition overflows and wraps around
++modulo 65536 (e.g. 66000 wraps to 464).
++
++Consequently, pskb_expand_head() allocates only the truncated amount of
++tailroom (or is skipped entirely if the head fragment already has >= 464
++bytes of tailroom). When skb_put_data() subsequently iterates through the
++queued skb list, it appends the full payload into the undersized buffer,
++causing skb_put() to trigger skb_over_panic() and crash the kernel in
++softirq context.
++
++A legitimate MSDU in IEEE 802.11 is at most 2304 bytes (or up to 7935/11454
++bytes for A-MSDU, which is not fragmented), well below U16_MAX.
++
++Fix this without increasing the size of struct ieee80211_fragment_entry by
++checking whether adding the incoming fragment length would exceed U16_MAX.
++If so, purge the queued fragments and drop the frame.
++
++Fixes: 69f132236827 ("mac80211: shrink struct ieee80211_fragment_entry")
++Signed-off-by: Yuchao Zhang <ndaugoing@gmail.com>
++Link: https://patch.msgid.link/20260918034004.85078-2-ndaugoing@gmail.com
++[assign a separate drop reason]
++Signed-off-by: Johannes Berg <johannes.berg@intel.com>
++---
++ net/mac80211/drop.h | 1 +
++ net/mac80211/rx.c   | 6 ++++++
++ 2 files changed, 7 insertions(+)
++
++diff --git a/net/mac80211/drop.h b/net/mac80211/drop.h
++index f06a8aa905c53..f433ee17cce51 100644
++--- a/net/mac80211/drop.h
+++++ b/net/mac80211/drop.h
++@@ -108,6 +108,7 @@ typedef unsigned int __bitwise ieee80211_rx_result;
++ 	R(RX_DROP_U_UNHANDLED_PREQ)		\
++ 	R(RX_DROP_U_UNHANDLED_MGMT_STYPE)	\
++ 	R(RX_DROP_U_NO_LINK)			\
+++	R(RX_DROP_U_DEFRAG_OVERFLOW)		\
++ /* this line for the trailing \ - add before this */
++ 
++ /* having two enums allows for checking ieee80211_rx_result use with sparse */
++diff --git a/net/mac80211/rx.c b/net/mac80211/rx.c
++index 5e26be8e27d8f..7ead509304ebe 100644
++--- a/net/mac80211/rx.c
+++++ b/net/mac80211/rx.c
++@@ -2499,6 +2499,12 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
++ 	}
++ 
++ 	skb_pull(rx->skb, ieee80211_hdrlen(fc));
+++	if (unlikely((u32)entry->extra_len + rx->skb->len > U16_MAX)) {
+++		I802_DEBUG_INC(rx->local->rx_handlers_drop_defrag);
+++		__skb_queue_purge(&entry->skb_list);
+++		return RX_DROP_U_DEFRAG_OVERFLOW;
+++	}
+++
++ 	__skb_queue_tail(&entry->skb_list, rx->skb);
++ 	entry->last_frag = frag;
++ 	entry->extra_len += rx->skb->len;
++-- 
++2.43.0
++
+diff --git a/package/kernel/mac80211/patches/subsys/490-wifi-cfg80211-fix-RTS-threshold-setting-for-single-radio-PHY.patch b/package/kernel/mac80211/patches/subsys/490-wifi-cfg80211-fix-RTS-threshold-setting-for-single-radio-PHY.patch
+new file mode 100755
+index 0000000000..531753c75c
+--- /dev/null
++++ b/package/kernel/mac80211/patches/subsys/490-wifi-cfg80211-fix-RTS-threshold-setting-for-single-radio-PHY.patch
+@@ -0,0 +1,45 @@
++From 9eda41e32263806a66835e275efdcc0c5f46bbc4 Mon Sep 17 00:00:00 2001
++From: Stanislaw Gruszka <stf_xl@wp.pl>
++Date: Sat, 19 Sep 2026 11:24:54 +0200
++Subject: [PATCH] wifi: cfg80211: fix RTS threshold setting for single-radio
++ PHY
++
++Due to an incorrect old_radio_rts_threshold check, we do not set
++rdev->wiphy.rts_threshold for a single-radio PHY, and the threshold
++value is not propagated to lower layers.
++
++Cc: stable@vger.kernel.org
++Fixes: 264637941cf4 ("wifi: cfg80211: Add Support to Set RTS Threshold for each Radio")
++Signed-off-by: Stanislaw Gruszka <stf_xl@wp.pl>
++Link: https://patch.msgid.link/20260919092454.50266-1-stf_xl@wp.pl
++Signed-off-by: Johannes Berg <johannes.berg@intel.com>
++---
++ net/wireless/nl80211.c | 11 ++++++-----
++ 1 file changed, 6 insertions(+), 5 deletions(-)
++
++diff --git a/net/wireless/nl80211.c b/net/wireless/nl80211.c
++index 9fafd7673d853..ddce61ec016ae 100644
++--- a/net/wireless/nl80211.c
+++++ b/net/wireless/nl80211.c
++@@ -4563,12 +4563,13 @@ static int nl80211_set_wiphy(struct sk_buff *skb, struct genl_info *info)
++ 			rdev->wiphy.retry_long = retry_long;
++ 		if (changed & WIPHY_PARAM_FRAG_THRESHOLD)
++ 			rdev->wiphy.frag_threshold = frag_threshold;
++-		if ((changed & WIPHY_PARAM_RTS_THRESHOLD) &&
++-		    old_radio_rts_threshold) {
+++		if (changed & WIPHY_PARAM_RTS_THRESHOLD) {
++ 			rdev->wiphy.rts_threshold = rts_threshold;
++-			for (i = 0 ; i < rdev->wiphy.n_radio; i++)
++-				rdev->wiphy.radio_cfg[i].rts_threshold =
++-					rdev->wiphy.rts_threshold;
+++			if (old_radio_rts_threshold) {
+++				for (i = 0; i < rdev->wiphy.n_radio; i++)
+++					rdev->wiphy.radio_cfg[i].rts_threshold =
+++						rdev->wiphy.rts_threshold;
+++			}
++ 		}
++ 		if (changed & WIPHY_PARAM_COVERAGE_CLASS)
++ 			rdev->wiphy.coverage_class = coverage_class;
++-- 
++2.43.0
++
+-- 
+2.43.0
