@@ -116,6 +116,9 @@ fi
 cd "$W"
 if [ "$(git rev-parse HEAD)" != "$OPENWRT_COMMIT" ]; then
 	unpatch . "$W/.main-patches/openwrt/"*.patch "$MAIN"/patches/openwrt/*.patch
+	# step 4's chmod also sets the mode of files main tracks (other subtargets'
+	# board.d scripts): put those back, they are the build's, not the tree's
+	git diff --summary | sed -n 's/^ mode change [0-7]* => [0-7]* //p' | xargs -r git checkout -q --
 	git diff --quiet || { echo "$W has changes of its own and is not at $OPENWRT_COMMIT; build in a fresh directory" >&2; exit 1; }
 	git fetch -q origin
 	git checkout -q "$OPENWRT_COMMIT"
