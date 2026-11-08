@@ -1,20 +1,20 @@
-From 8cdc8583e345834a8fa19d4a4692481520bfc736 Mon Sep 17 00:00:00 2001
+From b73ad2f55b152ac51f8a38f0de9e891b68eb7047 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
-Date: Sat, 7 Nov 2026 17:48:41 -0600
-Subject: [PATCH] mac80211: ath11k: feed airtime fairness real TX airtime on 5
- and 6 GHz
+Date: Sat, 7 Nov 2026 18:01:53 -0600
+Subject: [PATCH] mac80211: ath11k: feed airtime fairness real TX airtime
 
 B167: ath11k never reported airtime to mac80211, so airtime fairness
 was a no-op on every ath11k radio. ath11k/983 registers each PPDU's TX
-airtime from the HTT PPDU stats, 984 hands frames ath11k freed on
-REINJ/INSPECT completions and in crash recovery back to mac80211, and
-985 (port policy) feeds the airtime on 5 and 6 GHz only: no airtime
-fairness on 2.4 GHz, Griff 2026-11-07. AQL (NL80211_EXT_FEATURE_AQL)
-stays off: on the C-360's 6 GHz radio at 160 MHz it cost 22-44% and
-decayed under load. C360-AP test of 983+984 (2026-11-07): one client
-1777 vs 1672 Mbit/s, two clients 1540/1524 vs 1569/1566, ping p95
-under two-client load 42-50 / 31-44 vs 61 / 56-77 ms. 983 and 984 go
-upstream. Bump PKG_RELEASE.
+airtime from the HTT PPDU stats, and 984 hands frames ath11k freed on
+REINJ/INSPECT completions and in crash recovery back to mac80211.
+Airtime is fed on every band: a 2.4 GHz test with an 11g client next
+to an HE client showed airtime fairness on and off alike, so a 2.4 GHz
+exclusion would have no purpose. AQL (NL80211_EXT_FEATURE_AQL) stays
+off: on the C-360's 6 GHz radio at 160 MHz it cost 22-44% and decayed
+under load. C360-AP test of 983+984 (2026-11-07): one client 1777 vs
+1672 Mbit/s, two clients 1540/1524 vs 1569/1566, ping p95 under the
+two-client load 42-50 / 31-44 vs 61 / 56-77 ms. Both go upstream.
+Bump PKG_RELEASE.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
@@ -22,11 +22,9 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  package/kernel/mac80211/Makefile              |  2 +-
  ...ath11k-report-TX-airtime-to-mac80211.patch | 69 +++++++++++++++++++
  ...and-freed-TX-frames-back-to-mac80211.patch | 69 +++++++++++++++++++
- ...airtime-fairness-on-5-and-6-GHz-only.patch | 33 +++++++++
- 4 files changed, 172 insertions(+), 1 deletion(-)
+ 3 files changed, 139 insertions(+), 1 deletion(-)
  create mode 100644 package/kernel/mac80211/patches/ath11k/983-wifi-ath11k-report-TX-airtime-to-mac80211.patch
  create mode 100644 package/kernel/mac80211/patches/ath11k/984-wifi-ath11k-hand-freed-TX-frames-back-to-mac80211.patch
- create mode 100644 package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch
 
 diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
 index d9c1b09..844fad6 100644
@@ -191,42 +189,3 @@ index 0000000..524574a
 + 	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
 + 		wake_up(&ar->dp.tx_empty_waitq);
 + }
-diff --git a/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch b/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch
-new file mode 100644
-index 0000000..f957329
---- /dev/null
-+++ b/package/kernel/mac80211/patches/ath11k/985-wifi-ath11k-feed-airtime-fairness-on-5-and-6-GHz-only.patch
-@@ -0,0 +1,33 @@
-+From db86ee05fa45858de0b53b3b8caa983181eef083 Mon Sep 17 00:00:00 2001
-+From: Christopher Griffin <christophergriffin05@gmail.com>
-+Date: Sat, 7 Nov 2026 17:45:26 -0600
-+Subject: [PATCH] wifi: ath11k: feed airtime fairness on 5 and 6 GHz only
-+
-+Arista port policy, not for upstream: register TX airtime with mac80211
-+(previous patch) only for stations on a 5 or 6 GHz vdev. Without
-+registered airtime a station's deficit never falls, so mac80211 keeps
-+scheduling 2.4 GHz stations round robin, as before airtime was fed at
-+all. The owner of these APs wants no airtime fairness on 2.4 GHz, where
-+slow clients make it lag.
-+
-+Assisted-by: Claude:claude-opus-5-5
-+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
-+---
-+ drivers/net/wireless/ath/ath11k/dp_rx.c | 6 +++++-
-+ 1 file changed, 5 insertions(+), 1 deletion(-)
-+
-+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
-++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
-+@@ -1514,7 +1514,11 @@ ath11k_update_per_peer_tx_stats(struct a
-+ 
-+ 	spin_unlock_bh(&ab->base_lock);
-+ 
-+-	if (airtime)
-++	/* Arista port policy: airtime fairness on 5 and 6 GHz only; 2.4 GHz
-++	 * stations stay on plain round robin.
-++	 */
-++	if (airtime && arsta->arvif->chanctx.def.chan &&
-++	    arsta->arvif->chanctx.def.chan->band != NL80211_BAND_2GHZ)
-+ 		ieee80211_sta_register_airtime(sta, tid, airtime, 0);
-+ 
-+ 	rcu_read_unlock();
