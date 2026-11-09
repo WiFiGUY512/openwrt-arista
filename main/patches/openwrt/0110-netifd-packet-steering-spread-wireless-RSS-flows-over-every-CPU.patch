@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 9 Nov 2026 16:00:00 -0600
+Subject: [PATCH] netifd: packet steering: spread wireless RSS flows over every
+ CPU
+
+B172. A wireless device with receive-side scaling (ath11k: one receive
+ring and interrupt per CPU) was left without receive packet steering,
+on the grounds that its rings already spread the load. But each ring
+carries whole flows, so the driver, mac80211 and forwarding work of a
+flow all run on one CPU, and the device can hash every flow of a
+station onto one ring.
+
+Arista C-360 (IPQ8074, QCN9074 6 GHz 160 MHz), one 2x2 HE station
+uploading four TCP flows:
+
+- all four flows on one ring: 1,015 Mbit/s with that ring's CPU at 98%
+  softirq and the others at 20 to 30%;
+- flows on three rings, steering switched on in mid-run (same flows):
+  1,482 to 1,727 Mbit/s (+17%), hottest CPU 81% to 73%, no backlog
+  drops. With steering on from the start: 1,641 Mbit/s.
+
+Download is unchanged by it (1,584 to 1,566 in mid-run, noise), since
+only ACKs arrive over the radio. Steering the ethernet side as well
+gained nothing (+1 to +3.5%) and dropped packets at the backlog, so
+ethernet devices with a queue per CPU stay as they are.
+
+Give such a wireless device every CPU as its steering mask. And apply
+steering when a wireless interface is made after boot: the service is
+only reloaded on netifd interface events, which a radio restart does
+not raise, so new interfaces stayed unsteered until the next one.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-fable-5-2
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/netifd/Makefile          |  2 +-
+ .../files/etc/hotplug.d/net/20-packet-steering  | 17 +++++++++++++++++
+ .../usr/libexec/network/packet-steering.uc      |  7 +++++++
+ 3 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
+index 42b6812ab59e34b6ccbe6e38640ec52ebf8afe24..40c1ffafce447d678fc3ff4aad509ee397364a28 100644
+--- a/package/network/config/netifd/Makefile
++++ b/package/network/config/netifd/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifd
+-PKG_RELEASE:=4
++PKG_RELEASE:=5
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
+diff --git a/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering b/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering
+new file mode 100644
+index 0000000000000000000000000000000000000000..32f391381be2c7ce13aaccc817ff9faa34a40965
+--- /dev/null
++++ b/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering
+@@ -0,0 +1,17 @@
++#!/bin/sh
++# A wireless interface made after boot has no receive packet steering until
++# the next interface event: apply it now. One run covers the interfaces a
++# radio brings up together.
++
++[ "$ACTION" = add ] && [ "$DEVTYPE" = wlan ] || exit 0
++[ -x /etc/init.d/packet_steering ] || exit 0
++
++PENDING=/var/run/packet-steering.pending
++[ -e "$PENDING" ] && exit 0
++touch "$PENDING"
++
++(
++	sleep 3
++	rm -f "$PENDING"
++	/etc/init.d/packet_steering reload
++) &
+diff --git a/package/network/config/netifd/files/usr/libexec/network/packet-steering.uc b/package/network/config/netifd/files/usr/libexec/network/packet-steering.uc
+index 853845ecaa2b793e38f956bb71366544bf948e14..32d9d3d24c0731fea42fc209f84e062850f800c7 100755
+--- a/package/network/config/netifd/files/usr/libexec/network/packet-steering.uc
++++ b/package/network/config/netifd/files/usr/libexec/network/packet-steering.uc
+@@ -357,6 +357,13 @@ function assign_dev_cpu(dev) {
+ 			cpu = -1;
+ 		else if (rps_cpus)
+ 			cpu = rps_cpus;
++		else if (hw_spread && dev.rss)
++			// A receive ring of a wireless device carries whole
++			// flows, and the driver, mac80211 and forwarding work of
++			// a flow all run on that ring's CPU. The device can also
++			// hash every flow of a station onto one ring. Let the
++			// stack half of the work go to any CPU.
++			cpu = -1;
+ 		else if (!hw_spread)
+ 			cpu = get_next_cpu(rx_weight, dev.napi_cpu);
+ 		for (let netdev in dev.netdev)
+-- 
+2.43.0
+
