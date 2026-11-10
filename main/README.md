@@ -9,6 +9,8 @@ and the devices' upstream pull requests are written for it.
 main/build-main.sh ipq807x     # the C-360, the C-260 and the C-230
 main/build-main.sh ipq60xx     # the W-318 and the C-200
 main/build-main.sh ipq40xx     # the W-118 (target ipq40xx)
+main/build-main.sh ipq95xx DIR # the C-460 (target qualcommbe, kernel 6.18: give it
+                               # an OpenWrt directory of its own); bring-up, RAM boot only
 ```
 
 Out, in `out/main/<version>/`: `c360/`, `c260/`, `c230/`, `w318/`, `c200/`, `w118/`

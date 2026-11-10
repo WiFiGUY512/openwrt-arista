@@ -1,0 +1,802 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 10 Nov 2026 17:45:00 -0600
+Subject: [PATCH] qualcommbe: ipq95xx: add support for Arista C-460
+
+Arista C-460 is a Wi-Fi 7 enterprise access point, on Qualcomm's
+AP-AL02-C13 design.
+
+Hardware (vendor boot log and device tree):
+- SoC: IPQ9574, 4x Cortex-A73
+- RAM: 3 GiB
+- Flash: 32 MiB SPI NOR (Winbond W25Q256JW), 8 GB eMMC
+- Ethernet: 2x 10G, RTL8261N PHYs on PPE ports 5 and 6 (USXGMII),
+  802.3bt class 6 PoE in
+- Wi-Fi: 3x QCN9224 (17cb:1109) on pcie1-3, 1x 17cb:1104 (QCN9074
+  family) on pcie0
+- LEDs: power, 2.4/5/6 GHz and two PoE LEDs, each red/green, on a
+  PCA9555 at I2C 0x26
+- Button: reset (GPIO 41)
+- TPM 2.0 on SPI, PCF85263 RTC, Quectel LC79H GNSS, a second PCA9555
+- Serial: 115200 8N1 on the RJ45 console port
+
+The stock bootloader enables secure boot and authenticates the kernel
+and root file system it boots from eMMC, but its bootm runs an unsigned
+FIT from RAM. Break into U-Boot with the vendor's bootdelay key, load
+the initramfs over TFTP and run bootm.
+
+This is the first bring-up: console, eMMC, NOR (every partition kept
+read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
+LEDs and the button. Not yet: the radios' board data and MAC addresses,
+the RTC (no kmod in OpenWrt yet), GNSS, the Bluetooth/802.15.4 UART,
+USB, and an installation onto eMMC.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 713 ++++++++++++++++++
+ target/linux/qualcommbe/image/ipq95xx.mk      |  13 +
+ .../ipq95xx/base-files/etc/board.d/02_network |   3 +
+ 3 files changed, 729 insertions(+)
+ create mode 100755 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
+
+diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
+new file mode 100755
+index 00000000000..ad7be0640a8
+--- /dev/null
++++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
+@@ -0,0 +1,713 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
++
++/dts-v1/;
++
++#include "ipq9574.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++	model = "Arista C-460";
++	compatible = "arista,c-460", "qcom,ipq9574";
++
++	aliases {
++		led-boot = &led_power_green;
++		led-failsafe = &led_power_red;
++		led-running = &led_power_green;
++		led-upgrade = &led_power_red;
++
++		serial0 = &blsp1_uart2;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	reserved-memory {
++		/* TrustZone applications, as reserved by the vendor firmware */
++		tzapp@49b00000 {
++			reg = <0x0 0x49b00000 0x0 0x00600000>;
++			no-map;
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++		pinctrl-0 = <&button_pins>;
++		pinctrl-names = "default";
++
++		reset {
++			label = "reset";
++			linux,code = <KEY_RESTART>;
++			gpios = <&tlmm 41 GPIO_ACTIVE_LOW>;
++			debounce-interval = <60>;
++		};
++	};
++
++	/* Every LED is a red/green pair on the PCA9555 at 0x26, active low. */
++	leds {
++		compatible = "gpio-leds";
++
++		led_power_red: led-power-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&led_expander 12 GPIO_ACTIVE_LOW>;
++		};
++
++		led_power_green: led-power-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&led_expander 13 GPIO_ACTIVE_LOW>;
++		};
++
++		led-2g-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_WLAN_2GHZ;
++			gpios = <&led_expander 10 GPIO_ACTIVE_LOW>;
++		};
++
++		led-2g-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_2GHZ;
++			gpios = <&led_expander 11 GPIO_ACTIVE_LOW>;
++		};
++
++		led-5g-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_WLAN_5GHZ;
++			gpios = <&led_expander 8 GPIO_ACTIVE_LOW>;
++		};
++
++		led-5g-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_5GHZ;
++			gpios = <&led_expander 9 GPIO_ACTIVE_LOW>;
++		};
++
++		/* "5g_6g" in the vendor firmware */
++		led-6g-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_WLAN_6GHZ;
++			gpios = <&led_expander 4 GPIO_ACTIVE_LOW>;
++		};
++
++		led-6g-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_WLAN_6GHZ;
++			gpios = <&led_expander 5 GPIO_ACTIVE_LOW>;
++		};
++
++		/* "poe0" and "poe1" in the vendor firmware */
++		led-poe0-red {
++			color = <LED_COLOR_ID_RED>;
++			function = "poe";
++			function-enumerator = <0>;
++			gpios = <&led_expander 2 GPIO_ACTIVE_LOW>;
++		};
++
++		led-poe0-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = "poe";
++			function-enumerator = <0>;
++			gpios = <&led_expander 3 GPIO_ACTIVE_LOW>;
++		};
++
++		led-poe1-red {
++			color = <LED_COLOR_ID_RED>;
++			function = "poe";
++			function-enumerator = <1>;
++			gpios = <&led_expander 0 GPIO_ACTIVE_LOW>;
++		};
++
++		led-poe1-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = "poe";
++			function-enumerator = <1>;
++			gpios = <&led_expander 1 GPIO_ACTIVE_LOW>;
++		};
++	};
++};
++
++&blsp1_uart2 {
++	pinctrl-0 = <&uart2_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&blsp1_i2c1 {
++	pinctrl-0 = <&i2c1_default>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	led_expander: gpio@26 {
++		compatible = "nxp,pca9555";
++		reg = <0x26>;
++		gpio-controller;
++		#gpio-cells = <2>;
++	};
++
++	/* read by the bootloader for PoE negotiation */
++	gpio@27 {
++		compatible = "nxp,pca9555";
++		reg = <0x27>;
++		gpio-controller;
++		#gpio-cells = <2>;
++	};
++
++	/*
++	 * Not described yet: an NXP PCF85263 RTC at 0x51 (OpenWrt has no
++	 * kmod for it yet) and a Quectel LC79H GNSS receiver at 0x50.
++	 */
++};
++
++&blsp1_spi0 {
++	pinctrl-0 = <&spi_0_default>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++
++		/*
++		 * The vendor layout. Every partition is read-only while the
++		 * port is brought up.
++		 */
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "0:sbl1";
++				reg = <0x0 0xc0000>;
++				read-only;
++			};
++
++			partition@c0000 {
++				label = "0:mibib";
++				reg = <0xc0000 0x10000>;
++				read-only;
++			};
++
++			partition@d0000 {
++				label = "0:bootconfig";
++				reg = <0xd0000 0x20000>;
++				read-only;
++			};
++
++			partition@f0000 {
++				label = "0:bootconfig1";
++				reg = <0xf0000 0x20000>;
++				read-only;
++			};
++
++			partition@110000 {
++				label = "0:qsee";
++				reg = <0x110000 0x180000>;
++				read-only;
++			};
++
++			partition@290000 {
++				label = "0:qsee_1";
++				reg = <0x290000 0x180000>;
++				read-only;
++			};
++
++			partition@410000 {
++				label = "0:devcfg";
++				reg = <0x410000 0x10000>;
++				read-only;
++			};
++
++			partition@420000 {
++				label = "0:devcfg_1";
++				reg = <0x420000 0x10000>;
++				read-only;
++			};
++
++			partition@430000 {
++				label = "0:apdp";
++				reg = <0x430000 0x10000>;
++				read-only;
++			};
++
++			partition@440000 {
++				label = "0:apdp_1";
++				reg = <0x440000 0x10000>;
++				read-only;
++			};
++
++			partition@450000 {
++				label = "0:tme";
++				reg = <0x450000 0x40000>;
++				read-only;
++			};
++
++			partition@490000 {
++				label = "0:tme_1";
++				reg = <0x490000 0x40000>;
++				read-only;
++			};
++
++			partition@4d0000 {
++				label = "0:rpm";
++				reg = <0x4d0000 0x20000>;
++				read-only;
++			};
++
++			partition@4f0000 {
++				label = "0:rpm_1";
++				reg = <0x4f0000 0x20000>;
++				read-only;
++			};
++
++			partition@510000 {
++				label = "0:cdt";
++				reg = <0x510000 0x10000>;
++				read-only;
++			};
++
++			partition@520000 {
++				label = "0:cdt_1";
++				reg = <0x520000 0x10000>;
++				read-only;
++			};
++
++			partition@530000 {
++				label = "0:appsblenv";
++				reg = <0x530000 0x10000>;
++				read-only;
++			};
++
++			partition@540000 {
++				label = "0:appsbl";
++				reg = <0x540000 0x100000>;
++				read-only;
++			};
++
++			partition@640000 {
++				label = "0:appsbl_1";
++				reg = <0x640000 0x100000>;
++				read-only;
++			};
++
++			partition@740000 {
++				label = "0:art";
++				reg = <0x740000 0x100000>;
++				read-only;
++
++				nvmem-layout {
++					compatible = "fixed-layout";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					macaddr_lan1: macaddr@0 {
++						reg = <0x0 0x6>;
++					};
++
++					macaddr_lan2: macaddr@6 {
++						reg = <0x6 0x6>;
++					};
++				};
++			};
++
++			partition@840000 {
++				label = "0:ethphyfw";
++				reg = <0x840000 0x80000>;
++				read-only;
++			};
++
++			partition@8c0000 {
++				label = "config";
++				reg = <0x8c0000 0x400000>;
++				read-only;
++			};
++
++			partition@cc0000 {
++				label = "devcert";
++				reg = <0xcc0000 0x20000>;
++				read-only;
++			};
++
++			partition@ce0000 {
++				label = "sys_data";
++				reg = <0xce0000 0x20000>;
++				read-only;
++			};
++
++			partition@d00000 {
++				label = "reserved1";
++				reg = <0xd00000 0x980000>;
++				read-only;
++			};
++
++			partition@1680000 {
++				label = "reserved2";
++				reg = <0x1680000 0x980000>;
++				read-only;
++			};
++		};
++	};
++};
++
++/* TPM 2.0 (the vendor firmware's log reports device-id 0x1B, rev-id 22) */
++&blsp1_spi3 {
++	pinctrl-0 = <&spi_3_default>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	tpm@0 {
++		compatible = "tcg,tpm_tis-spi";
++		reg = <0>;
++		spi-max-frequency = <16000000>;
++	};
++};
++
++&rpm_requests {
++	regulators {
++		compatible = "qcom,rpm-mp5496-regulators";
++
++		/* The C-460's MP5496 has s1, s2 and s4 only: no l5. */
++		ipq9574_s1: s1 {
++			regulator-min-microvolt = <725000>;
++			regulator-max-microvolt = <1075000>;
++		};
++	};
++};
++
++&sdhc_1 {
++	bus-width = <8>;
++	max-frequency = <192000000>;
++	mmc-ddr-1_8v;
++	mmc-hs200-1_8v;
++	non-removable;
++	pinctrl-0 = <&sdc_default_state>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&sleep_clk {
++	clock-frequency = <32000>;
++};
++
++&xo_board_clk {
++	clock-div = <2>;
++	clock-mult = <1>;
++};
++
++&xo_clk {
++	clock-frequency = <48000000>;
++};
++
++&ref_48mhz_clk {
++	clock-div = <1>;
++	clock-mult = <1>;
++};
++
++&tlmm {
++	/*
++	 * GPIO 57 and 64 are the reset lines of the two RTL8261N PHYs. The
++	 * vendor firmware lists them for the bus without saying which PHY
++	 * each one resets, and the bootloader has already released both, so
++	 * they are held released here rather than pulsed per PHY.
++	 */
++	rtl8261n_reset_57 {
++		gpio-hog;
++		gpios = <57 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "phy-reset-57";
++	};
++
++	rtl8261n_reset_64 {
++		gpio-hog;
++		gpios = <64 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "phy-reset-64";
++	};
++
++	button_pins: button-state {
++		pins = "gpio41";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-pull-up;
++	};
++
++	i2c1_default: i2c1-default-state {
++		pins = "gpio36", "gpio37";
++		function = "blsp1_i2c";
++		drive-strength = <8>;
++		bias-disable;
++	};
++
++	spi_0_default: spi-0-default-state {
++		pins = "gpio11", "gpio12", "gpio13", "gpio14";
++		function = "blsp0_spi";
++		drive-strength = <8>;
++		bias-disable;
++	};
++
++	spi_3_default: spi-3-default-state {
++		pins = "gpio15", "gpio16", "gpio17", "gpio18";
++		function = "blsp3_spi";
++		drive-strength = <8>;
++		bias-disable;
++	};
++
++	sdc_default_state: sdc-default-state {
++		clk-pins {
++			pins = "gpio5";
++			function = "sdc_clk";
++			drive-strength = <8>;
++			bias-disable;
++		};
++
++		cmd-pins {
++			pins = "gpio4";
++			function = "sdc_cmd";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++
++		data-pins {
++			pins = "gpio0", "gpio1", "gpio2",
++			       "gpio3", "gpio6", "gpio7",
++			       "gpio8", "gpio9";
++			function = "sdc_data";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++
++		rclk-pins {
++			pins = "gpio10";
++			function = "sdc_rclk";
++			drive-strength = <8>;
++			bias-pull-down;
++		};
++	};
++
++	pcie0_default: pcie0-default-state {
++		clkreq-n-pins {
++			pins = "gpio22";
++			function = "pcie0_clk";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++
++		perst-n-pins {
++			pins = "gpio23";
++			function = "gpio";
++			drive-strength = <8>;
++			bias-pull-down;
++			output-low;
++		};
++
++		wake-n-pins {
++			pins = "gpio24";
++			function = "pcie0_wake";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++	};
++
++	pcie1_default: pcie1-default-state {
++		clkreq-n-pins {
++			pins = "gpio25";
++			function = "pcie1_clk";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++
++		perst-n-pins {
++			pins = "gpio26";
++			function = "gpio";
++			drive-strength = <8>;
++			bias-pull-down;
++			output-low;
++		};
++
++		wake-n-pins {
++			pins = "gpio27";
++			function = "pcie1_wake";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++	};
++
++	pcie2_default: pcie2-default-state {
++		clkreq-n-pins {
++			pins = "gpio28";
++			function = "pcie2_clk";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++
++		perst-n-pins {
++			pins = "gpio29";
++			function = "gpio";
++			drive-strength = <8>;
++			bias-pull-down;
++			output-low;
++		};
++
++		wake-n-pins {
++			pins = "gpio30";
++			function = "pcie2_wake";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++	};
++
++	pcie3_default: pcie3-default-state {
++		clkreq-n-pins {
++			pins = "gpio31";
++			function = "pcie3_clk";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++
++		perst-n-pins {
++			pins = "gpio32";
++			function = "gpio";
++			drive-strength = <8>;
++			bias-pull-down;
++			output-low;
++		};
++
++		wake-n-pins {
++			pins = "gpio33";
++			function = "pcie3_wake";
++			drive-strength = <6>;
++			bias-pull-up;
++		};
++	};
++};
++
++/*
++ * Radios: pcie0 holds a 17cb:1104 (QCN9074 family, most likely the scan
++ * radio), pcie1-3 the three 17cb:1109 QCN9224. Their board data and MAC
++ * addresses are described once the vendor board files are packaged.
++ */
++&pcie0_phy {
++	status = "okay";
++};
++
++&pcie0 {
++	pinctrl-0 = <&pcie0_default>;
++	pinctrl-names = "default";
++	perst-gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
++&pcie1_phy {
++	status = "okay";
++};
++
++&pcie1 {
++	pinctrl-0 = <&pcie1_default>;
++	pinctrl-names = "default";
++	perst-gpios = <&tlmm 26 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 27 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
++&pcie2_phy {
++	status = "okay";
++};
++
++&pcie2 {
++	pinctrl-0 = <&pcie2_default>;
++	pinctrl-names = "default";
++	perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 30 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
++&pcie3_phy {
++	status = "okay";
++};
++
++&pcie3 {
++	pinctrl-0 = <&pcie3_default>;
++	pinctrl-names = "default";
++	perst-gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 33 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
++&mdio {
++	pinctrl-0 = <&mdio_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++
++	phy8: ethernet-phy@8 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <8>;
++	};
++
++	phy9: ethernet-phy@9 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <9>;
++	};
++};
++
++/*
++ * Two 10G ports, both RTL8261N over USXGMII. Port 6 is the vendor's eth0
++ * (the bootloader negotiates PoE through it), port 5 its eth1.
++ */
++&qcom_ppe {
++	status = "okay";
++
++	ethernet-ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@5 {
++			reg = <5>;
++			phy-mode = "usxgmii";
++			managed = "in-band-status";
++			phy-handle = <&phy8>;
++			pcs-handle = <&pcs1_ch0>;
++			label = "lan2";
++
++			nvmem-cells = <&macaddr_lan2>;
++			nvmem-cell-names = "mac-address";
++
++			clocks = <&nsscc NSS_CC_PORT5_MAC_CLK>,
++				 <&nsscc NSS_CC_PORT5_RX_CLK>,
++				 <&nsscc NSS_CC_PORT5_TX_CLK>;
++			clock-names = "mac", "rx", "tx";
++
++			resets = <&nsscc PORT5_MAC_ARES>,
++				 <&nsscc PORT5_RX_ARES>,
++				 <&nsscc PORT5_TX_ARES>;
++			reset-names = "mac", "rx", "tx";
++		};
++
++		port@6 {
++			reg = <6>;
++			phy-mode = "usxgmii";
++			managed = "in-band-status";
++			phy-handle = <&phy9>;
++			pcs-handle = <&pcs2_ch0>;
++			label = "lan1";
++
++			nvmem-cells = <&macaddr_lan1>;
++			nvmem-cell-names = "mac-address";
++
++			clocks = <&nsscc NSS_CC_PORT6_MAC_CLK>,
++				 <&nsscc NSS_CC_PORT6_RX_CLK>,
++				 <&nsscc NSS_CC_PORT6_TX_CLK>;
++			clock-names = "mac", "rx", "tx";
++
++			resets = <&nsscc PORT6_MAC_ARES>,
++				 <&nsscc PORT6_RX_ARES>,
++				 <&nsscc PORT6_TX_ARES>;
++			reset-names = "mac", "rx", "tx";
++		};
++	};
++};
+diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
+index 9e9c9561a01..ffadbb0257b 100644
+--- a/target/linux/qualcommbe/image/ipq95xx.mk
++++ b/target/linux/qualcommbe/image/ipq95xx.mk
+@@ -14,6 +14,19 @@ define Device/8devices_kiwi-dvk
+ endef
+ TARGET_DEVICES += 8devices_kiwi-dvk
+ 
++define Device/arista_c-460
++	$(call Device/FitImage)
++	$(call Device/EmmcImage)
++	DEVICE_VENDOR := Arista
++	DEVICE_MODEL := C-460
++	DEVICE_DTS := ipq9574-arista-c-460
++	SOC := ipq9574
++	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ath12k-firmware-qcn9274 f2fsck \
++		kmod-ath11k-pci kmod-ath12k kmod-gpio-pca953x kmod-phy-realtek \
++		kmod-tpm-tis-spi mkf2fs rtl826x-firmware
++endef
++TARGET_DEVICES += arista_c-460
++
+ define Device/askey_sbe1v1k
+ 	$(call Device/FitImage)
+ 	$(call Device/EmmcImage)
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
+index 1ab91adc483..e330d2b514a 100644
+--- a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
+@@ -14,6 +14,9 @@ ipq95xx_setup_interfaces()
+ 	8devices,kiwi-dvk)
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2" "wan"
+ 		;;
++	arista,c-460)
++		ucidef_set_interfaces_lan "lan1 lan2"
++		;;
+ 	askey,sbe1v1k)
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "wan"
+ 		;;
+-- 
+2.43.0
+

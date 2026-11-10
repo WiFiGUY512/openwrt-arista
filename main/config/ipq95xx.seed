@@ -1,0 +1,27 @@
+CONFIG_TARGET_qualcommbe=y
+CONFIG_TARGET_qualcommbe_ipq95xx=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_arista_c-460=y
+CONFIG_TARGET_ROOTFS_INITRAMFS=y
+CONFIG_TARGET_INITRAMFS_COMPRESSION_GZIP=y
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+CONFIG_PACKAGE_ATH_DEBUG=y
+CONFIG_ALL_KMODS=y
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+CONFIG_PACKAGE_wpad-mbedtls=y
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_tpm2-tools=m
+# optional network packages: built into the feed (not the image), so they
+# install on this build's kernel and ucode ABI
+CONFIG_PACKAGE_ucode-mod-uclient=m
+CONFIG_PACKAGE_ucode-mod-math=m
+CONFIG_PACKAGE_vxlan=m
+CONFIG_PACKAGE_usteer=m
+CONFIG_PACKAGE_snmpd-ssl=m
+CONFIG_PACKAGE_udebugd=m
+CONFIG_PACKAGE_ucode-mod-udebug=m
+CONFIG_PACKAGE_udebug-cli=m
+CONFIG_PACKAGE_tcpdump-mini=m
+CONFIG_PACKAGE_ustp=m
+CONFIG_PACKAGE_nmap=m
