@@ -25,9 +25,14 @@ and root file system it boots from eMMC, but its bootm runs an unsigned
 FIT from RAM. Break into U-Boot with the vendor's bootdelay key, load
 the initramfs over TFTP and run bootm.
 
+The radios' OTP board ID is blank, so each carries a calibration variant
+(the vendor's board IDs 0xaa, 0x01, 0x04 and 0x02), and their calibration
+data is read from ART on NOR: 0x26800 (QCN9074), 0x58800, 0x8a800 and
+0xbc800 (QCN9224 on pcie1-3).
+
 This is the first bring-up: console, eMMC, NOR (every partition kept
 read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
-LEDs and the button. Not yet: the radios' board data and MAC addresses,
+LEDs and the button. Not yet: the radios' board files (board-2.bin) and MAC addresses,
 the TPM driver (kmod-tpm-tis-spi does not build for qualcommbe yet; the
 TPM is described), the RTC (no kmod in OpenWrt yet), GNSS, the
 Bluetooth/802.15.4 UART, USB, and an installation onto eMMC.
@@ -38,11 +43,14 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 771 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  13 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
- 3 files changed, 787 insertions(+)
- create mode 100755 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
+ .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
+ .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
+ 5 files changed, 816 insertions(+)
+ create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
+ create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-new file mode 100755
+new file mode 100644
 index 00000000000..18d107bf48e
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
@@ -855,6 +863,66 @@ index 1ab91adc483..3aadc4a6f09 100644
 +		;;
  	askey,sbe1v1k)
  		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "wan"
+ 		;;
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+new file mode 100755
+index 00000000000..171f85247c0
+--- /dev/null
++++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -0,0 +1,20 @@
++#!/bin/sh
++
++[ -e /lib/firmware/$FIRMWARE ] && exit 0
++
++. /lib/functions/caldata.sh
++
++board=$(board_name)
++
++case "$FIRMWARE" in
++"ath11k/QCN9074/hw1.0/cal-pci-0000:01:00.0.bin")
++	case "$board" in
++	arista,c-460)
++		caldata_extract "0:art" 0x26800 0x20000
++		;;
++	esac
++	;;
++*)
++	exit 1
++	;;
++esac
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath12k-caldata b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath12k-caldata
+index 3bdb743a3da..4d7ba4a96fe 100644
+--- a/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath12k-caldata
++++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath12k-caldata
+@@ -9,6 +9,9 @@ board=$(board_name)
+ case "$FIRMWARE" in
+ "ath12k/QCN9274/hw2.0/cal-pci-0001:01:00.0.bin")
+ 	case "$board" in
++	arista,c-460)
++		caldata_extract "0:art" 0x58800 0x2d000
++		;;
+ 	askey,sbe1v1k)
+ 		caldata_extract_mmc "0:ART" 0x58800 0x2d000
+ 		;;
+@@ -16,6 +19,9 @@ case "$FIRMWARE" in
+ 	;;
+ "ath12k/QCN9274/hw2.0/cal-pci-0002:01:00.0.bin")
+ 	case "$board" in
++	arista,c-460)
++		caldata_extract "0:art" 0x8a800 0x2d000
++		;;
+ 	askey,sbe1v1k)
+ 		caldata_extract_mmc "0:ART" 0x8a800 0x2d000
+ 		;;
+@@ -23,6 +29,9 @@ case "$FIRMWARE" in
+ 	;;
+ "ath12k/QCN9274/hw2.0/cal-pci-0003:01:00.0.bin")
+ 	case "$board" in
++	arista,c-460)
++		caldata_extract "0:art" 0xbc800 0x2d000
++		;;
+ 	askey,sbe1v1k)
+ 		caldata_extract_mmc "0:ART" 0xbc800 0x2d000
  		;;
 -- 
 2.43.0
