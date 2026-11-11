@@ -785,7 +785,7 @@ index 9e9c9561a01..acf2a21b131 100644
  	$(call Device/FitImage)
  	$(call Device/EmmcImage)
 diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
-index 1ab91adc483..e330d2b514a 100644
+index 1ab91adc483..3aadc4a6f09 100644
 --- a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
 @@ -14,6 +14,9 @@ ipq95xx_setup_interfaces()
@@ -793,7 +793,7 @@ index 1ab91adc483..e330d2b514a 100644
  		ucidef_set_interfaces_lan_wan "lan1 lan2" "wan"
  		;;
 +	arista,c-460)
-+		ucidef_set_interfaces_lan "lan1 lan2"
++		ucidef_set_interface_lan "lan1 lan2" "dhcp"
 +		;;
  	askey,sbe1v1k)
  		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "wan"
