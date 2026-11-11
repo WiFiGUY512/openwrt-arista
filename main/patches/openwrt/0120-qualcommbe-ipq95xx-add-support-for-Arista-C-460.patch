@@ -35,31 +35,33 @@ read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
 LEDs (the two port LEDs, "poe0" and "poe1" in the vendor firmware,
 follow lan1 and lan2 link) and the button. The radios take their MAC
 addresses from the calibration data. Not yet: the radios' board files
-(board-2.bin), GNSS, the Bluetooth/802.15.4 UART, USB, and an
-installation onto eMMC. The PCF85263 RTC uses kmod-rtc-pcf85363, added
-in a separate commit, and the SPI TPM kmod-tpm-tis-spi, which a separate
-commit allows on qualcommbe.
+(board-2.bin), GNSS, USB, and an installation onto eMMC. The PCF85263
+RTC uses kmod-rtc-pcf85363, added in a separate commit, and the SPI TPM
+kmod-tpm-tis-spi, which a separate commit allows on qualcommbe. The
+Bluetooth LE controller on blsp1_uart4 is attached with bluetooth-uart
+at 1 Mbaud without flow control, as the vendor firmware attaches it.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 775 ++++++++++++++++++
- target/linux/qualcommbe/image/ipq95xx.mk      |  13 +
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 809 ++++++++++++++++++
+ target/linux/qualcommbe/image/ipq95xx.mk      |  14 +
  .../ipq95xx/base-files/etc/board.d/01_leds    |  16 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
- 6 files changed, 836 insertions(+)
+ .../base-files/etc/uci-defaults/03_bluetooth  |  18 +-
+ 7 files changed, 887 insertions(+), 2 deletions(-)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..3d57f9301ff
+index 00000000000..195cd894578
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,775 @@
+@@ -0,0 +1,809 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -81,6 +83,7 @@ index 00000000000..3d57f9301ff
 +		led-upgrade = &led_power_red;
 +
 +		serial0 = &blsp1_uart2;
++		serial1 = &blsp1_uart4;
 +	};
 +
 +	chosen {
@@ -194,6 +197,13 @@ index 00000000000..3d57f9301ff
 +
 +&blsp1_uart2 {
 +	pinctrl-0 = <&uart2_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++/* Bluetooth LE controller (HCI over H:4, 1 Mbaud, no flow control) */
++&blsp1_uart4 {
++	pinctrl-0 = <&uart4_pins>;
 +	pinctrl-names = "default";
 +	status = "okay";
 +};
@@ -491,6 +501,32 @@ index 00000000000..3d57f9301ff
 +		gpios = <64 GPIO_ACTIVE_HIGH>;
 +		output-high;
 +		line-name = "phy-reset-64";
++	};
++
++	/*
++	 * The Bluetooth controller boots its HCI firmware when its recovery
++	 * line (GPIO 40) is high and its reset line (GPIO 61) is released,
++	 * as the vendor firmware sets both.
++	 */
++	bt_recovery {
++		gpio-hog;
++		gpios = <40 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "bt-recovery";
++	};
++
++	bt_reset {
++		gpio-hog;
++		gpios = <61 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "bt-reset";
++	};
++
++	uart4_pins: uart4-state {
++		pins = "gpio50", "gpio51", "gpio52", "gpio53";
++		function = "blsp4_uart";
++		drive-strength = <8>;
++		bias-disable;
 +	};
 +
 +	button_pins: button-state {
@@ -836,10 +872,10 @@ index 00000000000..3d57f9301ff
 +	};
 +};
 diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
-index 9e9c9561a01..73efbbc7922 100644
+index 9e9c9561a01..c16a2423dda 100644
 --- a/target/linux/qualcommbe/image/ipq95xx.mk
 +++ b/target/linux/qualcommbe/image/ipq95xx.mk
-@@ -14,6 +14,19 @@ define Device/8devices_kiwi-dvk
+@@ -14,6 +14,20 @@ define Device/8devices_kiwi-dvk
  endef
  TARGET_DEVICES += 8devices_kiwi-dvk
  
@@ -852,7 +888,8 @@ index 9e9c9561a01..73efbbc7922 100644
 +	SOC := ipq9574
 +	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ath12k-firmware-qcn9274 f2fsck \
 +		kmod-ath11k-pci kmod-ath12k kmod-gpio-pca953x kmod-phy-realtek \
-+		kmod-rtc-pcf85363 kmod-tpm-tis-spi mkf2fs rtl826x-firmware
++		kmod-rtc-pcf85363 kmod-tpm-tis-spi mkf2fs rtl826x-firmware \
++		bluetooth-uart
 +endef
 +TARGET_DEVICES += arista_c-460
 +
@@ -955,6 +992,41 @@ index 3bdb743a3da..4d7ba4a96fe 100644
  	askey,sbe1v1k)
  		caldata_extract_mmc "0:ART" 0xbc800 0x2d000
  		;;
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/uci-defaults/03_bluetooth b/target/linux/qualcommbe/ipq95xx/base-files/etc/uci-defaults/03_bluetooth
+index 22678a34ce6..626afcecc79 100644
+--- a/target/linux/qualcommbe/ipq95xx/base-files/etc/uci-defaults/03_bluetooth
++++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/uci-defaults/03_bluetooth
+@@ -2,7 +2,20 @@
+ 
+ . /lib/functions.sh
+ 
+-[ "$(board_name)" = "linksys,ln6001" ] || exit 0
++case "$(board_name)" in
++arista,c-460)
++	speed=1000000
++	flow_control=0
++	;;
++linksys,ln6001)
++	speed=115200
++	flow_control=1
++	;;
++*)
++	exit 0
++	;;
++esac
++
+ [ "$(uci -q get bluetooth-uart.main)" = "uart" ] || exit 0
+ 
+ # Preserve an already configured UART, including a disabled one.
+@@ -11,6 +24,7 @@
+ uci -q batch <<-EOF
+ 	set bluetooth-uart.main.device='/dev/ttyMSM1'
+ 	set bluetooth-uart.main.protocol='h4'
+-	set bluetooth-uart.main.speed='115200'
++	set bluetooth-uart.main.speed='$speed'
++	set bluetooth-uart.main.flow_control='$flow_control'
+ 	set bluetooth-uart.main.enabled='1'
+ EOF
 -- 
 2.43.0
 
