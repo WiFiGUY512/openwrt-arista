@@ -40,21 +40,21 @@ Bluetooth/802.15.4 UART, USB, and an installation onto eMMC.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 771 ++++++++++++++++++
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 773 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  13 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
- 5 files changed, 816 insertions(+)
+ 5 files changed, 818 insertions(+)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..18d107bf48e
+index 00000000000..c8f49712652
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,771 @@
+@@ -0,0 +1,773 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -671,6 +671,8 @@ index 00000000000..18d107bf48e
 +		wifi@0 {
 +			compatible = "pci17cb,1104";
 +			reg = <0x0 0x0 0x0 0x0 0x0>;
++			/* as the vendor firmware: 16 + 1 interfaces, 512 clients */
++			qcom,ath11k-fw-memory-mode = <0>;
 +			qcom,calibration-variant = "Arista-C-460";
 +		};
 +	};
