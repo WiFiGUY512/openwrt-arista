@@ -17,8 +17,9 @@ Hardware (vendor boot log and device tree):
 - LEDs: power, 2.4/5/6 GHz and two PoE LEDs, each red/green, on a
   PCA9555 at I2C 0x26
 - Button: reset (GPIO 41)
-- USB: the SoC's DWC3 controller in host mode, with its USB 2.0 and
-  3.0 PHYs, as the vendor device tree enables it
+- USB: one Type-A port, specified by the vendor as USB 2.0 (5 V,
+  0.3 A), on the SoC's DWC3 controller in host mode. The USB 3 PHY,
+  which the vendor device tree also enables, stays off.
 - TPM 2.0 on SPI, PCF85263 RTC, Quectel LC79H GNSS, a second PCA9555
 - Serial: 115200 8N1 on the RJ45 console port
 
@@ -46,24 +47,24 @@ at 1 Mbaud without flow control, as the vendor firmware attaches it.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 864 ++++++++++++++++++
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 863 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  14 +
  .../ipq95xx/base-files/etc/board.d/01_leds    |  16 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
  .../base-files/etc/uci-defaults/03_bluetooth  |  18 +-
- 7 files changed, 942 insertions(+), 2 deletions(-)
+ 7 files changed, 941 insertions(+), 2 deletions(-)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..7bc8053fe14
+index 00000000000..8db13838a0d
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,864 @@
+@@ -0,0 +1,863 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -499,14 +500,11 @@ index 00000000000..7bc8053fe14
 +};
 +
 +&usb_0_dwc3 {
++	/* The Type-A port is USB 2.0 only: leave the USB 3 PHY out */
++	phys = <&usb_0_qusbphy>;
++	phy-names = "usb2-phy";
++	maximum-speed = "high-speed";
 +	dr_mode = "host";
-+};
-+
-+&usb_0_qmpphy {
-+	vdda-pll-supply = <&regulator_fixed_1p8>;
-+	vdda-phy-supply = <&regulator_fixed_0p925>;
-+
-+	status = "okay";
 +};
 +
 +&usb_0_qusbphy {
@@ -518,6 +516,8 @@ index 00000000000..7bc8053fe14
 +};
 +
 +&usb3 {
++	/* No USB 3 PHY: clock the PIPE interface from UTMI */
++	qcom,select-utmi-as-pipe-clk;
 +	status = "okay";
 +};
 +
