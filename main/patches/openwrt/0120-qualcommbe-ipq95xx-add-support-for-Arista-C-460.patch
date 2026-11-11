@@ -28,8 +28,9 @@ the initramfs over TFTP and run bootm.
 This is the first bring-up: console, eMMC, NOR (every partition kept
 read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
 LEDs and the button. Not yet: the radios' board data and MAC addresses,
-the RTC (no kmod in OpenWrt yet), GNSS, the Bluetooth/802.15.4 UART,
-USB, and an installation onto eMMC.
+the TPM driver (kmod-tpm-tis-spi does not build for qualcommbe yet; the
+TPM is described), the RTC (no kmod in OpenWrt yet), GNSS, the
+Bluetooth/802.15.4 UART, USB, and an installation onto eMMC.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
@@ -760,7 +761,7 @@ index 00000000000..ad7be0640a8
 +	};
 +};
 diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
-index 9e9c9561a01..ffadbb0257b 100644
+index 9e9c9561a01..acf2a21b131 100644
 --- a/target/linux/qualcommbe/image/ipq95xx.mk
 +++ b/target/linux/qualcommbe/image/ipq95xx.mk
 @@ -14,6 +14,19 @@ define Device/8devices_kiwi-dvk
@@ -776,7 +777,7 @@ index 9e9c9561a01..ffadbb0257b 100644
 +	SOC := ipq9574
 +	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ath12k-firmware-qcn9274 f2fsck \
 +		kmod-ath11k-pci kmod-ath12k kmod-gpio-pca953x kmod-phy-realtek \
-+		kmod-tpm-tis-spi mkf2fs rtl826x-firmware
++		mkf2fs rtl826x-firmware
 +endef
 +TARGET_DEVICES += arista_c-460
 +
