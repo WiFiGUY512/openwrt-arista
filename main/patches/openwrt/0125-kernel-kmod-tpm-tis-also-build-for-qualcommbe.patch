@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 01:15:00 -0600
+Subject: [PATCH] kernel: kmod-tpm-tis: also build for qualcommbe
+
+kmod-tpm-tis-spi depends on kmod-tpm-tis, which carries tpm_tis_core,
+but kmod-tpm-tis is limited to x86, armsr and imx, so no qualcommbe
+image can install an SPI TPM driver. The Arista C-460 (IPQ9574) has a
+TPM 2.0 on SPI. Add qualcommbe to the list.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/linux/modules/other.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/package/kernel/linux/modules/other.mk b/package/kernel/linux/modules/other.mk
+index 5f9962f0fcd..666946d7aa0 100644
+--- a/package/kernel/linux/modules/other.mk
++++ b/package/kernel/linux/modules/other.mk
+@@ -1146,7 +1146,7 @@ $(eval $(call KernelPackage,tpm-ftpm-tee))
+ define KernelPackage/tpm-tis
+   SUBMENU:=$(OTHER_MENU)
+   TITLE:=TPM TIS 1.2 Interface / TPM 2.0 FIFO Interface
+-	DEPENDS:= @(TARGET_x86||TARGET_armsr||TARGET_imx) +kmod-tpm
++	DEPENDS:= @(TARGET_x86||TARGET_armsr||TARGET_imx||TARGET_qualcommbe) +kmod-tpm
+   KCONFIG:= CONFIG_TCG_TIS
+   FILES:= \
+ 	$(LINUX_DIR)/drivers/char/tpm/tpm_tis.ko \
+-- 
+2.43.0
+
