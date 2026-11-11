@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 10 Nov 2026 21:20:00 -0600
+Subject: [PATCH] mac80211: ath12k: open one WMI endpoint for the single-MAC
+ QCN9274 firmware
+
+On a QCN9274 hw2.0 whose MHI firmware image is the single-MAC one (an
+unset OTP board ID without qcom,split-phy, as on the Arista C-460's three
+single-band QCN9224 radios), ath12k still opened two WMI endpoints, so
+start-up stopped at "HTC Service WMI MAC1 connect request failed: 0x1",
+then "failed to start core: -110". Open one in that case.
+
+The same was reported for the Wallys DR9574 (ath12k list, May 2026,
+kernel bugzilla 221550); no fix had been posted.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ ...-for-the-single-MAC-QCN9274-firmware.patch | 69 +++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+ create mode 100644 package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch
+
+diff --git a/package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch b/package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch
+new file mode 100644
+index 00000000000..3b114d58728
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch
+@@ -0,0 +1,69 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Tue, 10 Nov 2026 21:15:00 -0600
++Subject: [PATCH] wifi: ath12k: open one WMI endpoint for the single-MAC
++ QCN9274 firmware
++
++ath12k_htc_init() sizes the WMI endpoints from the preferred hardware
++mode, which is not known yet when it runs, so QCN9274 hw2.0 falls back to
++hw_params->max_radios, two. When ath12k_mhi_register() has picked the
++single-MAC firmware image (an unset or erased OTP board ID without
++qcom,split-phy, or a valid one without the dual-MAC bit), that firmware
++offers no WMI MAC1 service and start-up stops:
++
++  HTC Service WMI MAC1 connect request failed: 0x1)
++  failed to connect to WMI CONTROL service status: -71
++  failed to receive wmi unified ready event: -110
++  failed to start core: -110
++
++Seen on the three single-band QCN9224 (17cb:1109, qcn9274 hw2.0) radios
++of the Arista C-460, whose OTP board ID is unset. The same was reported
++for the Wallys DR9574's single-band QCN9274 hw2.0 cards (ath12k list,
++May 2026, kernel bugzilla 221550).
++
++Remember which image was chosen and open a single WMI endpoint when it is
++the single-MAC one.
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath12k/core.h
+++++ b/drivers/net/wireless/ath/ath12k/core.h
++@@ -1146,6 +1146,8 @@ struct ath12k_base {
++ 	struct ath12k_hw_group *ag;
++ 	struct ath12k_wsi_info wsi_info;
++ 	enum ath12k_firmware_mode fw_mode;
+++	/* the MHI firmware image chosen is the dual-MAC one */
+++	bool dualmac;
++ 	struct ath12k_ftm_event_obj ftm_event_obj;
++ 	bool hw_group_ref;
++ 
++--- a/drivers/net/wireless/ath/ath12k/mhi.c
+++++ b/drivers/net/wireless/ath/ath12k/mhi.c
++@@ -222,6 +222,8 @@ int ath12k_mhi_register(struct ath12k_pc
++ 		}
++ 	}
++ 
+++	ab->dualmac = dualmac;
+++
++ 	if (dualmac) {
++ 		if (ab->fw.amss_dualmac_data && ab->fw.amss_dualmac_len > 0) {
++ 			/* use MHI firmware file from firmware-N.bin */
++--- a/drivers/net/wireless/ath/ath12k/htc.c
+++++ b/drivers/net/wireless/ath/ath12k/htc.c
++@@ -773,7 +773,14 @@ int ath12k_htc_init(struct ath12k_base *
++ 		htc->wmi_ep_count = 3;
++ 		break;
++ 	default:
++-		htc->wmi_ep_count = ab->hw_params->max_radios;
+++		/* The hardware mode is not known yet. A QCN9274 hw2.0 running
+++		 * the single-MAC firmware image offers no WMI MAC1 service, so
+++		 * asking for max_radios endpoints fails the whole start-up.
+++		 */
+++		if (ab->hw_rev == ATH12K_HW_QCN9274_HW20 && !ab->dualmac)
+++			htc->wmi_ep_count = 1;
+++		else
+++			htc->wmi_ep_count = ab->hw_params->max_radios;
++ 		break;
++ 	}
++ 
+-- 
+2.43.0
+
