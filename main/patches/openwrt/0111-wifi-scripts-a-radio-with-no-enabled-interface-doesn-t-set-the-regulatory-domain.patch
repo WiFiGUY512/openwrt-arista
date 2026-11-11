@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 16:03:51 -0600
+Subject: [PATCH] wifi-scripts: a radio with no enabled interface doesn't set
+ the regulatory domain
+
+A disabled radio no longer sets the system's regulatory domain, but a
+radio that is enabled with no enabled interface still does. A spare
+radio left at the country '00' that the generated configuration gives
+it, next to radios set to a country, sets the world domain on every
+Wi-Fi reload, and the radios in use then set their country again. The
+drivers log it on every radio (ath12k: "Failed to set the requested
+Country regulatory setting"; ath11k adds "failed to process regulatory
+info -22"), and on an Arista C-460 the 6 GHz radio also waited 3 s for
+a regulatory update on each reload.
+
+netifd passes only the enabled interfaces to the handler, so an empty
+list means the radio has none. Skip such a radio in setup_phy() as a
+disabled one is skipped, and in hostapd's device_country_code().
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/wifi-scripts/Makefile     |  2 +-
+ .../files-ucode/lib/netifd/wireless/mac80211.sh  | 16 +++++++++-------
+ .../files-ucode/usr/share/ucode/wifi/hostapd.uc  |  6 ++++--
+ 3 files changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index f41a4f2d5bf..e6ff2048259 100644
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
+index c100ec1fa0a..164b3635c69 100755
+--- a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
+@@ -64,18 +64,20 @@ function get_channel_frequency(band, channel) {
+ 	}
+ }
+ 
+-function setup_phy(phy, config, data) {
++function setup_phy(phy, config, data, in_use) {
+ 	if (config.channel == "auto")
+ 		config.channel = 0;
+ 	config.channel = +config.channel;
+ 	config.frequency = get_channel_frequency(config.band, config.channel);
+ 
+-	/* the regulatory domain is the whole system's: a disabled radio does not
+-	 * set it, and it is not set again to what it already is (each change goes
+-	 * to the drivers, and ath11k firmware refuses the world domain, which
+-	 * then breaks DFS on the radios in use) */
++	/* the regulatory domain is the whole system's: a disabled radio, or one
++	 * with no enabled interface (a spare radio still at the generated '00'),
++	 * does not set it, and it is not set again to what it already is (each
++	 * change goes to the drivers, and ath11k firmware refuses the world
++	 * domain, which then breaks DFS on the radios in use) */
+ 	let reg = nl80211.request(nl80211.const.NL80211_CMD_GET_REG);
+-	if (config.country_code && !config.disabled && config.country_code != reg?.reg_alpha2) {
++	if (config.country_code && !config.disabled && in_use &&
++	    config.country_code != reg?.reg_alpha2) {
+ 		log(`Setting country code to ${config.country_code}`);
+ 		system(`iw reg set ${config.country_code}`);
+ 	}
+@@ -210,7 +212,7 @@ function setup() {
+ 	delete config.hwmode;
+ 
+ 	validate('device', config);
+-	setup_phy(data.phy, data.config, data.data);
++	setup_phy(data.phy, data.config, data.data, length(data.interfaces ?? {}) > 0);
+ 
+ 	let supplicant_mesh;
+ 	let has_ap = false;
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+index 843232ee063..e4f3acef7cc 100644
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+@@ -103,8 +103,10 @@ function device_log_append(config) {
+ function device_country_code(config) {
+ 	let status = global.ubus.call('network.wireless', 'status');
+ 	for (let name, radio in status) {
+-		/* a disabled radio's country is not the system's */
+-		if (!radio.config.country || radio.disabled || radio.config.disabled)
++		/* a disabled radio's country is not the system's, nor is that of
++		 * a radio with no enabled interface */
++		if (!radio.config.country || radio.disabled || radio.config.disabled ||
++		    !length(radio.interfaces))
+ 			continue;
+ 		config.country_code = radio.config.country;
+ 	}
+-- 
+2.43.0
+
