@@ -35,18 +35,18 @@ Bluetooth/802.15.4 UART, USB, and an installation onto eMMC.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 713 ++++++++++++++++++
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 771 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  13 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
- 3 files changed, 729 insertions(+)
+ 3 files changed, 787 insertions(+)
  create mode 100755 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100755
-index 00000000000..ad7be0640a8
+index 00000000000..18d107bf48e
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,713 @@
+@@ -0,0 +1,771 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -637,8 +637,10 @@ index 00000000000..ad7be0640a8
 +
 +/*
 + * Radios: pcie0 holds a 17cb:1104 (QCN9074 family, most likely the scan
-+ * radio), pcie1-3 the three 17cb:1109 QCN9224. Their board data and MAC
-+ * addresses are described once the vendor board files are packaged.
++ * radio), pcie1-3 the three 17cb:1109 QCN9224. Their OTP board ID is blank
++ * (0xff), so the vendor firmware gives each one a board ID in its device
++ * tree: 0xaa on pcie0, 0x01 on pcie1, 0x04 on pcie2, 0x02 on pcie3. The
++ * calibration variants carry those IDs, as the Askey SBE1V1K's do.
 + */
 +&pcie0_phy {
 +	status = "okay";
@@ -650,6 +652,20 @@ index 00000000000..ad7be0640a8
 +	perst-gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
 +	wake-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
 +	status = "okay";
++
++	pcie@0 {
++		device_type = "pci";
++		reg = <0x0 0x0 0x0 0x0 0x0>;
++		#address-cells = <3>;
++		#size-cells = <2>;
++		ranges;
++
++		wifi@0 {
++			compatible = "pci17cb,1104";
++			reg = <0x0 0x0 0x0 0x0 0x0>;
++			qcom,calibration-variant = "Arista-C-460";
++		};
++	};
 +};
 +
 +&pcie1_phy {
@@ -662,6 +678,20 @@ index 00000000000..ad7be0640a8
 +	perst-gpios = <&tlmm 26 GPIO_ACTIVE_LOW>;
 +	wake-gpios = <&tlmm 27 GPIO_ACTIVE_LOW>;
 +	status = "okay";
++
++	pcie@0 {
++		device_type = "pci";
++		reg = <0x0 0x0 0x0 0x0 0x0>;
++		#address-cells = <3>;
++		#size-cells = <2>;
++		ranges;
++
++		wifi@0 {
++			compatible = "pci17cb,1109";
++			reg = <0x0 0x0 0x0 0x0 0x0>;
++			qcom,calibration-variant = "Arista-C-460_1";
++		};
++	};
 +};
 +
 +&pcie2_phy {
@@ -674,6 +704,20 @@ index 00000000000..ad7be0640a8
 +	perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
 +	wake-gpios = <&tlmm 30 GPIO_ACTIVE_LOW>;
 +	status = "okay";
++
++	pcie@0 {
++		device_type = "pci";
++		reg = <0x0 0x0 0x0 0x0 0x0>;
++		#address-cells = <3>;
++		#size-cells = <2>;
++		ranges;
++
++		wifi@0 {
++			compatible = "pci17cb,1109";
++			reg = <0x0 0x0 0x0 0x0 0x0>;
++			qcom,calibration-variant = "Arista-C-460_4";
++		};
++	};
 +};
 +
 +&pcie3_phy {
@@ -686,6 +730,20 @@ index 00000000000..ad7be0640a8
 +	perst-gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
 +	wake-gpios = <&tlmm 33 GPIO_ACTIVE_LOW>;
 +	status = "okay";
++
++	pcie@0 {
++		device_type = "pci";
++		reg = <0x0 0x0 0x0 0x0 0x0>;
++		#address-cells = <3>;
++		#size-cells = <2>;
++		ranges;
++
++		wifi@0 {
++			compatible = "pci17cb,1109";
++			reg = <0x0 0x0 0x0 0x0 0x0>;
++			qcom,calibration-variant = "Arista-C-460_2";
++		};
++	};
 +};
 +
 +&mdio {
