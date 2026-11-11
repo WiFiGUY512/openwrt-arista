@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 00:05:00 -0600
+Subject: [PATCH] hostapd: ucode: don't crash on a BSS that is gone in
+ set_bss_order
+
+iface.set_bss_order() takes the hostapd_data of each listed BSS from its
+ucode resource and dereferences it without a check. A resource whose BSS
+hostapd has already freed holds no data, and hostapd dies with SIGSEGV.
+
+Seen on an OpenWrt One (mt76) on 2026-11-10: a reload of a configuration
+whose only change was the radios' txpower took iface_reload_config()'s
+BSS path for phy1, and all four BSS resources in the list it passed to
+set_bss_order() were already empty (read from the core dump). hostapd
+died and took every BSS on both radios with it, until netifd restarted
+Wi-Fi 30 seconds later.
+
+Treat such an entry like any other one that does not belong to the
+interface: return null. The reload then logs "Failed to update BSS
+order" and restarts that phy's interface, and the other radio keeps
+running.
+
+Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=hostapd
+-PKG_RELEASE:=18
++PKG_RELEASE:=19
+ 
+ PKG_SOURCE_URL:=https://w1.fi/hostap.git
+ PKG_SOURCE_PROTO:=git
+--- a/package/network/services/hostapd/src/src/ap/ucode.c
++++ b/package/network/services/hostapd/src/src/ap/ucode.c
+@@ -622,7 +622,7 @@ uc_hostapd_iface_set_bss_order(uc_vm_t *
+ 		struct hostapd_data *bss;
+ 
+ 		bss = ucv_resource_data(ucv_array_get(bss_list, i), "hostapd.bss");
+-		if (bss->iface != iface)
++		if (!bss || bss->iface != iface)
+ 			goto free;
+ 
+ 		for (size_t k = 0; k < i; k++)
