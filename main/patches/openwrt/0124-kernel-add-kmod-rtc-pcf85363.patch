@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 01:05:00 -0600
+Subject: [PATCH] kernel: add kmod-rtc-pcf85363
+
+Package the kernel's driver for the NXP PCF85263 and PCF85363 RTC
+chips, found for example on the Arista C-460 (a PCF85263 at I2C 0x51).
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/linux/modules/rtc.mk | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/package/kernel/linux/modules/rtc.mk b/package/kernel/linux/modules/rtc.mk
+index 9b1ace851e6..ce440d5924f 100644
+--- a/package/kernel/linux/modules/rtc.mk
++++ b/package/kernel/linux/modules/rtc.mk
+@@ -206,6 +206,23 @@ endef
+ 
+ $(eval $(call KernelPackage,rtc-pcf2127))
+ 
++define KernelPackage/rtc-pcf85363
++  SUBMENU:=$(RTC_MENU)
++  TITLE:=NXP PCF85263/PCF85363 RTC support
++  DEFAULT:=m if ALL_KMODS && RTC_SUPPORT
++  DEPENDS:=+kmod-i2c-core +kmod-regmap-i2c
++  KCONFIG:=CONFIG_RTC_DRV_PCF85363 \
++	CONFIG_RTC_CLASS=y
++  FILES:=$(LINUX_DIR)/drivers/rtc/rtc-pcf85363.ko
++  AUTOLOAD:=$(call AutoProbe,rtc-pcf85363)
++endef
++
++define KernelPackage/rtc-pcf85363/description
++ Kernel module for the NXP PCF85263 and PCF85363 RTC chips.
++endef
++
++$(eval $(call KernelPackage,rtc-pcf85363))
++
+ define KernelPackage/rtc-r7301
+   SUBMENU:=$(RTC_MENU)
+   TITLE:=Epson RTC7301 support
+-- 
+2.43.0
+
