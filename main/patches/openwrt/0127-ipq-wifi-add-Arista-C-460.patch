@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 13:14:00 -0600
+Subject: [PATCH] ipq-wifi: add Arista C-460
+
+Package the Arista C-460's board files: board-arista_c-460.qcn9274 for
+its three QCN9224 radios, with the vendor's FCC regdb, and
+board-arista_c-460.qcn9074 for its QCN9074 scan radio (qca-wireless
+branch arista-c460).
+
+Upstream this hunk belongs to the device commit. It is a port patch of
+its own because the board list here already holds the Arista models
+the earlier port patches add.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/firmware/ipq-wifi/Makefile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
+index 9bf4a33..31fff04 100644
+--- a/package/firmware/ipq-wifi/Makefile
++++ b/package/firmware/ipq-wifi/Makefile
+@@ -36,6 +36,7 @@ ALLWIFIBOARDS:= \
+ 	arista_c-230 \
+ 	arista_c-260 \
+ 	arista_c-360 \
++	arista_c-460 \
+ 	arista_w-118 \
+ 	arista_w-318 \
+ 	askey_sbe1v1k \
+@@ -257,6 +258,7 @@ $(eval $(call generate-ipq-wifi-package,arista_c-200,Arista C-200))
+ $(eval $(call generate-ipq-wifi-package,arista_c-230,Arista C-230))
+ $(eval $(call generate-ipq-wifi-package,arista_c-260,Arista C-260))
+ $(eval $(call generate-ipq-wifi-package,arista_c-360,Arista C-360))
++$(eval $(call generate-ipq-wifi-package,arista_c-460,Arista C-460))
+ $(eval $(call generate-ipq-wifi-package,arista_w-118,Arista W-118))
+ $(eval $(call generate-ipq-wifi-package,arista_w-318,Arista W-318))
+ $(eval $(call generate-ipq-wifi-package,askey_sbe1v1k,Askey SBE1V1K))
+-- 
+2.43.0
+

@@ -33,12 +33,16 @@ The radios' OTP board ID is blank, so each carries a calibration variant
 data is read from ART on NOR: 0x26800 (QCN9074), 0x58800, 0x8a800 and
 0xbc800 (QCN9224 on pcie1-3).
 
-This is the first bring-up: console, eMMC, NOR (every partition kept
-read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
-LEDs (the two port LEDs, "poe0" and "poe1" in the vendor firmware,
-follow lan1 and lan2 link) and the button. The radios take their MAC
-addresses from the calibration data. Not yet: the radios' board files
-(board-2.bin), GNSS, and an installation onto eMMC. The PCF85263
+This is the first bring-up: console, eMMC, NOR (every partition
+read-only but 0:appsblenv, the U-Boot environment, which fw_setenv
+needs), PCIe, both Ethernet ports with the MAC addresses from ART, LEDs
+(the two port LEDs, "poe0" and "poe1" in the vendor firmware, follow
+lan1 and lan2 link) and the button. The radios take their MAC addresses
+from the calibration data and their board files from
+ipq-wifi-arista_c-460. Sysupgrade writes the kernel to 0:HLOS and the
+root file system to rootfs, the vendor's first slot, as on the Askey
+SBE1V1K; the vendor's second slot is left alone. Not yet: GNSS, and the
+first installation onto eMMC. The PCF85263
 RTC uses kmod-rtc-pcf85363, added in a separate commit, and the SPI TPM
 kmod-tpm-tis-spi, which a separate commit allows on qualcommbe. The
 Bluetooth LE controller on blsp1_uart4 is attached with bluetooth-uart
@@ -47,24 +51,40 @@ at 1 Mbaud without flow control, as the vendor firmware attaches it.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 863 ++++++++++++++++++
- target/linux/qualcommbe/image/ipq95xx.mk      |  14 +
+ .../uboot-envtools/files/qualcommbe_ipq95xx   |   3 +
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 862 ++++++++++++++++++
+ target/linux/qualcommbe/image/ipq95xx.mk      |  15 +
  .../ipq95xx/base-files/etc/board.d/01_leds    |  16 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
  .../base-files/etc/uci-defaults/03_bluetooth  |  18 +-
- 7 files changed, 941 insertions(+), 2 deletions(-)
+ .../base-files/lib/upgrade/platform.sh        |   2 +
+ 9 files changed, 946 insertions(+), 2 deletions(-)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommbe_ipq95xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommbe_ipq95xx
+index cf89850ffc8..98bcd2cd8e5 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommbe_ipq95xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommbe_ipq95xx
+@@ -12,6 +12,9 @@ case "$board" in
+ askey,sbe1v1k)
+ 	ubootenv_add_mmc "0:APPSBLENV" "" "0x0" "0x40000" "0x40000"
+ 	;;
++arista,c-460)
++	ubootenv_add_mtd "0:appsblenv" "0x0" "0x10000" "0x10000"
++	;;
+ linksys,ln6001)
+ 	ubootenv_add_mmc "u_env" "" "0x0" "0x40000" "0x40000"
+ 	;;
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..8db13838a0d
+index 00000000000..47a73d866c4
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,863 @@
+@@ -0,0 +1,862 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -282,8 +302,8 @@ index 00000000000..8db13838a0d
 +		spi-max-frequency = <50000000>;
 +
 +		/*
-+		 * The vendor layout. Every partition is read-only while the
-+		 * port is brought up.
++		 * The vendor layout. Every partition is read-only but
++		 * 0:appsblenv, the U-Boot environment.
 +		 */
 +		partitions {
 +			compatible = "fixed-partitions";
@@ -389,7 +409,6 @@ index 00000000000..8db13838a0d
 +			partition@530000 {
 +				label = "0:appsblenv";
 +				reg = <0x530000 0x10000>;
-+				read-only;
 +			};
 +
 +			partition@540000 {
@@ -929,10 +948,10 @@ index 00000000000..8db13838a0d
 +	};
 +};
 diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
-index 9e9c9561a01..878b0d6a77b 100644
+index 9e9c9561a01..1c0054dc04d 100644
 --- a/target/linux/qualcommbe/image/ipq95xx.mk
 +++ b/target/linux/qualcommbe/image/ipq95xx.mk
-@@ -14,6 +14,20 @@ define Device/8devices_kiwi-dvk
+@@ -14,6 +14,21 @@ define Device/8devices_kiwi-dvk
  endef
  TARGET_DEVICES += 8devices_kiwi-dvk
  
@@ -944,9 +963,10 @@ index 9e9c9561a01..878b0d6a77b 100644
 +	DEVICE_DTS := ipq9574-arista-c-460
 +	SOC := ipq9574
 +	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ath12k-firmware-qcn9274 f2fsck \
-+		kmod-ath11k-pci kmod-ath12k kmod-gpio-pca953x kmod-phy-realtek \
-+		kmod-rtc-pcf85363 kmod-tpm-tis-spi kmod-usb-storage mkf2fs \
-+		rtl826x-firmware bluetooth-uart
++		ipq-wifi-arista_c-460 kmod-ath11k-pci kmod-ath12k \
++		kmod-gpio-pca953x kmod-phy-realtek kmod-rtc-pcf85363 \
++		kmod-tpm-tis-spi kmod-usb-storage mkf2fs rtl826x-firmware \
++		bluetooth-uart
 +endef
 +TARGET_DEVICES += arista_c-460
 +
@@ -1084,6 +1104,26 @@ index 22678a34ce6..626afcecc79 100644
 +	set bluetooth-uart.main.flow_control='$flow_control'
  	set bluetooth-uart.main.enabled='1'
  EOF
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommbe/ipq95xx/base-files/lib/upgrade/platform.sh
+index 5c1a014ff95..4e12728628b 100644
+--- a/target/linux/qualcommbe/ipq95xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommbe/ipq95xx/base-files/lib/upgrade/platform.sh
+@@ -26,6 +26,7 @@ platform_do_upgrade() {
+ 		CI_ROOTPART="rootfs"
+ 		emmc_do_upgrade "$1"
+ 		;;
++	arista,c-460|\
+ 	askey,sbe1v1k)
+ 		CI_KERNPART="0:HLOS"
+ 		CI_ROOTPART="rootfs"
+@@ -44,6 +45,7 @@ platform_do_upgrade() {
+ platform_copy_config() {
+ 	case "$(board_name)" in
+ 	8devices,kiwi-dvk|\
++	arista,c-460|\
+ 	askey,sbe1v1k)
+ 		emmc_copy_config
+ 		;;
 -- 
 2.43.0
 
