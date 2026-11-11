@@ -32,21 +32,26 @@ data is read from ART on NOR: 0x26800 (QCN9074), 0x58800, 0x8a800 and
 
 This is the first bring-up: console, eMMC, NOR (every partition kept
 read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
-LEDs and the button. Not yet: the radios' board files (board-2.bin) and MAC addresses,
-the TPM driver (kmod-tpm-tis-spi does not build for qualcommbe yet; the
-TPM is described), the RTC (no kmod in OpenWrt yet), GNSS, the
-Bluetooth/802.15.4 UART, USB, and an installation onto eMMC.
+LEDs (the two port LEDs, "poe0" and "poe1" in the vendor firmware,
+follow lan1 and lan2 link) and the button. The radios take their MAC
+addresses from the calibration data. Not yet: the radios' board files
+(board-2.bin), the TPM driver (kmod-tpm-tis-spi does not build for
+qualcommbe yet; the TPM is described), the RTC (no kmod in OpenWrt
+yet), GNSS, the Bluetooth/802.15.4 UART, USB, and an installation onto
+eMMC.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 773 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  13 +
+ .../ipq95xx/base-files/etc/board.d/01_leds    |  16 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
- 5 files changed, 818 insertions(+)
+ 6 files changed, 834 insertions(+)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
+ create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
@@ -852,6 +857,28 @@ index 9e9c9561a01..acf2a21b131 100644
  define Device/askey_sbe1v1k
  	$(call Device/FitImage)
  	$(call Device/EmmcImage)
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
+new file mode 100755
+index 00000000000..3ef179feeb5
+--- /dev/null
++++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
+@@ -0,0 +1,16 @@
++#!/bin/sh
++
++. /lib/functions/uci-defaults.sh
++
++board_config_update
++
++case "$(board_name)" in
++arista,c-460)
++	ucidef_set_led_netdev "lan1" "LAN1" "green:poe-0" "lan1" "link"
++	ucidef_set_led_netdev "lan2" "LAN2" "green:poe-1" "lan2" "link"
++	;;
++esac
++
++board_config_flush
++
++exit 0
 diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network b/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
 index 1ab91adc483..3aadc4a6f09 100644
 --- a/target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/02_network
