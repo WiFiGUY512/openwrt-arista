@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Tue, 10 Nov 2026 23:45:00 -0600
+Subject: [PATCH] qualcommbe: ipq95xx: c-460: light the radio LEDs
+
+The 2.4, 5 and 6 GHz LEDs had no trigger. The three QCN9224 radios
+register in a different order from boot to boot, so their phy numbers
+change even on one unit, and board.d cannot name them. A hotplug script
+ties each LED to its radio by device path instead, with the radio's
+phyNradio trigger: the LED is lit while the radio is enabled. pcie1 is
+the 2.4 GHz radio, pcie3 the 5 GHz radio and pcie2 the 6 GHz radio
+("5g_6g" in the vendor firmware). The QCN9074 scan radio on pcie0 has
+no LED.
+
+Tested on a unit, from RAM: with an AP on each QCN9224 the three LEDs
+are on, after wifi down they are off; on that boot pcie1 was phy3, pcie3
+phy1 and pcie2 phy2.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../hotplug.d/ieee80211/12-arista-c-460-leds  | 30 +++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+ create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-460-leds
+
+diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-460-leds b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-460-leds
+new file mode 100755
+index 00000000000..25e7fc708f0
+--- /dev/null
++++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/12-arista-c-460-leds
+@@ -0,0 +1,30 @@
++#!/bin/sh
++# Arista C-460: each radio LED follows its radio, found by device path.
++# The ath12k radios register in a different order from boot to boot, so
++# their phy numbers cannot name them. pcie1 is the 2.4 GHz radio, pcie3
++# the 5 GHz radio and pcie2 the 6 GHz radio ("5g_6g" in the vendor
++# firmware). The QCN9074 on pcie0 is the scan radio and has no LED.
++# "phyNradio" lights the LED while the radio is enabled.
++
++[ "$ACTION" = add ] || exit 0
++
++. /lib/functions.sh
++
++[ "$(board_name)" = arista,c-460 ] || exit 0
++
++case "$(readlink "/sys/class/ieee80211/$DEVICENAME/device")" in
++*/0001:01:00.0)
++	led=green:wlan-2ghz
++	;;
++*/0003:01:00.0)
++	led=green:wlan-5ghz
++	;;
++*/0002:01:00.0)
++	led=green:wlan-6ghz
++	;;
++*)
++	exit 0
++	;;
++esac
++
++echo "${DEVICENAME}radio" > "/sys/class/leds/$led/trigger"
+-- 
+2.43.0
+
