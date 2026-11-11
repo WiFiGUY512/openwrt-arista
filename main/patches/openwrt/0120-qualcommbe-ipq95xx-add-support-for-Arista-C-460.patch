@@ -35,10 +35,10 @@ read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
 LEDs (the two port LEDs, "poe0" and "poe1" in the vendor firmware,
 follow lan1 and lan2 link) and the button. The radios take their MAC
 addresses from the calibration data. Not yet: the radios' board files
-(board-2.bin), the TPM driver (kmod-tpm-tis-spi does not build for
-qualcommbe yet; the TPM is described), GNSS, the Bluetooth/802.15.4
-UART, USB, and an installation onto eMMC. The PCF85263 RTC uses
-kmod-rtc-pcf85363, added in a separate commit.
+(board-2.bin), GNSS, the Bluetooth/802.15.4 UART, USB, and an
+installation onto eMMC. The PCF85263 RTC uses kmod-rtc-pcf85363, added
+in a separate commit, and the SPI TPM kmod-tpm-tis-spi, which a separate
+commit allows on qualcommbe.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
@@ -836,7 +836,7 @@ index 00000000000..3d57f9301ff
 +	};
 +};
 diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
-index 9e9c9561a01..5943566ae8f 100644
+index 9e9c9561a01..73efbbc7922 100644
 --- a/target/linux/qualcommbe/image/ipq95xx.mk
 +++ b/target/linux/qualcommbe/image/ipq95xx.mk
 @@ -14,6 +14,19 @@ define Device/8devices_kiwi-dvk
@@ -852,7 +852,7 @@ index 9e9c9561a01..5943566ae8f 100644
 +	SOC := ipq9574
 +	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ath12k-firmware-qcn9274 f2fsck \
 +		kmod-ath11k-pci kmod-ath12k kmod-gpio-pca953x kmod-phy-realtek \
-+		kmod-rtc-pcf85363 mkf2fs rtl826x-firmware
++		kmod-rtc-pcf85363 kmod-tpm-tis-spi mkf2fs rtl826x-firmware
 +endef
 +TARGET_DEVICES += arista_c-460
 +
