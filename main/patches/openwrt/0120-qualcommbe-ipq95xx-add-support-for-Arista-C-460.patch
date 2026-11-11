@@ -17,6 +17,8 @@ Hardware (vendor boot log and device tree):
 - LEDs: power, 2.4/5/6 GHz and two PoE LEDs, each red/green, on a
   PCA9555 at I2C 0x26
 - Button: reset (GPIO 41)
+- USB: the SoC's DWC3 controller in host mode, with its USB 2.0 and
+  3.0 PHYs, as the vendor device tree enables it
 - TPM 2.0 on SPI, PCF85263 RTC, Quectel LC79H GNSS, a second PCA9555
 - Serial: 115200 8N1 on the RJ45 console port
 
@@ -35,7 +37,7 @@ read-only), PCIe, both Ethernet ports with the MAC addresses from ART,
 LEDs (the two port LEDs, "poe0" and "poe1" in the vendor firmware,
 follow lan1 and lan2 link) and the button. The radios take their MAC
 addresses from the calibration data. Not yet: the radios' board files
-(board-2.bin), GNSS, USB, and an installation onto eMMC. The PCF85263
+(board-2.bin), GNSS, and an installation onto eMMC. The PCF85263
 RTC uses kmod-rtc-pcf85363, added in a separate commit, and the SPI TPM
 kmod-tpm-tis-spi, which a separate commit allows on qualcommbe. The
 Bluetooth LE controller on blsp1_uart4 is attached with bluetooth-uart
@@ -44,24 +46,24 @@ at 1 Mbaud without flow control, as the vendor firmware attaches it.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 809 ++++++++++++++++++
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 864 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  14 +
  .../ipq95xx/base-files/etc/board.d/01_leds    |  16 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |  20 +
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
  .../base-files/etc/uci-defaults/03_bluetooth  |  18 +-
- 7 files changed, 887 insertions(+), 2 deletions(-)
+ 7 files changed, 942 insertions(+), 2 deletions(-)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..195cd894578
+index 00000000000..7bc8053fe14
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,809 @@
+@@ -0,0 +1,864 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -192,6 +194,38 @@ index 00000000000..195cd894578
 +			function-enumerator = <1>;
 +			gpios = <&led_expander 1 GPIO_ACTIVE_LOW>;
 +		};
++	};
++
++	/*
++	 * The USB PHYs' supplies. The vendor device tree names none and
++	 * declares no PMIC LDO for them, so describe them as fixed rails
++	 * that are always on, at the reference design's voltages.
++	 */
++	regulator_fixed_3p3: regulator-3p3 {
++		compatible = "regulator-fixed";
++		regulator-name = "fixed_3p3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	regulator_fixed_1p8: regulator-1p8 {
++		compatible = "regulator-fixed";
++		regulator-name = "fixed_1p8";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	regulator_fixed_0p925: regulator-0p925 {
++		compatible = "regulator-fixed";
++		regulator-name = "fixed_0p925";
++		regulator-min-microvolt = <925000>;
++		regulator-max-microvolt = <925000>;
++		regulator-always-on;
++		regulator-boot-on;
 +	};
 +};
 +
@@ -461,6 +495,29 @@ index 00000000000..195cd894578
 +	non-removable;
 +	pinctrl-0 = <&sdc_default_state>;
 +	pinctrl-names = "default";
++	status = "okay";
++};
++
++&usb_0_dwc3 {
++	dr_mode = "host";
++};
++
++&usb_0_qmpphy {
++	vdda-pll-supply = <&regulator_fixed_1p8>;
++	vdda-phy-supply = <&regulator_fixed_0p925>;
++
++	status = "okay";
++};
++
++&usb_0_qusbphy {
++	vdd-supply = <&regulator_fixed_0p925>;
++	vdda-pll-supply = <&regulator_fixed_1p8>;
++	vdda-phy-dpdm-supply = <&regulator_fixed_3p3>;
++
++	status = "okay";
++};
++
++&usb3 {
 +	status = "okay";
 +};
 +
