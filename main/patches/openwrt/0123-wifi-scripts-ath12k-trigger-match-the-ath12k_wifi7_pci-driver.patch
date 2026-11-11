@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 00:20:00 -0600
+Subject: [PATCH] wifi-scripts: ath12k trigger: match the ath12k_wifi7_pci
+ driver
+
+11-ath12k-trigger restarts an ath12k radio whose setup failed because
+the device registered after the wireless configuration was applied. It
+only acts on devices bound to the ath12k_pci driver, but since ath12k
+was split into a common module and a Wi-Fi 7 one the PCI driver is
+ath12k_wifi7_pci (seen on an Arista C-460 with Linux 6.18), so the
+script never acts. Match both names.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+--- a/package/network/config/wifi-scripts/files/etc/hotplug.d/ieee80211/11-ath12k-trigger
++++ b/package/network/config/wifi-scripts/files/etc/hotplug.d/ieee80211/11-ath12k-trigger
+@@ -3,7 +3,7 @@
+ # Restart ath12k radios that take long time to initialize on boot
+ 
+ [ "${ACTION}" = "add" ] || exit 0
+-[ $(grep -c DRIVER=ath12k_pci /sys/$DEVPATH/device/uevent) -gt 0 ] || exit 0
++grep -qE "^DRIVER=ath12k(_wifi7)?_pci$" /sys/$DEVPATH/device/uevent || exit 0
+ 
+ . /usr/share/libubox/jshn.sh
+ 
