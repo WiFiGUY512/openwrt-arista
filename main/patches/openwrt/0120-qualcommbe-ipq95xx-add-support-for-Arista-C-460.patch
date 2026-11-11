@@ -41,18 +41,20 @@ lan1 and lan2 link) and the button. The radios take their MAC addresses
 from the calibration data and their board files from
 ipq-wifi-arista_c-460. Sysupgrade writes the kernel to 0:HLOS and the
 root file system to rootfs, the vendor's first slot, as on the Askey
-SBE1V1K; the vendor's second slot is left alone. Not yet: GNSS, and the
-first installation onto eMMC. The PCF85263
-RTC uses kmod-rtc-pcf85363, added in a separate commit, and the SPI TPM
-kmod-tpm-tis-spi, which a separate commit allows on qualcommbe. The
-Bluetooth LE controller on blsp1_uart4 is attached with bluetooth-uart
-at 1 Mbaud without flow control, as the vendor firmware attaches it.
+SBE1V1K; the vendor's second slot is left alone. The device tree appends
+root=/dev/mmcblk0p3 (rootfs), so an installed system finds its root
+whatever U-Boot passes. Not yet: GNSS, and the first installation onto
+eMMC. The PCF85263 RTC uses kmod-rtc-pcf85363, added in a separate
+commit, and the SPI TPM kmod-tpm-tis-spi, which a separate commit allows
+on qualcommbe. The Bluetooth LE controller on blsp1_uart4 is attached
+with bluetooth-uart at 1 Mbaud without flow control, as the vendor
+firmware attaches it.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  .../uboot-envtools/files/qualcommbe_ipq95xx   |   3 +
- .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 862 ++++++++++++++++++
+ .../qualcommbe/dts/ipq9574-arista-c-460.dts   | 868 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |  15 +
  .../ipq95xx/base-files/etc/board.d/01_leds    |  16 +
  .../ipq95xx/base-files/etc/board.d/02_network |   3 +
@@ -60,7 +62,7 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  .../etc/hotplug.d/firmware/11-ath12k-caldata  |   9 +
  .../base-files/etc/uci-defaults/03_bluetooth  |  18 +-
  .../base-files/lib/upgrade/platform.sh        |   2 +
- 9 files changed, 946 insertions(+), 2 deletions(-)
+ 9 files changed, 952 insertions(+), 2 deletions(-)
  create mode 100644 target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/board.d/01_leds
  create mode 100755 target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
@@ -81,10 +83,10 @@ index cf89850ffc8..98bcd2cd8e5 100644
  	;;
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..47a73d866c4
+index 00000000000..10a8a01bbfd
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
-@@ -0,0 +1,862 @@
+@@ -0,0 +1,868 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 +
 +/dts-v1/;
@@ -110,6 +112,12 @@ index 00000000000..47a73d866c4
 +	};
 +
 +	chosen {
++		/*
++		 * The root file system is the vendor's slot 0 on eMMC, whatever
++		 * bootargs U-Boot passes; fstools then finds rootfs_data on the
++		 * same disk.
++		 */
++		bootargs-append = " root=/dev/mmcblk0p3 rootwait";
 +		stdout-path = "serial0:115200n8";
 +	};
 +
