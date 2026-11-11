@@ -1,0 +1,147 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 16:13:00 -0600
+Subject: [PATCH] qualcommbe: ipq95xx: c-460: ship the Wi-Fi firmware its
+ radios run
+
+Add arista-c460-wifi-firmware and install it on the C-460 in place of
+ath11k-firmware-qcn9074 and ath12k-firmware-qcn9274. It takes the files
+from linux-firmware's history, each at its own commit, with its
+Notice.txt:
+
+- QCN9074 (pcie0): WLAN.HK.2.5.0.1-01208 (97f8b7563d6f). Every later
+  public build (2.7.0.1-01744, 2.9.0.1) stops answering at the first
+  interface on this board; 2.5.0.1 scans on 2.4, 5 and 6 GHz and
+  receives in monitor mode.
+- QCN9224 (pcie1-3): WLAN.WBE.1.4.1-00199 (a3f44afe7927).
+  WLAN.WBE.1.6 crashes after WMI init on these single-MAC cards.
+
+The other boards keep the current firmware. A port patch; not for
+upstream.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ .../arista-c460-wifi-firmware/Makefile        | 96 +++++++++++++++++++
+ target/linux/qualcommbe/image/ipq95xx.mk      |  2 +-
+ 2 files changed, 97 insertions(+), 1 deletion(-)
+ create mode 100644 package/firmware/arista-c460-wifi-firmware/Makefile
+
+diff --git a/package/firmware/arista-c460-wifi-firmware/Makefile b/package/firmware/arista-c460-wifi-firmware/Makefile
+new file mode 100644
+index 0000000..284c313
+--- /dev/null
++++ b/package/firmware/arista-c460-wifi-firmware/Makefile
+@@ -0,0 +1,96 @@
++#
++# The Wi-Fi firmware the Arista C-460's radios run, from linux-firmware's
++# history, in place of ath11k-firmware-qcn9074 and ath12k-firmware-qcn9274
++# on this device only:
++#
++# - QCN9074 (pcie0, the scan radio): WLAN.HK.2.5.0.1-01208. Every later
++#   public build (2.7.0.1-01744, 2.9.0.1) stops answering at its first
++#   interface on this board.
++# - QCN9224 (pcie1-3): WLAN.WBE.1.4.1-00199. WLAN.WBE.1.6 crashes after
++#   WMI init on these single-MAC cards.
++#
++# The board files come from ipq-wifi-arista_c-460.
++#
++
++include $(TOPDIR)/rules.mk
++
++PKG_NAME:=arista-c460-wifi-firmware
++PKG_VERSION:=2025.02.05
++PKG_RELEASE:=1
++
++include $(INCLUDE_DIR)/package.mk
++
++LF_URL:=https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain
++QCN9074_COMMIT:=97f8b7563d6f18fc38f32934ea7f12a6ca166e5d
++QCN9274_COMMIT:=a3f44afe7927ba8fd337c62625ad6789324ed9fb
++QCN9074_PREFIX:=$(PKG_NAME)-qcn9074-WLAN.HK.2.5.0.1-01208
++QCN9274_PREFIX:=$(PKG_NAME)-qcn9274-WLAN.WBE.1.4.1-00199
++
++define Download/qcn9074-amss
++  URL:=$(LF_URL)/ath11k/QCN9074/hw1.0
++  URL_FILE:=amss.bin?id=$(QCN9074_COMMIT)
++  FILE:=$(QCN9074_PREFIX)-amss.bin
++  HASH:=4b03e776e3392e249a9f5d9753be980cab287168f059861618618d65df016513
++endef
++$(eval $(call Download,qcn9074-amss))
++
++define Download/qcn9074-m3
++  URL:=$(LF_URL)/ath11k/QCN9074/hw1.0
++  URL_FILE:=m3.bin?id=$(QCN9074_COMMIT)
++  FILE:=$(QCN9074_PREFIX)-m3.bin
++  HASH:=6bad938141e5ef3931eb84747935a3fb4cf954ee1720e66bc517f8a2f262b8ae
++endef
++$(eval $(call Download,qcn9074-m3))
++
++define Download/qcn9074-notice
++  URL:=$(LF_URL)/ath11k/QCN9074/hw1.0
++  URL_FILE:=Notice.txt?id=$(QCN9074_COMMIT)
++  FILE:=$(QCN9074_PREFIX)-Notice.txt
++  HASH:=0768d1c28b6886f159703ef929fd3c92ab6bec1cbc9dcae449b17722a824ebcf
++endef
++$(eval $(call Download,qcn9074-notice))
++
++define Download/qcn9274-firmware
++  URL:=$(LF_URL)/ath12k/QCN9274/hw2.0
++  URL_FILE:=firmware-2.bin?id=$(QCN9274_COMMIT)
++  FILE:=$(QCN9274_PREFIX)-firmware-2.bin
++  HASH:=93e3838fc757dda14b6ca89344bfbe5fdb886654c746c9ee752a1b4e3f167458
++endef
++$(eval $(call Download,qcn9274-firmware))
++
++define Download/qcn9274-notice
++  URL:=$(LF_URL)/ath12k/QCN9274/hw2.0
++  URL_FILE:=Notice.txt?id=$(QCN9274_COMMIT)
++  FILE:=$(QCN9274_PREFIX)-Notice.txt
++  HASH:=097ceeb6f03dad7e74a2de0f217b1dad149989e550681e8726908ef477c9d58f
++endef
++$(eval $(call Download,qcn9274-notice))
++
++define Package/arista-c460-wifi-firmware
++  SECTION:=firmware
++  CATEGORY:=Firmware
++  URL:=https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
++  TITLE:=Arista C-460 Wi-Fi firmware (QCN9074 2.5.0.1, QCN9224 WBE.1.4.1)
++  CONFLICTS:=ath11k-firmware-qcn9074 ath12k-firmware-qcn9274
++  LICENSE:=Redistributable, no modification permitted (linux-firmware WHENCE)
++endef
++
++define Package/arista-c460-wifi-firmware/description
++  The Wi-Fi firmware for the Arista C-460, from linux-firmware's history:
++  QCN9074 WLAN.HK.2.5.0.1-01208 and QCN9224 WLAN.WBE.1.4.1-00199.
++endef
++
++define Build/Compile
++endef
++
++define Package/arista-c460-wifi-firmware/install
++	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/QCN9074/hw1.0
++	$(INSTALL_DATA) $(DL_DIR)/$(QCN9074_PREFIX)-amss.bin $(1)/lib/firmware/ath11k/QCN9074/hw1.0/amss.bin
++	$(INSTALL_DATA) $(DL_DIR)/$(QCN9074_PREFIX)-m3.bin $(1)/lib/firmware/ath11k/QCN9074/hw1.0/m3.bin
++	$(INSTALL_DATA) $(DL_DIR)/$(QCN9074_PREFIX)-Notice.txt $(1)/lib/firmware/ath11k/QCN9074/hw1.0/Notice.txt
++	$(INSTALL_DIR) $(1)/lib/firmware/ath12k/QCN9274/hw2.0
++	$(INSTALL_DATA) $(DL_DIR)/$(QCN9274_PREFIX)-firmware-2.bin $(1)/lib/firmware/ath12k/QCN9274/hw2.0/firmware-2.bin
++	$(INSTALL_DATA) $(DL_DIR)/$(QCN9274_PREFIX)-Notice.txt $(1)/lib/firmware/ath12k/QCN9274/hw2.0/Notice.txt
++endef
++
++$(eval $(call BuildPackage,arista-c460-wifi-firmware))
+diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
+index 1c0054d..ee486ae 100644
+--- a/target/linux/qualcommbe/image/ipq95xx.mk
++++ b/target/linux/qualcommbe/image/ipq95xx.mk
+@@ -21,7 +21,7 @@ define Device/arista_c-460
+ 	DEVICE_MODEL := C-460
+ 	DEVICE_DTS := ipq9574-arista-c-460
+ 	SOC := ipq9574
+-	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ath12k-firmware-qcn9274 f2fsck \
++	DEVICE_PACKAGES := arista-c460-wifi-firmware f2fsck \
+ 		ipq-wifi-arista_c-460 kmod-ath11k-pci kmod-ath12k \
+ 		kmod-gpio-pca953x kmod-phy-realtek kmod-rtc-pcf85363 \
+ 		kmod-tpm-tis-spi kmod-usb-storage mkf2fs rtl826x-firmware \
+-- 
+2.43.0
+

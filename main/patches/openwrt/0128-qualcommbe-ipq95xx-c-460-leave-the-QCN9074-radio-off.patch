@@ -1,16 +1,18 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
-Date: Wed, 11 Nov 2026 13:56:00 -0600
+Date: Wed, 11 Nov 2026 14:15:00 -0600
 Subject: [PATCH] qualcommbe: ipq95xx: c-460: leave the QCN9074 radio off
 
-The C-460's QCN9074 on pcie0 stops answering at its first interface on
-every public firmware tried so far (B175 in the port's records). "wifi
-config" still adds its radio enabled, keeping the world domain, and
-every Wi-Fi reload then flips the regulatory domain of the other three
-radios (B180). Disable that radio when it is first added; a disabled
-option already set is kept.
+The C-460's QCN9074 on pcie0 is the scan radio and gets no interface by
+default. "wifi config" still adds its radio enabled, keeping the world
+domain, and every Wi-Fi reload then flips the regulatory domain of the
+other three radios (B180 in the port's records): "Failed to set the
+requested Country regulatory setting" on all of them, and a 6 GHz
+"Timeout while waiting for regulatory update". Disable that radio when
+it is first added; a disabled option already set is kept.
 
-A port patch until the radio works; not for upstream.
+A port patch until wifi-scripts skips radios without an enabled
+interface; not for upstream.
 
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
@@ -21,17 +23,17 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 
 diff --git a/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/13-arista-c-460-scan-radio b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/13-arista-c-460-scan-radio
 new file mode 100755
-index 0000000..3c7ea2f
+index 0000000..9ab5f27
 --- /dev/null
 +++ b/target/linux/qualcommbe/ipq95xx/base-files/etc/hotplug.d/ieee80211/13-arista-c-460-scan-radio
 @@ -0,0 +1,31 @@
 +#!/bin/sh
-+# Arista C-460: the QCN9074 on pcie0 does not run yet on any public
-+# firmware (it stops answering at its first interface). Leave its radio
-+# disabled when "wifi config" first adds it: an enabled radio without a
-+# country of its own keeps the world domain ('00') and flips the
-+# regulatory domain of the other radios on every reload. A disabled
-+# option already set, either way, is left alone.
++# Arista C-460: the QCN9074 on pcie0 is the scan radio and gets no
++# interface by default. Leave its radio disabled when "wifi config" first
++# adds it: an enabled radio without an enabled interface keeps the world
++# domain ('00') and flips the regulatory domain of the other radios on
++# every reload, until wifi-scripts skips such radios. A disabled option
++# already set, either way, is left alone.
 +
 +[ "$ACTION" = add ] || exit 0
 +
