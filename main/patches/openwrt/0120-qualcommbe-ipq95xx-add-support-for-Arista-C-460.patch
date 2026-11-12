@@ -36,8 +36,10 @@ data is read from ART on NOR: 0x26800 (QCN9074), 0x58800, 0x8a800 and
 This is the first bring-up: console, eMMC, NOR (every partition
 read-only but 0:appsblenv, the U-Boot environment, which fw_setenv
 needs), PCIe, both Ethernet ports with the MAC addresses from ART, LEDs
-(the two port LEDs, "poe0" and "poe1" in the vendor firmware, follow
-lan1 and lan2 link) and the button. The radios take their MAC addresses
+(power red while booting, in failsafe and during an upgrade, and green
+while running, as the vendor firmware shows it; the two port LEDs,
+"poe0" and "poe1" in the vendor firmware, follow lan1 and lan2 link) and
+the button. The radios take their MAC addresses
 from the calibration data and their board files from
 ipq-wifi-arista_c-460. Sysupgrade writes the kernel to 0:HLOS and the
 root file system to rootfs, the vendor's first slot, as on the Askey
@@ -83,7 +85,7 @@ index cf89850ffc8..98bcd2cd8e5 100644
  	;;
 diff --git a/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 new file mode 100644
-index 00000000000..10a8a01bbfd
+index 00000000000..ff0bffdcb84
 --- /dev/null
 +++ b/target/linux/qualcommbe/dts/ipq9574-arista-c-460.dts
 @@ -0,0 +1,868 @@
@@ -102,7 +104,7 @@ index 00000000000..10a8a01bbfd
 +	compatible = "arista,c-460", "qcom,ipq9574";
 +
 +	aliases {
-+		led-boot = &led_power_green;
++		led-boot = &led_power_red;
 +		led-failsafe = &led_power_red;
 +		led-running = &led_power_green;
 +		led-upgrade = &led_power_red;
