@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
-Date: Wed, 11 Nov 2026 19:11:37 -0600
+Date: Wed, 11 Nov 2026 19:54:55 -0600
 Subject: [PATCH] qualcommbe: ipq95xx: c-460: read the GNSS receiver
 
 The C-460 carries a Quectel LC79H GNSS receiver that the board connects
@@ -28,10 +28,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  package/utils/arista-c460-gnss/Makefile       |  38 ++
  .../files/arista-c460-gnss.defaults           |  15 +
- .../files/arista-c460-gnss.init               |  35 ++
- .../utils/arista-c460-gnss/src/lc79h-i2c.c    | 416 ++++++++++++++++++
+ .../files/arista-c460-gnss.init               |  37 ++
+ .../utils/arista-c460-gnss/src/lc79h-i2c.c    | 479 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |   2 +-
- 5 files changed, 505 insertions(+), 1 deletion(-)
+ 5 files changed, 570 insertions(+), 1 deletion(-)
  create mode 100644 package/utils/arista-c460-gnss/Makefile
  create mode 100644 package/utils/arista-c460-gnss/files/arista-c460-gnss.defaults
  create mode 100644 package/utils/arista-c460-gnss/files/arista-c460-gnss.init
@@ -104,10 +104,10 @@ index 0000000..f3bd4b4
 +exit 0
 diff --git a/package/utils/arista-c460-gnss/files/arista-c460-gnss.init b/package/utils/arista-c460-gnss/files/arista-c460-gnss.init
 new file mode 100644
-index 0000000..8c907fc
+index 0000000..eb403ac
 --- /dev/null
 +++ b/package/utils/arista-c460-gnss/files/arista-c460-gnss.init
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,37 @@
 +#!/bin/sh /etc/rc.common
 +# The Arista C-460's GNSS receiver: a Quectel LC79H on the I2C bus of the
 +# controller at 0x78b6000, its reset on TLMM GPIO 19 (high = in reset),
@@ -136,8 +136,10 @@ index 0000000..8c907fc
 +	# NMEA nobody read, as across a reboot) and only a reset brings it
 +	# back: the reader resets it first.
 +	procd_open_instance
++	# a running gpsd still holds the pty a restarted reader replaced: the
++	# reader has it reopen the link through gpsd's control socket
 +	procd_set_param command "$PROG" -d "/dev/${bus##*/}" -l "$LINK" \
-+		-r "/dev/${chip##*/}:$RESET_LINE"
++		-r "/dev/${chip##*/}:$RESET_LINE" -g /var/run/gpsd.sock
 +	procd_set_param respawn
 +	procd_set_param stdout 1
 +	procd_set_param stderr 1
@@ -145,22 +147,24 @@ index 0000000..8c907fc
 +}
 diff --git a/package/utils/arista-c460-gnss/src/lc79h-i2c.c b/package/utils/arista-c460-gnss/src/lc79h-i2c.c
 new file mode 100644
-index 0000000..7400c55
+index 0000000..21fac68
 --- /dev/null
 +++ b/package/utils/arista-c460-gnss/src/lc79h-i2c.c
-@@ -0,0 +1,416 @@
+@@ -0,0 +1,479 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * lc79h-i2c: the NMEA output of a Quectel LC79H GNSS receiver on I2C, on a
 + * pty for gpsd.
 + *
 + * usage: lc79h-i2c [-v] [-d i2c-device] [-l link] [-i milliseconds]
-+ *                  [-r gpiochip:line]
++ *                  [-r gpiochip:line] [-g gpsd-control-socket]
 + *
 + *   -d  the I2C bus (default /dev/i2c-0)
 + *   -l  the link to the pty (default /var/run/lc79h-gnss)
 + *   -i  how long to wait between polls (default 300 ms)
 + *   -r  the receiver's reset line (high = in reset): reset it at start
++ *   -g  gpsd's control socket: if gpsd already reads the link, have it
++ *       reopen the link at start
 + *   -v  report each poll's output length
 + *
 + * Notices go to stdout, line by line, and failures to stderr, so that procd
@@ -184,7 +188,10 @@ index 0000000..7400c55
 + * and mode 0660 so that gpsd can open it after dropping privileges; gpsd
 + * reopens it by that name when this restarts. This holds the slave open as
 + * well, so output nobody reads waits in the pty until that is full and is
-+ * then dropped, the oldest first.
++ * then dropped, the oldest first. gpsd notices that an old pty is gone only
++ * when its main loop next wakes, which can take as long as no client asks
++ * it anything; with -g, a restarted reader tells it to reopen the link at
++ * once, by removing the link and adding it again, as gpsdctl does.
 + */
 +#define _GNU_SOURCE
 +#include <errno.h>
@@ -194,6 +201,7 @@ index 0000000..7400c55
 +#include <linux/gpio.h>
 +#include <linux/i2c-dev.h>
 +#include <linux/i2c.h>
++#include <poll.h>
 +#include <signal.h>
 +#include <stdarg.h>
 +#include <stdint.h>
@@ -201,7 +209,9 @@ index 0000000..7400c55
 +#include <stdlib.h>
 +#include <string.h>
 +#include <sys/ioctl.h>
++#include <sys/socket.h>
 +#include <sys/stat.h>
++#include <sys/un.h>
 +#include <termios.h>
 +#include <time.h>
 +#include <unistd.h>
@@ -440,6 +450,55 @@ index 0000000..7400c55
 +		unlink(link);
 +}
 +
++/*
++ * One command to gpsd's control socket ("+path" or "-path"): 1 when gpsd
++ * acknowledges it, 0 when it refuses it, -1 when gpsd is not there.
++ */
++static int gpsd_control(const char *sock, char op, const char *link)
++{
++	struct sockaddr_un sa;
++	struct pollfd p;
++	char buf[PATH_MAX + 4];
++	ssize_t n;
++	int fd, len;
++
++	memset(&sa, 0, sizeof(sa));
++	sa.sun_family = AF_UNIX;
++	if (strlen(sock) >= sizeof(sa.sun_path))
++		return -1;
++	strcpy(sa.sun_path, sock);
++	len = snprintf(buf, sizeof(buf), "%c%s\r\n", op, link);
++	if (len >= (int)sizeof(buf))
++		return -1;
++	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
++	if (fd < 0)
++		return -1;
++	if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) ||
++	    write(fd, buf, len) != len) {
++		close(fd);
++		return -1;
++	}
++	p.fd = fd;
++	p.events = POLLIN;
++	n = poll(&p, 1, 2000) == 1 ? read(fd, buf, sizeof(buf) - 1) : -1;
++	close(fd);
++	if (n <= 0)
++		return -1;
++	buf[n] = 0;
++	return strstr(buf, "\"ACK\"") != NULL;
++}
++
++/* a gpsd that reads LINK reopens it: it still holds the pty this replaced */
++static void gpsd_reopen(const char *sock, const char *link)
++{
++	if (gpsd_control(sock, '-', link) != 1)
++		return;
++	if (gpsd_control(sock, '+', link) == 1)
++		printf("lc79h-i2c: gpsd reopened %s\n", link);
++	else
++		fprintf(stderr, "lc79h-i2c: gpsd did not take %s back\n", link);
++}
++
 +/* NMEA is printable ASCII in CR LF lines: keep only that */
 +static size_t nmea_only(uint8_t *buf, size_t n)
 +{
@@ -454,12 +513,13 @@ index 0000000..7400c55
 +static void usage(void)
 +{
 +	fputs("usage: lc79h-i2c [-v] [-d i2c-device] [-l link] [-i milliseconds]"
-+	      " [-r gpiochip:line]\n", stderr);
++	      " [-r gpiochip:line] [-g gpsd-control-socket]\n", stderr);
 +}
 +
 +int main(int argc, char **argv)
 +{
 +	const char *dev = "/dev/i2c-0", *link = "/var/run/lc79h-gnss", *reset = NULL;
++	const char *gpsd = NULL;
 +	static uint8_t buf[POLL_MAX];
 +	unsigned long interval = 300;
 +	uint32_t n, got, c;
@@ -470,10 +530,13 @@ index 0000000..7400c55
 +
 +	setvbuf(stdout, NULL, _IOLBF, 0);
 +
-+	while ((opt = getopt(argc, argv, "vd:l:i:r:")) != -1) {
++	while ((opt = getopt(argc, argv, "vd:l:i:r:g:")) != -1) {
 +		switch (opt) {
 +		case 'v':
 +			verbose = 1;
++			break;
++		case 'g':
++			gpsd = optarg;
 +			break;
 +		case 'r':
 +			reset = optarg;
@@ -522,6 +585,8 @@ index 0000000..7400c55
 +
 +	printf("lc79h-i2c: reading the receiver on %s%s; NMEA on %s (%s)\n",
 +		dev, reset ? ", after a reset" : "", link, pty.name);
++	if (gpsd)
++		gpsd_reopen(gpsd, link);
 +
 +	while (!stop) {
 +		pty_drain(&pty);
