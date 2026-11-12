@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 12 Nov 2026 07:47:47 -0600
+Subject: [PATCH 118/118] ipq40xx: w-118: no 2.4 GHz range in the 5 GHz radio's
+ limit
+
+&wifi1 is the IPQ4019's 5 GHz radio, so the 2.4 GHz range in its
+frequency limit did nothing. Leave it out, as the review of the
+upstream pull request asked.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+index baa15b66a16..e16cdfbbc19 100644
+--- a/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
++++ b/target/linux/ipq40xx/dts/qcom-ipq4019-w-118.dts
+@@ -425,8 +425,7 @@
+ 	 * The W-118 is certified for U-NII-2C only up to 5700 MHz (channel
+ 	 * 140) and not for U-NII-4: leave out channel 144 and 169-177.
+ 	 */
+-	ieee80211-freq-limit = <2402000 2482000>, <5170000 5710000>,
+-			       <5735000 5835000>;
++	ieee80211-freq-limit = <5170000 5710000>, <5735000 5835000>;
+ 	status = "okay";
+ };
+ 
+-- 
+2.43.0
+
