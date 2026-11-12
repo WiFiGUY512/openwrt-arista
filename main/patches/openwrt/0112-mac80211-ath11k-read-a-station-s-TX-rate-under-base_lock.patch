@@ -1,0 +1,130 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Wed, 11 Nov 2026 19:06:46 -0600
+Subject: [PATCH] mac80211: ath11k: read a station's TX rate under base_lock
+
+B182. A station dump could copy a station's TX rate while a TX status
+was rewriting it (the TX status paths clear it, then fill it in under
+ab->base_lock; ath11k_mac_op_sta_statistics() read it without that
+lock), and report an HE rate with nss 0: cfg80211 then warned at
+net/wireless/util.c:1581 (cfg80211_calculate_bitrate_he()), seen once
+on C360AP on -136 from aeolus-live's station dumps.
+
+ath11k/988 copies the rate under base_lock and reports from the copy,
+as ath12k does with its peer rate info. Same change as the ath-next
+patch staged in b4/ath11k-sta-txrate-lock. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...-a-station-s-TX-rate-under-base_lock.patch | 84 +++++++++++++++++++
+ 2 files changed, 85 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath11k/988-wifi-ath11k-read-a-station-s-TX-rate-under-base_lock.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 360d2a56c15..4902e2e7969 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=39
++PKG_RELEASE:=40
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath11k/988-wifi-ath11k-read-a-station-s-TX-rate-under-base_lock.patch b/package/kernel/mac80211/patches/ath11k/988-wifi-ath11k-read-a-station-s-TX-rate-under-base_lock.patch
+new file mode 100644
+index 00000000000..bb36c7e9f20
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/988-wifi-ath11k-read-a-station-s-TX-rate-under-base_lock.patch
+@@ -0,0 +1,84 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Wed, 11 Nov 2026 19:06:45 -0600
++Subject: [PATCH] wifi: ath11k: read a station's TX rate under base_lock
++
++ath11k_update_per_peer_tx_stats() and ath11k_dp_tx_update_txcompl()
++rewrite arsta->txrate under ab->base_lock: they clear it, then fill in
++its fields one by one. ath11k_mac_op_sta_statistics() copies it into the
++station info without that lock, so a station dump that runs while a TX
++status updates the rate can copy the HE flag with an nss of 0, and
++cfg80211 warns:
++
++  WARNING: CPU: 3 PID: 30429 at net/wireless/util.c:1581 ieee80211_get_vht_max_nss+0x474/0x868 [cfg80211]
++  Call trace:
++   ieee80211_get_vht_max_nss+0x474/0x868 [cfg80211] (P)
++   cfg80211_calculate_bitrate+0x1e0/0x4f4 [cfg80211]
++   nl80211_put_sta_rate+0x50/0x1230 [cfg80211]
++   nl80211_put_sta_rate+0xa30/0x1230 [cfg80211]
++   nl80211_dump_station+0x4b8/0x7e0 [cfg80211]
++
++(the line is the nss check in the inlined
++cfg80211_calculate_bitrate_he()). It was seen once in about a day on an
++IPQ8074 AP whose stations are dumped periodically by a monitoring agent.
++
++Copy the rate under base_lock and report from the copy, as ath12k reads
++its peer rate info under its DP lock.
++
++Fixes: d5c65159f289 ("ath11k: driver for Qualcomm IEEE 802.11ax devices")
++
++Assisted-by: Claude:claude-opus-5-5
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++ drivers/net/wireless/ath/ath11k/mac.c | 26 ++++++++++++++++----------
++ 1 file changed, 16 insertions(+), 10 deletions(-)
++
++diff --git a/drivers/net/wireless/ath/ath11k/mac.c b/drivers/net/wireless/ath/ath11k/mac.c
++index f383992..e4ca783 100644
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -9605,6 +9605,7 @@ static void ath11k_mac_op_sta_statistics(struct ieee80211_hw *hw,
++ {
++ 	struct ath11k_sta *arsta = ath11k_sta_to_arsta(sta);
++ 	struct ath11k *ar = arsta->arvif->ar;
+++	struct rate_info txrate;
++ 	s8 signal;
++ 	bool db2dbm = test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
++ 			       ar->ab->wmi_ab.svc_map);
++@@ -9618,18 +9619,23 @@ static void ath11k_mac_op_sta_statistics(struct ieee80211_hw *hw,
++ 	sinfo->tx_retries = arsta->tx_retries;
++ 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_RETRIES);
++ 
++-	if (arsta->txrate.legacy || arsta->txrate.nss) {
++-		if (arsta->txrate.legacy) {
++-			sinfo->txrate.legacy = arsta->txrate.legacy;
+++	/* The TX status paths clear and refill txrate under base_lock */
+++	spin_lock_bh(&ar->ab->base_lock);
+++	txrate = arsta->txrate;
+++	spin_unlock_bh(&ar->ab->base_lock);
+++
+++	if (txrate.legacy || txrate.nss) {
+++		if (txrate.legacy) {
+++			sinfo->txrate.legacy = txrate.legacy;
++ 		} else {
++-			sinfo->txrate.mcs = arsta->txrate.mcs;
++-			sinfo->txrate.nss = arsta->txrate.nss;
++-			sinfo->txrate.bw = arsta->txrate.bw;
++-			sinfo->txrate.he_gi = arsta->txrate.he_gi;
++-			sinfo->txrate.he_dcm = arsta->txrate.he_dcm;
++-			sinfo->txrate.he_ru_alloc = arsta->txrate.he_ru_alloc;
+++			sinfo->txrate.mcs = txrate.mcs;
+++			sinfo->txrate.nss = txrate.nss;
+++			sinfo->txrate.bw = txrate.bw;
+++			sinfo->txrate.he_gi = txrate.he_gi;
+++			sinfo->txrate.he_dcm = txrate.he_dcm;
+++			sinfo->txrate.he_ru_alloc = txrate.he_ru_alloc;
++ 		}
++-		sinfo->txrate.flags = arsta->txrate.flags;
+++		sinfo->txrate.flags = txrate.flags;
++ 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
++ 	}
++ 
++-- 
++2.43.0
++
+-- 
+2.43.0
+
