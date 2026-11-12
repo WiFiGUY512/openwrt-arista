@@ -14,17 +14,25 @@ script never acts. Match both names.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/network/config/wifi-scripts/Makefile                    | 2 +-
+ .../files/etc/hotplug.d/ieee80211/11-ath12k-trigger             | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index c844bd35cf4..577c1d54935 100644
 --- a/package/network/config/wifi-scripts/Makefile
 +++ b/package/network/config/wifi-scripts/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
  
  PKG_NAME:=wifi-scripts
  PKG_VERSION:=1.0
--PKG_RELEASE:=13
-+PKG_RELEASE:=14
+-PKG_RELEASE:=15
++PKG_RELEASE:=16
  PKG_LICENSE:=GPL-2.0
  
  PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files/etc/hotplug.d/ieee80211/11-ath12k-trigger b/package/network/config/wifi-scripts/files/etc/hotplug.d/ieee80211/11-ath12k-trigger
+index 3c07e52882b..54523947ffd 100755
 --- a/package/network/config/wifi-scripts/files/etc/hotplug.d/ieee80211/11-ath12k-trigger
 +++ b/package/network/config/wifi-scripts/files/etc/hotplug.d/ieee80211/11-ath12k-trigger
 @@ -3,7 +3,7 @@
@@ -36,3 +44,6 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
  
  . /usr/share/libubox/jshn.sh
  
+-- 
+2.43.0
+

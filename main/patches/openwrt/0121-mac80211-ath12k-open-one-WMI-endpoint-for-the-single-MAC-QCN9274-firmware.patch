@@ -16,10 +16,24 @@ kernel bugzilla 221550); no fix had been posted.
 Assisted-by: Claude:claude-opus-5-5
 Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
+ package/kernel/mac80211/Makefile              |  2 +-
  ...-for-the-single-MAC-QCN9274-firmware.patch | 69 +++++++++++++++++++
- 1 file changed, 69 insertions(+)
+ 2 files changed, 70 insertions(+), 1 deletion(-)
  create mode 100644 package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch
 
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 4902e2e7969..dc7d96a1e27 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=40
++PKG_RELEASE:=41
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
 diff --git a/package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch b/package/kernel/mac80211/patches/ath12k/980-wifi-ath12k-open-one-WMI-endpoint-for-the-single-MAC-QCN9274-firmware.patch
 new file mode 100644
 index 00000000000..3b114d58728
