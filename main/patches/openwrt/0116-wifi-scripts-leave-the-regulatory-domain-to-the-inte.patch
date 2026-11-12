@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 12 Nov 2026 07:47:46 -0600
+Subject: [PATCH 116/118] wifi-scripts: leave the regulatory domain to the
+ interface check
+
+The check for a radio with no enabled interface covers the rest:
+netifd attaches no interface to a disabled radio, so a disabled radio
+has an empty interface list too, and cfg80211 already ignores a user
+hint for the country the domain already has (REG_REQ_ALREADY_SET)
+without telling any driver, so the GET_REG lookup is not needed. Drop
+the disabled checks and the lookup in setup_phy() and in hostapd's
+device_country_code(), as the review of the upstream pull request
+asked. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/wifi-scripts/Makefile         |  2 +-
+ .../files-ucode/lib/netifd/wireless/mac80211.sh      | 12 ++++--------
+ .../files-ucode/usr/share/ucode/wifi/hostapd.uc      |  7 +++----
+ 3 files changed, 8 insertions(+), 13 deletions(-)
+
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index e6ff2048259..c844bd35cf4 100644
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=14
++PKG_RELEASE:=15
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+diff --git a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
+index 164b3635c69..8c590f6d339 100755
+--- a/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files-ucode/lib/netifd/wireless/mac80211.sh
+@@ -70,14 +70,10 @@ function setup_phy(phy, config, data, in_use) {
+ 	config.channel = +config.channel;
+ 	config.frequency = get_channel_frequency(config.band, config.channel);
+ 
+-	/* the regulatory domain is the whole system's: a disabled radio, or one
+-	 * with no enabled interface (a spare radio still at the generated '00'),
+-	 * does not set it, and it is not set again to what it already is (each
+-	 * change goes to the drivers, and ath11k firmware refuses the world
+-	 * domain, which then breaks DFS on the radios in use) */
+-	let reg = nl80211.request(nl80211.const.NL80211_CMD_GET_REG);
+-	if (config.country_code && !config.disabled && in_use &&
+-	    config.country_code != reg?.reg_alpha2) {
++	/* the regulatory domain is the whole system's: a radio with no enabled
++	 * interface (a disabled radio, or a spare one still at the generated
++	 * '00') does not set it */
++	if (config.country_code && in_use) {
+ 		log(`Setting country code to ${config.country_code}`);
+ 		system(`iw reg set ${config.country_code}`);
+ 	}
+diff --git a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+index e4f3acef7cc..94587461e2a 100644
+--- a/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
++++ b/package/network/config/wifi-scripts/files-ucode/usr/share/ucode/wifi/hostapd.uc
+@@ -103,10 +103,9 @@ function device_log_append(config) {
+ function device_country_code(config) {
+ 	let status = global.ubus.call('network.wireless', 'status');
+ 	for (let name, radio in status) {
+-		/* a disabled radio's country is not the system's, nor is that of
+-		 * a radio with no enabled interface */
+-		if (!radio.config.country || radio.disabled || radio.config.disabled ||
+-		    !length(radio.interfaces))
++		/* the country of a radio with no enabled interface (netifd gives
++		 * a disabled radio none) is not the system's */
++		if (!radio.config.country || !length(radio.interfaces))
+ 			continue;
+ 		config.country_code = radio.config.country;
+ 	}
+-- 
+2.43.0
+
