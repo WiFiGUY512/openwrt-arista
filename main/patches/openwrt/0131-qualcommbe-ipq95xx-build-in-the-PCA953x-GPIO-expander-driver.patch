@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 12 Nov 2026 00:20:00 -0600
+Subject: [PATCH] qualcommbe: ipq95xx: build in the PCA953x GPIO expander
+ driver
+
+The Arista C-460 drives all of its LEDs, the power LED among them,
+through a PCA9555 I/O expander. As a module, gpio-pca953x is loaded
+from /etc/modules.d only after preinit, so while preinit runs the boot
+and failsafe LEDs do not exist yet: the power LED cannot show that the
+system is booting, and failsafe mode cannot be seen on it.
+
+Build the driver in, as ath79, mvebu and realtek do, so the expander is
+there when preinit sets the boot LED. The I2C controller (I2C_QUP) and
+regmap-i2c are built in already.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/qualcommbe/ipq95xx/config-default | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/target/linux/qualcommbe/ipq95xx/config-default b/target/linux/qualcommbe/ipq95xx/config-default
+index f2196be..8432f26 100644
+--- a/target/linux/qualcommbe/ipq95xx/config-default
++++ b/target/linux/qualcommbe/ipq95xx/config-default
+@@ -2,6 +2,8 @@ CONFIG_AQUANTIA_PHY=y
+ CONFIG_BUFFER_HEAD=y
+ CONFIG_CRC_ITU_T=y
+ CONFIG_F2FS_FS=y
++CONFIG_GPIO_PCA953X=y
++CONFIG_GPIO_PCA953X_IRQ=y
+ CONFIG_GRO_CELLS=y
+ CONFIG_INTERCONNECT_QCOM=y
+ # CONFIG_INTERCONNECT_QCOM_MSM8909 is not set
+-- 
+2.43.0
+
