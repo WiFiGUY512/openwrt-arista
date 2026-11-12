@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Thu, 12 Nov 2026 07:47:46 -0600
+Subject: [PATCH 117/118] netifd: packet steering: leave a disabled service
+ alone
+
+rc.common's reload() runs reload_service whether the service is
+enabled or not, while the interface trigger exists only for a running
+service. So the hotplug script that steers a wireless interface made
+after boot would steer it even after "/etc/init.d/packet_steering
+disable". Exit unless the service is enabled, as the review of the
+upstream pull request asked. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/network/config/netifd/Makefile                          | 2 +-
+ .../config/netifd/files/etc/hotplug.d/net/20-packet-steering    | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
+index 40c1ffafce4..4a4a709d6fb 100644
+--- a/package/network/config/netifd/Makefile
++++ b/package/network/config/netifd/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifd
+-PKG_RELEASE:=5
++PKG_RELEASE:=6
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
+diff --git a/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering b/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering
+index 32f391381be..08bbdc0e46f 100644
+--- a/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering
++++ b/package/network/config/netifd/files/etc/hotplug.d/net/20-packet-steering
+@@ -5,6 +5,7 @@
+ 
+ [ "$ACTION" = add ] && [ "$DEVTYPE" = wlan ] || exit 0
+ [ -x /etc/init.d/packet_steering ] || exit 0
++/etc/init.d/packet_steering enabled || exit 0
+ 
+ PENDING=/var/run/packet-steering.pending
+ [ -e "$PENDING" ] && exit 0
+-- 
+2.43.0
+
