@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Christopher Griffin <christophergriffin05@gmail.com>
-Date: Wed, 11 Nov 2026 18:39:09 -0600
+Date: Wed, 11 Nov 2026 19:11:37 -0600
 Subject: [PATCH] qualcommbe: ipq95xx: c-460: read the GNSS receiver
 
 The C-460 carries a Quectel LC79H GNSS receiver that the board connects
@@ -28,10 +28,10 @@ Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
 ---
  package/utils/arista-c460-gnss/Makefile       |  38 ++
  .../files/arista-c460-gnss.defaults           |  15 +
- .../files/arista-c460-gnss.init               |  34 ++
- .../utils/arista-c460-gnss/src/lc79h-i2c.c    | 411 ++++++++++++++++++
+ .../files/arista-c460-gnss.init               |  35 ++
+ .../utils/arista-c460-gnss/src/lc79h-i2c.c    | 416 ++++++++++++++++++
  target/linux/qualcommbe/image/ipq95xx.mk      |   2 +-
- 5 files changed, 499 insertions(+), 1 deletion(-)
+ 5 files changed, 505 insertions(+), 1 deletion(-)
  create mode 100644 package/utils/arista-c460-gnss/Makefile
  create mode 100644 package/utils/arista-c460-gnss/files/arista-c460-gnss.defaults
  create mode 100644 package/utils/arista-c460-gnss/files/arista-c460-gnss.init
@@ -104,10 +104,10 @@ index 0000000..f3bd4b4
 +exit 0
 diff --git a/package/utils/arista-c460-gnss/files/arista-c460-gnss.init b/package/utils/arista-c460-gnss/files/arista-c460-gnss.init
 new file mode 100644
-index 0000000..5faf3df
+index 0000000..8c907fc
 --- /dev/null
 +++ b/package/utils/arista-c460-gnss/files/arista-c460-gnss.init
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,35 @@
 +#!/bin/sh /etc/rc.common
 +# The Arista C-460's GNSS receiver: a Quectel LC79H on the I2C bus of the
 +# controller at 0x78b6000, its reset on TLMM GPIO 19 (high = in reset),
@@ -139,15 +139,16 @@ index 0000000..5faf3df
 +	procd_set_param command "$PROG" -d "/dev/${bus##*/}" -l "$LINK" \
 +		-r "/dev/${chip##*/}:$RESET_LINE"
 +	procd_set_param respawn
++	procd_set_param stdout 1
 +	procd_set_param stderr 1
 +	procd_close_instance
 +}
 diff --git a/package/utils/arista-c460-gnss/src/lc79h-i2c.c b/package/utils/arista-c460-gnss/src/lc79h-i2c.c
 new file mode 100644
-index 0000000..c014774
+index 0000000..7400c55
 --- /dev/null
 +++ b/package/utils/arista-c460-gnss/src/lc79h-i2c.c
-@@ -0,0 +1,411 @@
+@@ -0,0 +1,416 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * lc79h-i2c: the NMEA output of a Quectel LC79H GNSS receiver on I2C, on a
@@ -160,7 +161,10 @@ index 0000000..c014774
 + *   -l  the link to the pty (default /var/run/lc79h-gnss)
 + *   -i  how long to wait between polls (default 300 ms)
 + *   -r  the receiver's reset line (high = in reset): reset it at start
-+ *   -v  report each poll's output length on stderr
++ *   -v  report each poll's output length
++ *
++ * Notices go to stdout, line by line, and failures to stderr, so that procd
++ * logs them as info and as errors.
 + *
 + * The receiver takes commands at I2C address 0x50 and answers at 0x54.
 + * Each poll asks how many bytes its output buffer holds (command
@@ -262,7 +266,7 @@ index 0000000..c014774
 +static void answered(void)
 +{
 +	if (failing)
-+		fputs("lc79h-i2c: the receiver answers again\n", stderr);
++		puts("lc79h-i2c: the receiver answers again");
 +	failing = 0;
 +}
 +
@@ -464,6 +468,8 @@ index 0000000..c014774
 +	char *end;
 +	int fd, opt, verbose = 0;
 +
++	setvbuf(stdout, NULL, _IOLBF, 0);
++
 +	while ((opt = getopt(argc, argv, "vd:l:i:r:")) != -1) {
 +		switch (opt) {
 +		case 'v':
@@ -514,7 +520,7 @@ index 0000000..c014774
 +	if (reset && lc79h_reset(reset) < 0)
 +		fprintf(stderr, "lc79h-i2c: no reset through %s: %s\n", reset, strerror(errno));
 +
-+	fprintf(stderr, "lc79h-i2c: reading the receiver on %s%s; NMEA on %s (%s)\n",
++	printf("lc79h-i2c: reading the receiver on %s%s; NMEA on %s (%s)\n",
 +		dev, reset ? ", after a reset" : "", link, pty.name);
 +
 +	while (!stop) {
@@ -528,7 +534,7 @@ index 0000000..c014774
 +		}
 +		n = buf[0] | buf[1] << 8 | buf[2] << 16 | (uint32_t)buf[3] << 24;
 +		if (verbose)
-+			fprintf(stderr, "lc79h-i2c: %u bytes waiting\n", n);
++			printf("lc79h-i2c: %u bytes waiting\n", n);
 +		if (n > LEN_SANE) {
 +			report("an output length of %u bytes", n);
 +			msleep(RETRY_MS);
