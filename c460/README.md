@@ -21,8 +21,9 @@ Seen on one unit, from RAM (2026-11-10/11), unless marked otherwise.
   WBE.1.6 crashes after WMI init on these single-MAC cards).
 - **The QCN9074 scan radio** (ath11k) with firmware WLAN.HK.2.5.0.1-01208
   (every later public build stops answering at its first interface): scans
-  on 2.4, 5 and 6 GHz, receives in monitor mode. Off by default (no
-  interface; 0128).
+  on 2.4, 5 and 6 GHz, receives in monitor mode. Its interface is off by
+  default, and with no interface up it leaves the regulatory domain to
+  the access-point radios (0111/0116).
 - **Ethernet.** lan1 at 10 Gb/s with the MAC from ART, in `br-lan` with DHCP.
 - **eMMC and NOR** (NOR read-only but for the U-Boot environment, which
   `fw_printenv` reads).
