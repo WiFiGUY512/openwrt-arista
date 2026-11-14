@@ -1,0 +1,123 @@
+From b0a74dc8daf95ed10f844dfb65f2451f1864faab Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Sat, 14 Nov 2026 01:10:00 -0600
+Subject: [PATCH] mac80211: ath12k: don't zero the 6 GHz TX power on a vdev
+ restart
+
+A 6 GHz ath12k AP transmits at 0 dBm after a channel switch (seen on
+the Arista C-460 on a width change that hostapd applies as a channel
+switch: iw txpower 0.00 dBm, tpc_stats "power limit-0", the AP heard
+15 dB lower) until the radio is taken down and up again.
+
+ath12k_mac_fill_reg_tpc_info() reads the number of power levels it
+stored at the last vdev start as a parsed TPE element, and limits every
+level by the element's values, which an AP never has: all zeroes. Give
+the parsed element a flag of its own. Bump PKG_RELEASE.
+
+Assisted-by: Claude:claude-mythos-5-2
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ package/kernel/mac80211/Makefile              |  2 +-
+ ...the-6-GHz-TX-power-on-a-vdev-restart.patch | 77 +++++++++++++++++++
+ 2 files changed, 78 insertions(+), 1 deletion(-)
+ create mode 100644 package/kernel/mac80211/patches/ath12k/982-wifi-ath12k-don-t-zero-the-6-GHz-TX-power-on-a-vdev-restart.patch
+
+diff --git a/package/kernel/mac80211/Makefile b/package/kernel/mac80211/Makefile
+index 634c362afb2..9327fcaa9eb 100644
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -12,7 +12,7 @@ PKG_NAME:=mac80211
+ 
+ PKG_SOURCE_VERSION:=7.2
+ PKG_VERSION:=$(subst -,_,$(PKG_SOURCE_VERSION))
+-PKG_RELEASE:=42
++PKG_RELEASE:=43
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_LICENSE_FILES:=COPYING
+ 
+diff --git a/package/kernel/mac80211/patches/ath12k/982-wifi-ath12k-don-t-zero-the-6-GHz-TX-power-on-a-vdev-restart.patch b/package/kernel/mac80211/patches/ath12k/982-wifi-ath12k-don-t-zero-the-6-GHz-TX-power-on-a-vdev-restart.patch
+new file mode 100644
+index 00000000000..870843911b1
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath12k/982-wifi-ath12k-don-t-zero-the-6-GHz-TX-power-on-a-vdev-restart.patch
+@@ -0,0 +1,77 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Christopher Griffin <christophergriffin05@gmail.com>
++Date: Sat, 14 Nov 2026 01:05:00 -0600
++Subject: [PATCH] wifi: ath12k: don't zero the 6 GHz TX power on a vdev restart
++
++ath12k_mac_fill_reg_tpc_info() takes a non-zero
++reg_tpc_info.num_pwr_levels to mean that a TPE element was parsed, and
++then limits every power level by reg_tpc_info.tpe[]. But it also stores
++the number of levels it filled in that same field.
++
++An AP vdev never parses a TPE element. Its first vdev start finds the
++field zero and fills the levels from the regulatory rules; every later
++start or restart of the vdev (a channel switch, a width change,
++recovery) finds the count of the last fill there, takes the "TPE
++received" branch with the count of the old width, and limits every
++level by tpe[], which is all zeroes. The firmware is given a limit of
++0 dBm and the radio transmits at that until the interface is deleted
++and created again. A station whose AP sent no matching TPE element
++goes the same way on its next vdev start.
++
++Seen on an Arista C-460 (QCN9274 hw2.0, WLAN.WBE.1.4.1-00199) as a
++6 GHz AP: after a channel switch from 80 to 320 MHz, and after one
++back, iw shows txpower 0.00 dBm, tpc_stats "power limit-0", and a
++station next to the AP hears it 15 dB lower.
++
++Keep whether a TPE element was parsed in a flag of its own, set by
++ath12k_mac_parse_tx_pwr_env(), and test that instead.
++
++Assisted-by: Claude:claude-mythos-5-2
++Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
++---
++--- a/drivers/net/wireless/ath/ath12k/mac.c
+++++ b/drivers/net/wireless/ath/ath12k/mac.c
++@@ -12053,7 +12053,7 @@ void ath12k_mac_fill_reg_tpc_info(struct
++ 	start_freq = ath12k_mac_get_6ghz_start_frequency(&ctx->def);
++ 	pwr_reduction = bss_conf->pwr_reduction;
++ 
++-	if (arvif->reg_tpc_info.num_pwr_levels) {
+++	if (reg_tpc_info->tpe_present) {
++ 		is_tpe_present = true;
++ 		num_pwr_levels = arvif->reg_tpc_info.num_pwr_levels;
++ 	} else {
++@@ -12242,6 +12242,7 @@ static void ath12k_mac_parse_tx_pwr_env(
++ 		ath12k_warn(ab,
++ 			    "no transmit power envelope match client power type %d\n",
++ 			    client_type);
+++		tpc_info->tpe_present = false;
++ 		return;
++ 	}
++ 
++@@ -12281,6 +12282,8 @@ static void ath12k_mac_parse_tx_pwr_env(
++ 				   i, tpc_info->tpe[i]);
++ 		}
++ 	}
+++
+++	tpc_info->tpe_present = tpc_info->num_pwr_levels > 0;
++ }
++ 
++ int
++--- a/drivers/net/wireless/ath/ath12k/mac.h
+++++ b/drivers/net/wireless/ath/ath12k/mac.h
++@@ -119,6 +119,7 @@ struct ath12k_chan_power_info {
++ /**
++  * struct ath12k_reg_tpc_power_info - regulatory TPC power info
++  * @is_psd_power: is PSD power or not
+++ * @tpe_present: @num_pwr_levels and @tpe are from a parsed TPE element
++  * @eirp_power: Maximum EIRP power (dBm), valid only if power is PSD
++  * @ap_power_type: type of power (SP/LPI/VLP)
++  * @num_pwr_levels: number of power levels
++@@ -129,6 +130,7 @@ struct ath12k_chan_power_info {
++  */
++ struct ath12k_reg_tpc_power_info {
++ 	bool is_psd_power;
+++	bool tpe_present;
++ 	u8 eirp_power;
++ 	enum wmi_reg_6g_ap_type ap_power_type;
++ 	u8 num_pwr_levels;
+-- 
+2.43.0
+
