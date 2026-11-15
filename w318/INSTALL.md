@@ -1,5 +1,10 @@
 # OpenWrt on the Arista W-318 — installation
 
+> **This model installs by hand, as described here.** The
+> [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md) that does the other models from a PC cannot install
+> this one yet (no way into Arista's firmware has been confirmed on it); it can
+> update it once OpenWrt is on.
+
 OpenWrt takes Arista's slot 0 and keeps slot 1, Arista's system, as the
 fallback. Installing is: boot this repo's initramfs from RAM (section 2),
 then run `arista-w318-install` in it (sections 3 and 4).

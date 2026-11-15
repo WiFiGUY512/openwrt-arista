@@ -76,7 +76,23 @@ traffic of 25.12's (on the C-360 at 10G, 9.3 Gb/s up and 4.5 down against
 
 ## Install
 
-Each model's `INSTALL.md`: [c360/INSTALL.md](c360/INSTALL.md), [c260/INSTALL.md](c260/INSTALL.md), [w318/INSTALL.md](w318/INSTALL.md), [w118/INSTALL.md](w118/INSTALL.md), [c200/INSTALL.md](c200/INSTALL.md).
+Over the network, from a PC on the AP's network, with no console cable:
+
+```
+irm https://raw.githubusercontent.com/WiFiGUY512/openwrt-arista-images/main/install/get.ps1 | iex      (Windows)
+curl -fsSL https://raw.githubusercontent.com/WiFiGUY512/openwrt-arista-images/main/install/get.sh | sh  (macOS, Linux)
+```
+
+It finds the AP, reads its model, takes the current build for it from
+[openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images),
+saves the AP's own firmware first, and installs. Its guide is
+[install/README.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md). It installs the C-230, C-260, C-360 and C-460; the
+W-318, W-118 and C-200 are installed by hand for now.
+
+By hand, with a console cable, each model's `INSTALL.md`:
+[c360](c360/INSTALL.md), [c260](c260/INSTALL.md), [c230](c230/INSTALL.md),
+[c460](c460/INSTALL.md), [c200](c200/INSTALL.md), [w318](w318/INSTALL.md),
+[w118](w118/INSTALL.md).
 
 ## Layout
 

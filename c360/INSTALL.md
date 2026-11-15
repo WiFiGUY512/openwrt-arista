@@ -1,5 +1,9 @@
 # OpenWrt on the Arista C-360 — installation
 
+> **The usual way to install is the [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md):** one command on a
+> PC on the AP's network, no console cable. This page is the by-hand procedure
+> behind it, for when that cannot be used or you want to see every step.
+
 Status: the manual steps (TFTP, sections B1–B5) were run on two units
 (2026-10-07 and 2026-10-13); on the second, `arista-c360-install` did the
 backup and the writes from the RAM system, with the images copied to it. The
@@ -43,7 +47,11 @@ not been run on a unit yet**.
   pyserial (`pip install pyserial`) for `c360-flash.py`.
 * For section B: a TFTP server reachable on the AP's untagged network.
 
-## A. From a USB stick (the quick way)
+## A. From a USB stick (not yet run on a unit)
+
+Of the by-hand ways, section B (TFTP) is the one that has installed units.
+The stick still needs the console cable: U-Boot stops only for a key string
+typed there.
 
 ### A1. Make the stick, once
 

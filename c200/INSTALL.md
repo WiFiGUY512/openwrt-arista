@@ -1,5 +1,10 @@
 # OpenWrt on the Arista C-200: installation
 
+> **This model installs by hand, as described here.** The
+> [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md) that does the other models from a PC cannot install
+> this one yet (no way into Arista's firmware has been confirmed on it); it can
+> update it once OpenWrt is on.
+
 The C-230's way: OpenWrt goes to NAND slot 0 as UBI, Arista's system stays
 in slot 1 as the fallback, and U-Boot is given a boot command that tries
 OpenWrt first. A console is needed (RJ-45, RS-232, 115200 8N1). Done this

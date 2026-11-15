@@ -1,5 +1,10 @@
 # OpenWrt on the Arista W-118 — installation
 
+> **This model installs by hand, as described here.** The
+> [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md) that does the other models from a PC cannot install
+> this one yet (no way into Arista's firmware has been confirmed on it); it can
+> update it once OpenWrt is on.
+
 OpenWrt goes into the half of the NAND that Arista's system leaves unused.
 Both of Arista's slots stay, and Arista's own boot is the fallback.
 Installing is: boot OpenWrt's initramfs from RAM, back up the flash, write

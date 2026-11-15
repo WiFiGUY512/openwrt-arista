@@ -1,5 +1,9 @@
 # OpenWrt on the Arista C-230: installation
 
+> **The usual way to install is the [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md):** one command on a
+> PC on the AP's network, no console cable. This page is the by-hand procedure
+> behind it, for when that cannot be used or you want to see every step.
+
 The C-260's way (its [INSTALL.md](../c260/INSTALL.md) explains the why):
 OpenWrt goes to NAND slot 0 as UBI, Arista's system stays in slot 1 as the
 fallback, and U-Boot is given a boot command that tries OpenWrt first. A

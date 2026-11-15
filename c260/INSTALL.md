@@ -1,5 +1,9 @@
 # OpenWrt on the Arista C-260 — installation
 
+> **The usual way to install is the [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md):** one command on a
+> PC on the AP's network, no console cable. This page is the by-hand procedure
+> behind it, for when that cannot be used or you want to see every step.
+
 Status: sections 1–5 were run on one unit on 2026-10-15: the RAM boot,
 `ubiformat`, the environment write (the `fw_setenv` of section 5, made from
 OpenWrt booted from NAND by hand rather than from the RAM system),

@@ -1,5 +1,9 @@
 # OpenWrt on the Arista C-460: installation
 
+> **The usual way to install is the [network installer](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md):** one command on a
+> PC on the AP's network, no console cable. This page is the by-hand procedure
+> behind it, for when that cannot be used or you want to see every step.
+
 **Draft: not yet run on a unit.** The steps below follow the port's standard
 layout and every piece of them has been checked on its own (RAM boots, the
 environment readable from OpenWrt, `sysupgrade -T`, U-Boot reading slot 0
