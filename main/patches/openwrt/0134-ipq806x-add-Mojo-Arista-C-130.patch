@@ -1,0 +1,525 @@
+From 4d8dc61995e34da59ee806c4862558da28b2329b Mon Sep 17 00:00:00 2001
+From: Tomasz Maciej Nowak <tmn505@gmail.com>
+Date: Tue, 2 Sep 2025 22:00:54 +0200
+Subject: [PATCH] ipq806x: add Mojo/Arista C-130
+
+Mojo/Arista Networks C-130 is a dual-band tri-radio access point,
+also sold by WatchGuard under name AP420.
+
+Specification
+SoC: Qualcomm Atheros IPQ8068
+RAM: 512 MiB DDR3L
+Flash: 32 MiB SPI NOR
+       128 MiB Parallel NAND
+WiFi: 2.4 GHz 4T4R QCA9994 connected to PCIe lanes
+      5 GHz 4T4R QCA9994 connected to PCIe lanes
+      2.4/5 GHz 2T2R QCA9882 standard size miniPCIe card
+Ethernet: 2x 10/100/1000 Mbps AR8033
+          port labeled Poe+ accepts 802.3af/at as power source
+LEDs: 1x GPIO controlled
+Buttons: 1x GPIO controlled
+USB: 1x 3.0
+Serial: 1x RJ45, Cisco pinout
+        baud: 115200, parity: none, flow control: none
+
+OpenWrt is written to the primary NAND slot (the first 64 MiB, as one
+UBI); the OEM system in the second slot stays as it is.
+
+[port: carried unchanged in code from github.com/tmn505/openwrt, branch
+ watchguard, commit 4d8dc61995e3; the message is shortened here, the
+ original has the by-hand installation and the USB power notes]
+
+Signed-off-by: Tomasz Maciej Nowak <tmn505@gmail.com>
+---
+ .../uboot-tools/uboot-envtools/files/ipq806x  |   3 +
+ package/firmware/ipq-wifi/Makefile            |   2 +
+ .../ipq-wifi/files/board-mojo_c-130.qca9984   | Bin 0 -> 24308 bytes
+ .../ipq806x/base-files/etc/board.d/02_network |   3 +-
+ .../base-files/lib/upgrade/platform.sh        |   1 +
+ .../linux/ipq806x/dts/qcom-ipq8068-c-130.dts  | 313 ++++++++++++++++++
+ target/linux/ipq806x/image/generic.mk         |  18 +
+ 7 files changed, 339 insertions(+), 1 deletion(-)
+ create mode 100644 package/firmware/ipq-wifi/files/board-mojo_c-130.qca9984
+ create mode 100644 target/linux/ipq806x/dts/qcom-ipq8068-c-130.dts
+
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/ipq806x b/package/boot/uboot-tools/uboot-envtools/files/ipq806x
+index a018d0d7e502d1..69cdbd0b206bdd 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/ipq806x
++++ b/package/boot/uboot-tools/uboot-envtools/files/ipq806x
+@@ -52,6 +52,9 @@ linksys,ea7500-v1|\
+ linksys,ea8500)
+ 	ubootenv_add_uci_config "/dev/mtd10" "0x0" "0x20000" "0x20000"
+ 	;;
++mojo,c-130)
++	ubootenv_add_mtd "0:appsblenv" "0x0" "0x40000" "0x10000"
++	;;
+ netgear,r7800)
+ 	ubootenv_add_uci_config "/dev/mtd2" "0x0" "0x040000" "0x20000"
+ 	;;
+diff --git a/package/firmware/ipq-wifi/Makefile b/package/firmware/ipq-wifi/Makefile
+index 8139d49c9656fd..69eb9daf81774c 100644
+--- a/package/firmware/ipq-wifi/Makefile
++++ b/package/firmware/ipq-wifi/Makefile
+@@ -70,6 +70,7 @@ ALLWIFIBOARDS:= \
+ 	meraki_mr30h \
+ 	meraki_underdog \
+ 	meraki_z3 \
++	mojo_c-130 \
+ 	netgear_lbr20 \
+ 	netgear_rax120v2 \
+ 	netgear_rbk20 \
+@@ -269,6 +270,7 @@ $(eval $(call generate-ipq-wifi-package,linksys_whw03,Linksys WHW03))
+ $(eval $(call generate-ipq-wifi-package,meraki_mr30h,Meraki MR30H))
+ $(eval $(call generate-ipq-wifi-package,meraki_underdog,Meraki underdog))
+ $(eval $(call generate-ipq-wifi-package,meraki_z3,Meraki Z3))
++$(eval $(call generate-ipq-wifi-package,mojo_c-130,Mojo C-130))
+ $(eval $(call generate-ipq-wifi-package,netgear_lbr20,Netgear LBR20))
+ $(eval $(call generate-ipq-wifi-package,netgear_rax120v2,Netgear RAX120v2))
+ $(eval $(call generate-ipq-wifi-package,netgear_rbk20,Netgear RBK20))
+diff --git a/package/firmware/ipq-wifi/files/board-mojo_c-130.qca9984 b/package/firmware/ipq-wifi/files/board-mojo_c-130.qca9984
+new file mode 100644
+index 0000000000000000000000000000000000000000..72ed9748eacac82d9e0a43bae4258de142910c2e
+GIT binary patch
+literal 24308
+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
+B$YlTk
+
+literal 0
+HcmV?d00001
+
+diff --git a/target/linux/ipq806x/base-files/etc/board.d/02_network b/target/linux/ipq806x/base-files/etc/board.d/02_network
+index e03417288633ff..a6d18b5b829b33 100644
+--- a/target/linux/ipq806x/base-files/etc/board.d/02_network
++++ b/target/linux/ipq806x/base-files/etc/board.d/02_network
+@@ -16,7 +16,8 @@ ipq806x_setup_interfaces()
+ 		;;
+ 	aruba,ap-32x|\
+ 	edgecore,ecw5410|\
+-	extreme,ap3935)
++	extreme,ap3935|\
++	mojo,c-130)
+ 		ucidef_set_interfaces_lan_wan "eth1" "eth0"
+ 		;;
+ 	askey,rt4230w-rev6|\
+diff --git a/target/linux/ipq806x/base-files/lib/upgrade/platform.sh b/target/linux/ipq806x/base-files/lib/upgrade/platform.sh
+index e980598a387928..9cc47184b28c8d 100644
+--- a/target/linux/ipq806x/base-files/lib/upgrade/platform.sh
++++ b/target/linux/ipq806x/base-files/lib/upgrade/platform.sh
+@@ -15,6 +15,7 @@ platform_do_upgrade() {
+ 	compex,wpq864|\
+ 	fortinet,fap-421e|\
+ 	linksys,e8350-v1|\
++	mojo,c-130|\
+ 	netgear,d7800|\
+ 	netgear,r7500|\
+ 	netgear,r7500v2|\
+diff --git a/target/linux/ipq806x/dts/qcom-ipq8068-c-130.dts b/target/linux/ipq806x/dts/qcom-ipq8068-c-130.dts
+new file mode 100644
+index 00000000000000..a63e2c21322276
+--- /dev/null
++++ b/target/linux/ipq806x/dts/qcom-ipq8068-c-130.dts
+@@ -0,0 +1,313 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++#include <dt-bindings/soc/qcom,tcsr.h>
++
++#include "qcom-ipq8064-v2.0-smb208.dtsi"
++
++/ {
++	model = "Mojo C-130";
++	compatible = "mojo,c-130", "qcom,ipq8064";
++
++	aliases {
++		label-mac-device = &gmac2;
++		led-boot = &led_power;
++		led-failsafe = &led_power;
++//		led-running = &led_power;
++		led-upgrade = &led_power;
++	};
++
++	chosen {
++		bootargs-override = "console=ttyMSM0,115200n8 root=/dev/ubiblock0_1";
++	};
++
++	cpus {
++		idle-states {
++			CPU_SPC: spc {
++				status = "disabled";
++			};
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++		pinctrl-0 = <&buttons_pins>;
++		pinctrl-names = "default";
++
++		button-reset {
++			label = "reset";
++			gpios = <&qcom_pinmux 26 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++			debounce-interval = <60>;
++			wakeup-source;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++		pinctrl-0 = <&leds_pins>;
++		pinctrl-names = "default";
++
++		led_power: led-power {
++			color = <LED_COLOR_ID_AMBER>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&qcom_pinmux 31 GPIO_ACTIVE_HIGH>;
++			panic-indicator;
++		};
++	};
++
++	reg_usb_vbus: regulator-usb-vbus {
++		compatible = "regulator-fixed";
++		regulator-name = "usb-vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		gpios = <&qcom_pinmux 67 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-0 = <&regulator_pins>;
++		pinctrl-names = "default";
++	};
++
++	output-usb-vbus {
++		compatible = "regulator-output";
++		vout-supply = <&reg_usb_vbus>;
++	};
++
++	reserved-memory {
++		nss@40000000 {
++			reg = <0x40000000 0x1000000>;
++			no-map;
++		};
++
++		smem: smem@41000000 {
++			reg = <0x41000000 0x200000>;
++			no-map;
++		};
++
++		wifi_dump@44000000 {
++			reg = <0x44000000 0x600000>;
++			no-map;
++		};
++	};
++};
++
++&adm_dma {
++	status = "okay";
++};
++
++&gmac2 {
++	status = "okay";
++
++	qcom,id = <2>;
++	mdiobus = <&mdio0>;
++	phy-mode = "sgmii";
++	phy-handle = <&ethphy0>;
++	nvmem-cell-names = "mac-address";
++	nvmem-cells = <&macaddr_art_0>;
++};
++
++&gmac3 {
++	status = "okay";
++
++	qcom,id = <3>;
++	mdiobus = <&mdio0>;
++	phy-mode = "sgmii";
++	phy-handle = <&ethphy1>;
++	nvmem-cell-names = "mac-address";
++	nvmem-cells = <&macaddr_art_6>;
++};
++
++&gsbi5 {
++	status = "okay";
++
++	qcom,mode = <GSBI_PROT_SPI>;
++
++	spi@1a280000 {
++		status = "okay";
++
++		spi-max-frequency = <50000000>;
++		cs-gpios = <&qcom_pinmux 20 GPIO_ACTIVE_HIGH>;
++		pinctrl-0 = <&spi_pins &spi_cs_pins>;
++		pinctrl-names = "default";
++
++		flash@0 {
++			compatible = "jedec,spi-nor";
++			reg = <0>;
++			spi-max-frequency = <50000000>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partitions {
++				compatible = "qcom,smem-part";
++
++				partition-0-appsblenv {
++					label = "0:appsblenv";
++
++					nvmem-layout {
++						compatible = "u-boot,env";
++					};
++				};
++
++				partition-0-art {
++					label = "0:art";
++
++					nvmem-layout {
++						compatible = "fixed-layout";
++						#address-cells = <1>;
++						#size-cells = <1>;
++
++						macaddr_art_0: macaddr@0 {
++							reg = <0x0 0x6>;
++						};
++
++						macaddr_art_6: macaddr@6 {
++							reg = <0x6 0x6>;
++						};
++
++						model@40 {
++							reg = <0x40 0x5>;
++						};
++
++						serial-number@30 {
++							reg = <0x50 0xd>;
++						};
++
++						precal_art_1000: precal@1000 {
++							reg = <0x1000 0x2f20>;
++						};
++
++						precal_art_5000: precal@5000 {
++							reg = <0x5000 0x2f20>;
++						};
++					};
++				};
++			};
++		};
++	};
++};
++
++&hs_phy_0 {
++	status = "okay";
++};
++
++&mdio0 {
++	status = "okay";
++
++	pinctrl-0 = <&mdio0_pins>;
++	pinctrl-names = "default";
++
++	ethphy0: ethernet-phy@2 {
++		reg = <2>;
++	};
++
++	ethphy1: ethernet-phy@3 {
++		reg = <3>;
++	};
++};
++
++&nand {
++	status = "okay";
++
++	nand@0 {
++		compatible = "qcom,nandcs";
++		reg = <0>;
++		nand-bus-width = <8>;
++		nand-ecc-strength = <4>;
++		nand-ecc-step-size = <512>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "ubi";
++				reg = <0x0000000 0x4000000>;
++			};
++
++			partition@4000000 {
++				label = "rootfs2";
++				reg = <0x4000000 0x2000000>;
++			};
++
++			partition@6000000 {
++				label = "opt2";
++				reg = <0x6000000 0x2000000>;
++			};
++		};
++	};
++};
++
++&pcie0 {
++	status = "okay";
++
++	pcie@0 {
++		wifi@1,0 {
++			compatible = "qcom,ath10k";
++			reg = <0x00010000 0 0 0 0>;
++			nvmem-cells = <&precal_art_1000>;
++			nvmem-cell-names = "pre-calibration";
++			qcom,ath10k-calibration-variant = "Mojo-C-130";
++		};
++	};
++};
++
++&pcie1 {
++	status = "okay";
++
++	pcie@0 {
++		wifi@1,0 {
++			compatible = "qcom,ath10k";
++			status = "okay";
++			reg = <0x00010000 0 0 0 0>;
++			nvmem-cells = <&precal_art_5000>;
++			nvmem-cell-names = "pre-calibration";
++			qcom,ath10k-calibration-variant = "Mojo-C-130";
++		};
++	};
++};
++
++&pcie2 {
++	status = "okay";
++
++	pcie@0 {
++		wifi@1,0 {
++			compatible = "qcom,ath10k";
++			reg = <0x00010000 0 0 0 0>;
++		};
++	};
++};
++
++&qcom_pinmux {
++	spi_cs_pins: spi-cs-pins {
++		pins = "gpio20";
++		function = "gpio";
++		drive-strength = <10>;
++		bias-pull-up;
++	};
++
++	buttons_pins: buttons-state {
++		pins = "gpio26";
++		function = "gpio";
++	};
++
++	leds_pins: leds-state {
++		pins = "gpio31";
++		function = "gpio";
++		drive-strength = <12>;
++		bias-pull-up;
++	};
++
++	regulator_pins: regulator-pins {
++		pins = "gpio67";
++		function = "gpio";
++	};
++};
++
++&ss_phy_0 {
++	status = "okay";
++};
++
++&usb3_0 {
++	status = "okay";
++};
+diff --git a/target/linux/ipq806x/image/generic.mk b/target/linux/ipq806x/image/generic.mk
+index 17a4078c5bbd68..ae4fe2556a6a7a 100644
+--- a/target/linux/ipq806x/image/generic.mk
++++ b/target/linux/ipq806x/image/generic.mk
+@@ -347,6 +347,24 @@ define Device/meraki_mr52
+ endef
+ TARGET_DEVICES += meraki_mr52
+ 
++define Device/mojo_c-130
++	$(call Device/FitImage)
++	DEVICE_VENDOR := Mojo Networks
++	DEVICE_MODEL := C-130
++	DEVICE_ALT0_VENDOR := Arista Networks
++	DEVICE_ALT0_MODEL := C-130
++	DEVICE_ALT1_VENDOR := WatchGuard
++	DEVICE_ALT1_MODEL := AP420
++	DEVICE_DTS_CONFIG := config@2
++	DEVICE_PACKAGES := ath10k-firmware-qca988x-ct ath10k-firmware-qca9984-ct \
++		kmod-regulator-userspace-consumer
++	SOC := qcom-ipq8068
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	IMAGE_SIZE := 65536k
++endef
++TARGET_DEVICES += mojo_c-130
++
+ define Device/nec_wg2600hp
+ 	$(call Device/LegacyImage)
+ 	$(Device/dsa-migration)

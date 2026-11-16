@@ -1,13 +1,14 @@
 #!/bin/bash
 # build-main.sh: build the Arista images on OpenWrt main from source.
 #
-#	main/build-main.sh <ipq807x|ipq60xx|ipq95xx|ipq40xx|filogic> [OpenWrt directory]
+#	main/build-main.sh <ipq807x|ipq60xx|ipq95xx|ipq40xx|ipq806x|filogic> [OpenWrt directory]
 #
 # ipq807x builds the C-360, the C-260 and the C-230 (one multi-profile build:
 # one kernel, one module feed), ipq60xx the W-318 and the C-200 (the same way;
 # both target qualcommax), ipq95xx the C-460 (target qualcommbe: build it in a
 # directory of its own, its kernel is 6.18), ipq40xx the W-118 (target ipq40xx,
-# subtarget generic), and filogic the OpenWrt One (target mediatek, subtarget
+# subtarget generic), ipq806x the C-130 (target ipq806x, subtarget generic; the
+# device is tmn505's mojo_c-130), and filogic the OpenWrt One (target mediatek, subtarget
 # filogic: not an Arista, but on the same network, so it runs the same build).
 # What it builds from, all in this repository:
 #   main/openwrt.lock        OpenWrt main, the feeds, and the board files'
@@ -38,8 +39,9 @@ ipq807x) TARGET=qualcommax PROFILE=ipq807x MODELS="c360 c260 c230" DEVICES="aris
 ipq60xx) TARGET=qualcommax PROFILE=ipq60xx MODELS="w318 c200" DEVICES="arista_w-318 arista_c-200" ;;
 ipq95xx) TARGET=qualcommbe PROFILE=ipq95xx MODELS="c460" DEVICES="arista_c-460" ;;
 ipq40xx) TARGET=ipq40xx PROFILE=generic MODELS="w118" DEVICES="arista_w-118" ;;
+ipq806x) TARGET=ipq806x PROFILE=generic MODELS="c130" DEVICES="mojo_c-130" ;;
 filogic) TARGET=mediatek PROFILE=filogic MODELS="one" DEVICES="openwrt_one" ;;
-*) echo "no subtarget $SUB (ipq807x, ipq60xx, ipq95xx, ipq40xx or filogic)" >&2; exit 2 ;;
+*) echo "no subtarget $SUB (ipq807x, ipq60xx, ipq95xx, ipq40xx, ipq806x or filogic)" >&2; exit 2 ;;
 esac
 W=$(realpath -m "${2:-$HERE/build/main/openwrt}")
 VERSION=$(git -C "$HERE" describe --tags --always --dirty 2>/dev/null || echo unversioned)
