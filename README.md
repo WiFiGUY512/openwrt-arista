@@ -86,8 +86,8 @@ curl -fsSL https://raw.githubusercontent.com/WiFiGUY512/openwrt-arista-images/ma
 It finds the AP, reads its model, takes the current build for it from
 [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images),
 saves the AP's own firmware first, and installs. Its guide is
-[install/README.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md). It installs the C-230, C-260, C-360 and C-460; the
-W-318, W-118 and C-200 are installed by hand for now.
+[install/README.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md). It installs every model here: the C-200, C-230,
+C-260, C-360, C-460, W-118 and W-318.
 
 By hand, with a console cable, each model's `INSTALL.md`:
 [c360](c360/INSTALL.md), [c260](c260/INSTALL.md), [c230](c230/INSTALL.md),
