@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Christopher Griffin <christophergriffin05@gmail.com>
+Date: Mon, 16 Nov 2026 04:55:00 -0600
+Subject: [PATCH] ipq806x: c-130: the PoE port is the uplink of an access point
+
+The C-130 is an access point with one cable in most places: the port
+labelled PoE+ (eth0) powers it and is its only link. As a router's WAN
+port, with the LAN on the other one, a freshly installed unit answers
+neither SSH nor LuCI on that cable. Make eth0 the LAN, as a DHCP client,
+as on the other Arista access points, and leave eth1 in no bridge, so a
+second cable to the same switch makes no loop.
+
+Port-local: not part of the device as its author has it.
+
+Assisted-by: Claude:claude-mythos-5-2
+Signed-off-by: Christopher Griffin <christophergriffin05@gmail.com>
+---
+ target/linux/ipq806x/base-files/etc/board.d/02_network | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/target/linux/ipq806x/base-files/etc/board.d/02_network b/target/linux/ipq806x/base-files/etc/board.d/02_network
+--- a/target/linux/ipq806x/base-files/etc/board.d/02_network
++++ b/target/linux/ipq806x/base-files/etc/board.d/02_network
+@@ -16,10 +16,12 @@ ipq806x_setup_interfaces()
+ 		;;
+ 	aruba,ap-32x|\
+ 	edgecore,ecw5410|\
+-	extreme,ap3935|\
+-	mojo,c-130)
++	extreme,ap3935)
+ 		ucidef_set_interfaces_lan_wan "eth1" "eth0"
+ 		;;
++	mojo,c-130)
++		ucidef_set_interface_lan "eth0" "dhcp"
++		;;
+ 	askey,rt4230w-rev6|\
+ 	asrock,g10|\
+ 	buffalo,wxr-2533dhp|\
+-- 
+2.43.0
+
