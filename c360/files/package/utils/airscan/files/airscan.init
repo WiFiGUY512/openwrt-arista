@@ -27,6 +27,7 @@ start_service() {
 	arista,c-230|\
 	arista,c260|arista,c-260|\
 	arista,c360|arista,c-360|\
+	arista,c-460|\
 	arista,w-118|\
 	arista,w318|arista,w-318) ;;
 	*) return 0 ;;

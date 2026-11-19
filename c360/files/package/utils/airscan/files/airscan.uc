@@ -3,7 +3,8 @@
 //
 // Runs only on the board's dedicated scan radio (Arista C-360: the QCN9072
 // multifunction card, PCI 0001:01:00.0, ath11k; Arista C-260: the QCA988x,
-// PCI 0000:01:00.0, ath10k). Serving radios are never touched: no
+// PCI 0000:01:00.0, ath10k; Arista C-460: the QCN9074-family card, PCI
+// 0000:01:00.0, ath11k). Serving radios are never touched: no
 // interface, scan, retune or spectral command is ever issued on another phy.
 // The radio is taken out of netifd's control (wifi-device disabled) so that a
 // "wifi reload" cannot tear down the interfaces airscan creates on it, and
@@ -48,9 +49,12 @@ import * as struct from 'struct';
 import * as socket from 'socket';
 import * as nl80211 from 'nl80211';
 
-const BOARDS = { "arista,c-230": "0000:01:00.0", "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0" };
+const BOARDS = { "arista,c-230": "0000:01:00.0", "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0", "arista,c-460": "0000:01:00.0" };
 // boards with a BLE controller and no scan radio: the BLE survey alone
 const BLE_BOARDS = { "arista,w318": true, "arista,w-318": true };
+// boards whose BLE controller is one side of a radio that also runs Thread and Zigbee (Arista C-460: its
+// EFR32MG24): the survey is left off there, the controller's air time is not airscan's to take
+const BLE_SHARED = { "arista,c-460": true };
 const OUT = "/tmp/airscan";
 const MON = "as-mon0", STA = "as-sta0";
 const PIDFILE = "/var/run/airscan.pid";
@@ -138,7 +142,7 @@ function load_config() {
 		probe_refresh: +(s.probe_refresh || 300),
 		trusted_ssid: list(s.trusted_ssid),
 		trusted_bssid: map(list(s.trusted_bssid), (b) => lc(b)),
-		ble_enabled: s.ble_enabled != "0",
+		ble_enabled: s.ble_enabled != "0" && !BLE_SHARED[trim(fs.readfile("/tmp/sysinfo/board_name") || "")],
 		ble_interval: +(s.ble_interval || 120),
 		ble_duration: +(s.ble_duration || 10),
 		ble_expire: +(s.ble_expire || 900),

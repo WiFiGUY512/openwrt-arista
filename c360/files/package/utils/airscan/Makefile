@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=airscan
 PKG_VERSION:=0.2
-PKG_RELEASE:=19
+PKG_RELEASE:=21
 PKG_LICENSE:=GPL-2.0-only
 
 include $(INCLUDE_DIR)/package.mk
@@ -21,6 +21,7 @@ define Package/airscan/description
  Bluetooth LE survey on the board's BLE controller (hci0), and
  publishes the results on ubus (object "airscan") and in /tmp/airscan.
  Arista C-360: the QCN9074 multifunction radio (PCI 0001:01:00.0).
+ Arista C-460: the QCN9074-family scan radio (PCI 0000:01:00.0); no Bluetooth survey.
  Arista C-260: the QCA988x third radio (PCI 0000:01:00.0).
  Arista W-118: the QCA9882 third radio (PCI 0000:01:00.0).
 endef
