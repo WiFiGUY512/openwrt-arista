@@ -38,14 +38,14 @@ Seen working on a unit unless marked otherwise.
   GHz QCA9994 (PCIe 1) at 4x4, with their pre-calibration from ART and
   tmn505's `Mojo-C-130` board data; the QCA9882 card (PCIe 2) at 2x2 on 2.4
   and 5 GHz with its calibration from the card itself. The radios' MAC
-  addresses are Arista's own (from ART). On a unit: an access point on
-  5 GHz, VHT80.
+  addresses are Arista's own (from ART). On a unit: access points on
+  5 GHz (VHT80) and 2.4 GHz.
 - **The scanning radio**: airscan on the QCA9882 (PCI 0002:01:00.0), as on
   the C-260 and W-118: spectral sweeps on 2.4 and 5 GHz, the BSS and client
   surveys (`ubus call airscan …`, LuCI's airscan pages). No Bluetooth survey:
-  the C-130 has no controller. On a unit, from RAM.
-- **dfs-look** on the 5 GHz radio, with airscan's looks. On a unit (`-n`,
-  from RAM).
+  the C-130 has no controller. On a unit: it starts by itself and takes the
+  card (the image booted from RAM).
+- **dfs-look** on the 5 GHz radio, with airscan's looks. On a unit (`-n`).
 - **Ethernet.** The PoE+ port (eth0, the label MAC) is in `br-lan`, which
   takes its address by DHCP; the second port (eth1, the next lower MAC) is in
   no bridge, so a second cable to the same switch makes no loop. Both link at
@@ -75,6 +75,9 @@ Seen working on a unit unless marked otherwise.
 - **No PoE power policy**: on 802.3af Arista's firmware turns USB and the
   second port off and cuts the radios; OpenWrt runs everything at full power.
   Use 802.3at or DC.
+- **U-Boot's network after a restart from OpenWrt**: once in two restarts
+  on the lab unit it passed no traffic until the AP was powered off and on.
+  Booting OpenWrt itself is not affected.
 - `sysupgrade` from one build to the next, and the installer's switch back
   to Arista, have not yet been run on a unit.
 

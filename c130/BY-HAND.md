@@ -47,7 +47,11 @@ bootm 0x44000000
 
 `dhcp` gives U-Boot an address on the PoE+ port (or `setenv ipaddr <AP
 address>` instead). The image's own configuration (`config@2`) and command
-line are used. OpenWrt takes its address by DHCP on the PoE+ port; root logs
+line are used. If U-Boot's network passes nothing (`dhcp` gets no answer,
+`tftpboot` prints only `T`), and the AP was restarted from a running
+OpenWrt, power it off and on (unplug PoE) and stop U-Boot again: once in
+two such restarts on the lab unit, only a cold start brought its network
+back. OpenWrt takes its address by DHCP on the PoE+ port; root logs
 in without a password.
 
 ## 3. Back up
