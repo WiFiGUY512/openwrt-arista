@@ -24,8 +24,8 @@ Seen on one unit, from RAM (2026-11-10/11), unless marked otherwise.
   on 2.4, 5 and 6 GHz, receives in monitor mode. Its interface is off by
   default, and with no interface up it leaves the regulatory domain to
   the access-point radios (0111/0116). The scan-radio service of the other
-  models (`airscan`) runs on it: networks and clients on all three bands.
-  No spectral scan yet, and no Bluetooth survey on this model.
+  models (`airscan`) runs on it: networks, clients and a spectral scan on
+  all three bands. No Bluetooth survey on this model.
 - **Ethernet.** lan1 at 10 Gb/s with the MAC from ART, in `br-lan` with DHCP.
 - **eMMC and NOR** (NOR read-only but for the U-Boot environment, which
   `fw_printenv` reads).
