@@ -49,9 +49,11 @@ bootm 0x44000000
 address>` instead). The image's own configuration (`config@2`) and command
 line are used. If U-Boot's network passes nothing (`dhcp` gets no answer,
 `tftpboot` prints only `T`), and the AP was restarted from a running
-OpenWrt, power it off and on (unplug PoE) and stop U-Boot again: once in
-two such restarts on the lab unit, only a cold start brought its network
-back. OpenWrt takes its address by DHCP on the PoE+ port; root logs
+OpenWrt, power it off and on (unplug PoE) and stop U-Boot again. On the
+lab unit 2 of 8 such restarts left U-Boot's network dead, U-Boot's own
+`reset` did not bring it back, and every cold start (3 of 3) worked. To
+boot from the network, start the AP from power rather than from a running
+OpenWrt. OpenWrt takes its address by DHCP on the PoE+ port; root logs
 in without a password.
 
 ## 3. Back up

@@ -75,9 +75,9 @@ Seen working on a unit unless marked otherwise.
 - **No PoE power policy**: on 802.3af Arista's firmware turns USB and the
   second port off and cuts the radios; OpenWrt runs everything at full power.
   Use 802.3at or DC.
-- **U-Boot's network after a restart from OpenWrt**: once in two restarts
-  on the lab unit it passed no traffic until the AP was powered off and on.
-  Booting OpenWrt itself is not affected.
+- **U-Boot's network after a restart from OpenWrt**: in 2 of 8 restarts on
+  the lab unit it passed no traffic until the AP was powered off and on
+  (every cold start worked). OpenWrt's own Ethernet is not affected.
 - `sysupgrade` from one build to the next, and the installer's switch back
   to Arista, have not yet been run on a unit.
 
