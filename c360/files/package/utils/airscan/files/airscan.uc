@@ -4,7 +4,8 @@
 // Runs only on the board's dedicated scan radio (Arista C-360: the QCN9072
 // multifunction card, PCI 0001:01:00.0, ath11k; Arista C-260: the QCA988x,
 // PCI 0000:01:00.0, ath10k; Arista C-460: the QCN9074-family card, PCI
-// 0000:01:00.0, ath11k). Serving radios are never touched: no
+// 0000:01:00.0, ath11k; Arista C-130: the QCA9882 miniPCIe card, PCI
+// 0002:01:00.0, ath10k). Serving radios are never touched: no
 // interface, scan, retune or spectral command is ever issued on another phy.
 // The radio is taken out of netifd's control (wifi-device disabled) so that a
 // "wifi reload" cannot tear down the interfaces airscan creates on it, and
@@ -49,7 +50,7 @@ import * as struct from 'struct';
 import * as socket from 'socket';
 import * as nl80211 from 'nl80211';
 
-const BOARDS = { "arista,c-230": "0000:01:00.0", "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0", "arista,c-460": "0000:01:00.0" };
+const BOARDS = { "arista,c-230": "0000:01:00.0", "arista,c260": "0000:01:00.0", "arista,c-260": "0000:01:00.0", "arista,c360": "0001:01:00.0", "arista,c-360": "0001:01:00.0", "arista,w-118": "0000:01:00.0", "arista,c-460": "0000:01:00.0", "mojo,c-130": "0002:01:00.0" };
 // boards with a BLE controller and no scan radio: the BLE survey alone
 const BLE_BOARDS = { "arista,w318": true, "arista,w-318": true };
 // boards whose BLE controller is one side of a radio that also runs Thread and Zigbee (Arista C-460: its

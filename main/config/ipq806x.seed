@@ -10,9 +10,9 @@ CONFIG_ALL_KMODS=y
 # CONFIG_PACKAGE_wpad-basic-mbedtls is not set
 CONFIG_PACKAGE_wpad-mbedtls=y
 CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_airscan=m
-CONFIG_PACKAGE_luci-app-airscan=m
-CONFIG_PACKAGE_dfs-look=m
+CONFIG_PACKAGE_airscan=y
+CONFIG_PACKAGE_luci-app-airscan=y
+CONFIG_PACKAGE_dfs-look=y
 CONFIG_PACKAGE_ubi-utils=y
 # optional network packages: built into the feed (not the image), so they
 # install on this build's kernel and ucode ABI

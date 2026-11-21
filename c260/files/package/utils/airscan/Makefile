@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=airscan
 PKG_VERSION:=0.2
-PKG_RELEASE:=21
+PKG_RELEASE:=22
 PKG_LICENSE:=GPL-2.0-only
 
 include $(INCLUDE_DIR)/package.mk
@@ -24,6 +24,7 @@ define Package/airscan/description
  Arista C-460: the QCN9074-family scan radio (PCI 0000:01:00.0); no Bluetooth survey.
  Arista C-260: the QCA988x third radio (PCI 0000:01:00.0).
  Arista W-118: the QCA9882 third radio (PCI 0000:01:00.0).
+ Arista C-130: the QCA9882 miniPCIe card (PCI 0002:01:00.0); no Bluetooth survey.
 endef
 
 define Package/airscan/conffiles
