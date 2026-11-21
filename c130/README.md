@@ -32,8 +32,9 @@ Seen working on a unit unless marked otherwise.
   NAND, Arista's `rootfs` and `opt` partitions, as one UBI), booted by its
   own boot command first, with Arista's boot of slot 1 as the fallback.
   Slot 1 (`rootfs2`, `opt2`) and both kernels in NOR are never written. On a
-  unit: the network installer from Arista 13.0.2 (2026-11-16), and the unit
-  restarting into it by itself since.
+  unit: the network installer from Arista 13.0.2 (2026-11-16), the unit
+  restarting into it by itself since, and a `sysupgrade` to the next build
+  with its settings kept (2026-11-21).
 - **All three radios** (ath10k-ct). The 5 GHz QCA9994 (PCIe 0) and the 2.4
   GHz QCA9994 (PCIe 1) at 4x4, with their pre-calibration from ART and
   tmn505's `Mojo-C-130` board data; the QCA9882 card (PCIe 2) at 2x2 on 2.4
@@ -78,8 +79,7 @@ Seen working on a unit unless marked otherwise.
 - **U-Boot's network after a restart from OpenWrt**: in 2 of 8 restarts on
   the lab unit it passed no traffic until the AP was powered off and on
   (every cold start worked). OpenWrt's own Ethernet is not affected.
-- `sysupgrade` from one build to the next, and the installer's switch back
-  to Arista, have not yet been run on a unit.
+- The installer's switch back to Arista has not yet been run on a unit.
 
 ## In this directory
 
