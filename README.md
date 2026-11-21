@@ -1,8 +1,14 @@
 # OpenWrt for Arista access points
 
-Everything needed to run [OpenWrt](https://openwrt.org) on Arista Wi-Fi
-access points: the device support, the patches it needs, the installer, and a
-build script that makes the images from OpenWrt's source.
+The source code for running [OpenWrt](https://openwrt.org) on Arista Wi-Fi
+access points: the device support, the patches it needs, and a build script
+that makes the images from OpenWrt's source.
+
+> **There are two repositories.**
+> - **This one, `openwrt-arista`, is the source code.**
+> - **[openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images)
+>   is where you install from:** it holds the network installer and the built
+>   images. To put OpenWrt on an access point, go there.
 
 This is an independent project. It is not made, endorsed or supported by
 Arista Networks, and it contains no Arista software: each unit's own copy of
