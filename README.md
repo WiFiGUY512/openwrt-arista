@@ -23,6 +23,7 @@ first boot.
 | [C-200](c200/README.md) | Qualcomm IPQ6010 | main | Working on one unit: both radios, Ethernet (943 Mbit/s out with 0075), LEDs, button, TPM, install and sysupgrade |
 | [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [W-118](w118/README.md) | Qualcomm IPQ4019 + QCA9882 | main | Working: all radios, Bluetooth LE, Ethernet, LEDs, button, PoE out, install and sysupgrade; the scan radio's airscan not yet run |
+| [C-130](c130/README.md) | Qualcomm IPQ8068 + 2x QCA9994 + QCA9882 | main | Working on one unit: all three radios (4x4, 4x4, 2x2), the scan radio's airscan and dfs-look, Ethernet, LEDs, install. The device is Tomasz Maciej Nowak's (not yet in OpenWrt) |
 
 ## Install
 
@@ -34,14 +35,14 @@ cable:
 That page has the one command to paste, what you will see, and what to do if
 it stops. The installer finds the AP, reads its model, takes the current
 build for it, saves the AP's own firmware to the PC first, and installs. It
-installs every model here (the C-200, C-230, C-260, C-360, C-460, W-118 and
-W-318), updates an AP that already runs this port, and puts Arista's firmware
+installs every model here (the C-130, C-200, C-230, C-260, C-360, C-460,
+W-118 and W-318), updates an AP that already runs this port, and puts Arista's firmware
 back.
 
 What is particular to each model after the install is in its `INSTALL.md`:
 [c360](c360/INSTALL.md), [c260](c260/INSTALL.md), [c230](c230/INSTALL.md),
 [c460](c460/INSTALL.md), [c200](c200/INSTALL.md), [w318](w318/INSTALL.md),
-[w118](w118/INSTALL.md).
+[w118](w118/INSTALL.md), [c130](c130/INSTALL.md).
 
 ## Download
 
@@ -94,13 +95,15 @@ any OpenWrt device.
 main/build-main.sh ipq807x     # the C-360 and the C-260
 main/build-main.sh ipq60xx     # the W-318
 main/build-main.sh ipq40xx     # the W-118
+main/build-main.sh ipq806x DIR # the C-130 (kernel 6.18: an OpenWrt directory of its own)
 ```
 
 The same models on OpenWrt main, built from the devices' upstream pull
 requests as they stand: main's Ethernet driver moves several times the
 traffic of 25.12's (on the C-360 at 10G, 9.3 Gb/s up and 4.5 down against
 1.4 and 2.05). Main's board names are `arista,c-360`, `arista,c-260`,
-`arista,w-318` and `arista,w-118`. The W-118 is built on main only. See
+`arista,w-318` and `arista,w-118`; the C-130 keeps its device's `mojo,c-130`.
+The W-118 and C-130 are built on main only. See
 [main/README.md](main/README.md).
 
 ## Layout

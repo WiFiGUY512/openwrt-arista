@@ -11,7 +11,13 @@ main/build-main.sh ipq60xx     # the W-318 and the C-200
 main/build-main.sh ipq40xx     # the W-118 (target ipq40xx)
 main/build-main.sh ipq95xx DIR # the C-460 (target qualcommbe, kernel 6.18: give it
                                # an OpenWrt directory of its own); bring-up, RAM boot only
+main/build-main.sh ipq806x DIR # the C-130 (target ipq806x, kernel 6.18: a directory of
+                               # its own too)
 ```
+
+The C-130's device is not this port's: it is Tomasz Maciej Nowak's
+(0134 below), so its image names are `mojo_c-130` and its board name
+`mojo,c-130`, out in `out/main/<version>/c130/`.
 
 Out, in `out/main/<version>/`: `c360/`, `c260/`, `c230/`, `w318/`, `c200/`, `w118/`
 with each model's images,
@@ -259,6 +265,13 @@ of the bridge (the port tools do). Upgrades keep a unit's own settings.
     recovered from its AR8033: about 0.5% of sent frames lost at any rate
     (TCP out 650 Mbit/s). With the TX parent: 943 Mbit/s, no retransmits,
     0 of 100000 full-size pings lost. For upstream.
+  - 0134-0135: the C-130. 0134 is Tomasz Maciej Nowak's (tmn505)
+    `ipq806x: add Mojo/Arista C-130` as his tree has it
+    ([tmn505/openwrt](https://github.com/tmn505/openwrt), branch
+    `watchguard`, 4d8dc61995e3), unchanged in code, its message shortened;
+    not yet sent to OpenWrt. 0135, local: the PoE+ port (eth0) is
+    the LAN with a DHCP client, as on the other models, and eth1 is in no
+    bridge (his device makes eth0 a router's WAN and the LAN eth1).
   - Regenerated 2026-10-19 by replaying the pull requests' heads onto the
     pinned main (C-360 685d83f8, C-260 fe81f185, W-318 91b2c345, trim
     3a0b0a79, W-118 d41cbf7d).
