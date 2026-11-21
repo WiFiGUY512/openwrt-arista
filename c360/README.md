@@ -203,8 +203,7 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   800 MHz.
 - **The USB 3.0 port,** powered by gpio29 (a regulator in the device tree;
   Arista's system switches the same pin). Seen on a unit: a stick enumerates
-  at boot (SuperSpeed). Arista's U-Boot leaves the port off, so the stick
-  installer powers it first (INSTALL.md).
+  at boot (SuperSpeed). Arista's U-Boot leaves the port off.
 - **The reset button** (the pinhole): a short press reboots, as on any
   OpenWrt device, and a press of 5 s or more resets the configuration. The
   reboot was tested on a unit.
@@ -217,10 +216,6 @@ Seen working on a unit unless marked *(built, not yet on a unit)*.
   zero after boot), so the TPM can't attest to what booted.
 - **Zigbee and Thread.** The nRF52833's radio can do 802.15.4, but Arista's
   firmware is Bluetooth LE only, and signed.
-- **The USB stick has not been used to install a unit yet** (INSTALL.md,
-  section A: U-Boot loading the installer from it, and `c360-flash.py`). The
-  manual install (section B) has, and `arista-c360-install` has, from the
-  RAM system.
 
 ## Requirements
 

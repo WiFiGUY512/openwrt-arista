@@ -5,7 +5,7 @@ design) with three QCN9224 radios (2.4, 5 and 6 GHz) and a QCN9074 scan radio
 on PCIe, two RJ-45 ports with Realtek RTL8261N 10G PHYs (802.3bt PoE in on
 lan1), 32 MiB SPI NOR, 8 GB eMMC, 3 GiB RAM, a TPM 2.0, a PCF85363 RTC, a
 Silicon Labs EFR32MG24 for Bluetooth LE, a Quectel LC79H GNSS receiver and a
-USB 2.0 port. Installing in [INSTALL.md](INSTALL.md) (a draft: not yet run).
+USB 2.0 port. Installing in [INSTALL.md](INSTALL.md).
 Main track only (`main/build-main.sh ipq95xx`, target qualcommbe, Linux
 6.18): there is no 25.12 image.
 
@@ -38,5 +38,5 @@ Seen on one unit, from RAM (2026-11-10/11), unless marked otherwise.
 
 ## Not yet
 
-The install onto eMMC, the reset button, the LED eye check, lan2 with a
+The reset button, the LED eye check, lan2 with a
 cable, and multi-link (MLO).

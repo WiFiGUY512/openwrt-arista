@@ -95,7 +95,7 @@ Seen working on a unit unless marked otherwise.
 ## In this directory
 
 ```
-README.md, INSTALL.md, HARDWARE.md
+README.md, INSTALL.md, BY-HAND.md, HARDWARE.md
 model.sh, openwrt.lock, config/      for ../build.sh
 patches/openwrt/                     the device, calibration, kmod-tpm-tis,
                                      sysupgrade, fw_setenv

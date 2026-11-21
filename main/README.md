@@ -14,7 +14,7 @@ main/build-main.sh ipq95xx DIR # the C-460 (target qualcommbe, kernel 6.18: give
 ```
 
 Out, in `out/main/<version>/`: `c360/`, `c260/`, `c230/`, `w318/`, `c200/`, `w118/`
-with each model's images (including the C-360's USB stick image),
+with each model's images,
 `feed-<subtarget>/` with the build's packages and every kernel module, and
 `SHA256SUMS`. The models' `INSTALL.md` cover installing; main's images are
 named `arista_c-360`, `arista_c-260`, `arista_c-230`, `arista_w-318`,

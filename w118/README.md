@@ -18,7 +18,7 @@ Seen working on a unit unless marked otherwise.
 - **Installing and updating.** OpenWrt in the NAND's upper half (`ubi`),
   booted by its own U-Boot boot command first, with Arista's boot as the
   fallback; both of Arista's slots kept (INSTALL.md). On a unit: the install
-  as INSTALL.md has it (TFTP initramfs, `sysupgrade -n`), boots by itself,
+  as BY-HAND.md has it (TFTP initramfs, `sysupgrade -n`), boots by itself,
   `sysupgrade` keeping the settings, and the boot command's fallback path
   (with the kernel volume missing, OpenWrt's part fails and Arista's boot
   would run).
@@ -62,7 +62,7 @@ Seen working on a unit unless marked otherwise.
 ## In this directory
 
 ```
-README.md, INSTALL.md, HARDWARE.md
+README.md, INSTALL.md, BY-HAND.md, HARDWARE.md
 files/      the Bluetooth reset and power-on, the Network 1/2/3 LED
 ```
 

@@ -18,16 +18,40 @@ first boot.
 | [W-318](w318/README.md) | Qualcomm IPQ6010 + QCN9072 | 25.12, main | Working: all radios, Bluetooth LE, the TPM, Ethernet, LEDs, button, USB, PoE power policy, install and sysupgrade |
 | [W-118](w118/README.md) | Qualcomm IPQ4019 + QCA9882 | main | Working: all radios, Bluetooth LE, Ethernet, LEDs, button, PoE out, install and sysupgrade; the scan radio's airscan not yet run |
 
+## Install
+
+With the network installer, from a PC on the AP's network, with no console
+cable:
+
+**[openwrt-arista-images/install](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md)**
+
+That page has the one command to paste, what you will see, and what to do if
+it stops. The installer finds the AP, reads its model, takes the current
+build for it, saves the AP's own firmware to the PC first, and installs. It
+installs every model here (the C-200, C-230, C-260, C-360, C-460, W-118 and
+W-318), updates an AP that already runs this port, and puts Arista's firmware
+back.
+
+What is particular to each model after the install is in its `INSTALL.md`:
+[c360](c360/INSTALL.md), [c260](c260/INSTALL.md), [c230](c230/INSTALL.md),
+[c460](c460/INSTALL.md), [c200](c200/INSTALL.md), [w318](w318/INSTALL.md),
+[w118](w118/INSTALL.md).
+
 ## Download
 
-Built images are on the [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases),
-one release for all models, each built from the release's tag with
-`build.sh` and gathered with `release.sh`:
+The builds the installer puts on an AP are in
+[openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images):
+OpenWrt main, one release per build, listed in its
+[STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md).
+You do not need to download them yourself: the installer does.
+
+This repository's own [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases)
+holds the 25.12 builds, one release for all models, each built from the
+release's tag with `build.sh` and gathered with `release.sh`:
 
 - `openwrt-…-initramfs-uImage.itb`: the RAM system each install starts from
 - `openwrt-…-squashfs-factory.ubi` (C-360, C-260): what the install writes
 - `openwrt-…-squashfs-sysupgrade.bin`: for `sysupgrade`, and the W-318's install
-- `c360-openwrt-installer.img.xz`: the C-360's USB stick
 - `<model>-feed-<version>.tar.gz`: that build's package feed, with every
   kernel module (see below)
 - `SHA256SUMS`: check what you downloaded with `sha256sum -c SHA256SUMS --ignore-missing`
@@ -48,9 +72,8 @@ On Linux, with [OpenWrt's build prerequisites](https://openwrt.org/docs/guide-de
 
 It clones OpenWrt at the commit the model is pinned to, applies the model's
 patches and files, and builds. The images, a package feed with every kernel
-module and every package the build made, and for the C-360 a USB stick image
-for its installer end up in `out/<model>/<version>/`. A first build takes
-hours.
+module and every package the build made end up in `out/<model>/<version>/`.
+A first build takes hours.
 
 **Kernel modules come from this build's feed, not OpenWrt's.** A kernel
 module installs only on the exact kernel it was built for, and these images'
@@ -74,26 +97,6 @@ traffic of 25.12's (on the C-360 at 10G, 9.3 Gb/s up and 4.5 down against
 `arista,w-318` and `arista,w-118`. The W-118 is built on main only. See
 [main/README.md](main/README.md).
 
-## Install
-
-Over the network, from a PC on the AP's network, with no console cable:
-
-```
-irm https://raw.githubusercontent.com/WiFiGUY512/openwrt-arista-images/main/install/get.ps1 | iex      (Windows)
-curl -fsSL https://raw.githubusercontent.com/WiFiGUY512/openwrt-arista-images/main/install/get.sh | sh  (macOS, Linux)
-```
-
-It finds the AP, reads its model, takes the current build for it from
-[openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images),
-saves the AP's own firmware first, and installs. Its guide is
-[install/README.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md). It installs every model here: the C-200, C-230,
-C-260, C-360, C-460, W-118 and W-318.
-
-By hand, with a console cable, each model's `INSTALL.md`:
-[c360](c360/INSTALL.md), [c260](c260/INSTALL.md), [c230](c230/INSTALL.md),
-[c460](c460/INSTALL.md), [c200](c200/INSTALL.md), [w318](w318/INSTALL.md),
-[w118](w118/INSTALL.md).
-
 ## Layout
 
 ```
@@ -102,7 +105,8 @@ release.sh          gathers the models' builds of a version: ./release.sh <versi
 main/               the models on OpenWrt main: main/build-main.sh <subtarget>
 <model>/
   README.md         what works, what doesn't
-  INSTALL.md        installing and going back
+  INSTALL.md        installing: the network installer, and what follows on this model
+  BY-HAND.md        the console-cable procedure, for an AP the installer cannot reach
   HARDWARE.md       what the hardware is and how it was worked out
   model.sh          the device's name, target and checks, for build.sh
   openwrt.lock      the OpenWrt and feed commits it builds against
