@@ -1,7 +1,7 @@
 # OpenWrt on the Arista W-118: installing
 
 **Install it with the network installer:
-[openwrt-arista-images/install](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md).**
+[openwrt-arista-installer/install](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/install/README.md).**
 One command on a PC on the AP's network: no console cable, and the case stays
 closed. It finds the AP, saves the AP's own firmware to the PC, installs the
 current build, and can switch the AP back to Arista's firmware later. That

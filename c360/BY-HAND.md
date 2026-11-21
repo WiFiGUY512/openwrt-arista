@@ -19,8 +19,8 @@ from your PC with `python arista-field.py --installer-at <the AP's address>`.
   cable gives garbage on this port.
 * **A TFTP server** reachable on the AP's untagged network.
 * **The images,** from the newest build for the C-360 in
-  [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images/releases)
-  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md)
+  [openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer/releases)
+  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/STATUS.md)
   lists them):
   `openwrt-qualcommax-ipq807x-arista_c-360-initramfs-uImage.itb` for the TFTP
   server, and `...-arista_c-360-squashfs-factory.ubi` on the PC.

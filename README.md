@@ -6,7 +6,7 @@ that makes the images from OpenWrt's source.
 
 > **There are two repositories.**
 > - **This one, `openwrt-arista`, is the source code.**
-> - **[openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images)
+> - **[openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer)
 >   is where you install from:** it holds the network installer and the built
 >   images. To put OpenWrt on an access point, go there.
 
@@ -29,7 +29,7 @@ first boot.
 With the network installer, from a PC on the AP's network, with no console
 cable:
 
-**[openwrt-arista-images/install](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/install/README.md)**
+**[openwrt-arista-installer/install](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/install/README.md)**
 
 That page has the one command to paste, what you will see, and what to do if
 it stops. The installer finds the AP, reads its model, takes the current
@@ -46,9 +46,9 @@ What is particular to each model after the install is in its `INSTALL.md`:
 ## Download
 
 The builds the installer puts on an AP are in
-[openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images):
+[openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer):
 OpenWrt main, one release per build, listed in its
-[STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md).
+[STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/STATUS.md).
 You do not need to download them yourself: the installer does.
 
 This repository's own [releases page](https://github.com/WiFiGUY512/openwrt-arista/releases)

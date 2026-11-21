@@ -23,7 +23,7 @@ from your PC with `python arista-field.py --installer-at <the AP's address>`.
   releases and `./build.sh c260`, which make 25.12 images:
   `openwrt-qualcommax-ipq807x-arista_c260-initramfs-uImage.itb` for the TFTP
   server, and `...-arista_c260-squashfs-factory.ubi` on the PC. The builds in
-  [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images/releases)
+  [openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer/releases)
   are OpenWrt main: see [With an OpenWrt main image](#with-an-openwrt-main-image).
 
 ## Why it is installed this way
@@ -126,7 +126,7 @@ no bridge, so a second cable to the same switch makes no loop.
 
 ## With an OpenWrt main image
 
-The builds in openwrt-arista-images, and `main/build-main.sh ipq807x`, are
+The builds in openwrt-arista-installer, and `main/build-main.sh ipq807x`, are
 named `arista_c-260` (board name `arista,c-260`). Use that build's files for
 every step, and:
 
@@ -145,8 +145,8 @@ every step, and:
 
   ```
   mkdir -p /tmp/c260 && cd /tmp/c260
-  wget -O factory.ubi https://github.com/WiFiGUY512/openwrt-arista-images/releases/download/<tag>/openwrt-qualcommax-ipq807x-arista_c-260-squashfs-factory.ubi
-  wget -O SHA256SUMS https://github.com/WiFiGUY512/openwrt-arista-images/releases/download/<tag>/c260-install-SHA256SUMS
+  wget -O factory.ubi https://github.com/WiFiGUY512/openwrt-arista-installer/releases/download/<tag>/openwrt-qualcommax-ipq807x-arista_c-260-squashfs-factory.ubi
+  wget -O SHA256SUMS https://github.com/WiFiGUY512/openwrt-arista-installer/releases/download/<tag>/c260-install-SHA256SUMS
   arista-c260-install --dry-run --no-backup --stick /tmp/c260
   arista-c260-install --no-backup --stick /tmp/c260
   reboot

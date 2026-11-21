@@ -23,8 +23,8 @@ so the fallback first puts Arista's own settings back.
   console port, 115200 8N1, no flow control.
 * **A TFTP server** reachable on the uplink's network.
 * **The images,** from the newest build for the W-318 in
-  [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images/releases)
-  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md)
+  [openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer/releases)
+  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/STATUS.md)
   lists them):
   `openwrt-qualcommax-ipq60xx-arista_w-318-initramfs-uImage.itb` for the TFTP
   server, and `openwrt-qualcommax-ipq60xx-arista_w-318-squashfs-sysupgrade.bin`

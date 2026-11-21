@@ -33,8 +33,8 @@ from your PC with `python arista-field.py --installer-at <the AP's address>`.
   `openwrt-qualcommax-ipq807x-arista_c-230-initramfs-uImage.itb`. On Windows,
   Tftpd64. On Linux, tftpd-hpa or dnsmasq. On macOS, the built-in tftpd.
 - **The build's tag:** the newest build for the C-230 in
-  [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images/releases)
-  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md)
+  [openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer/releases)
+  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/STATUS.md)
   lists them). Use the same build for every file. It is `<tag>` below.
 - **Network:** the AP's Ethernet 1 (the PoE port) on the same network as
   the PC, untagged, with a DHCP server. Power by PoE (802.3at) or DC.
@@ -123,8 +123,8 @@ On the AP's console:
 
 ```
 mkdir -p /tmp/c230 && cd /tmp/c230
-wget -O factory.ubi https://github.com/WiFiGUY512/openwrt-arista-images/releases/download/<tag>/openwrt-qualcommax-ipq807x-arista_c-230-squashfs-factory.ubi
-wget -O SHA256SUMS https://github.com/WiFiGUY512/openwrt-arista-images/releases/download/<tag>/c230-install-SHA256SUMS
+wget -O factory.ubi https://github.com/WiFiGUY512/openwrt-arista-installer/releases/download/<tag>/openwrt-qualcommax-ipq807x-arista_c-230-squashfs-factory.ubi
+wget -O SHA256SUMS https://github.com/WiFiGUY512/openwrt-arista-installer/releases/download/<tag>/c230-install-SHA256SUMS
 ```
 
 Without internet, copy them from the PC instead, under those names:

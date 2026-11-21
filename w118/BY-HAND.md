@@ -23,8 +23,8 @@ its check, Arista's own boot (`ubootscript`) runs as before.
   TX and RX. 115200 8N1.
 * **A TFTP server** on the uplink's network.
 * **The images,** from the newest build for the W-118 in
-  [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images/releases)
-  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md)
+  [openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer/releases)
+  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/STATUS.md)
   lists them), or from `main/build-main.sh ipq40xx`:
   `openwrt-ipq40xx-generic-arista_w-118-initramfs-zImage.itb` for the TFTP
   server, and `openwrt-ipq40xx-generic-arista_w-118-squashfs-sysupgrade.bin`.

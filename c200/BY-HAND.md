@@ -19,8 +19,8 @@ boot command makes it the fallback (`pri=1`). Back the flash up first
 * **The console cable:** RJ-45, RS-232, 115200 8N1.
 * **A TFTP server** reachable on the AP's untagged network.
 * **The images,** from the newest build for the C-200 in
-  [openwrt-arista-images](https://github.com/WiFiGUY512/openwrt-arista-images/releases)
-  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-images/blob/main/STATUS.md)
+  [openwrt-arista-installer](https://github.com/WiFiGUY512/openwrt-arista-installer/releases)
+  (its [STATUS.md](https://github.com/WiFiGUY512/openwrt-arista-installer/blob/main/STATUS.md)
   lists them), or from `main/build-main.sh ipq60xx`:
   `openwrt-qualcommax-ipq60xx-arista_c-200-initramfs-uImage.itb` (the RAM
   installer) and `...-squashfs-factory.ubi`.
